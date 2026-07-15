@@ -1,407 +1,424 @@
-# 03 — Database Schema
+# 03 — Database Schema (v2)
+
+> **Revision**: v2 — UUID identities, SQLAlchemy Core, job queue, review queue, staging zones.
+> See [10-revision-v2.md](10-revision-v2.md) for design rationale.
 
 ## Design Principles
 
-1. **SQLite with WAL mode** — concurrent reads during writes, proven at millions of rows
-2. **Normalized core, denormalized views** — junction tables for M:N; materialized stats for dashboard
-3. **Soft references** — file paths stored but validated on access (files can move)
-4. **Audit everything** — `change_history` and `rollback_snapshots` for full reversibility
-5. **Indexed for query patterns** — every GUI page has supporting indexes
-6. **Alembic migrations** — schema evolves with versioned upgrade scripts
+1. **SQLite with WAL mode** — concurrent reads during writes
+2. **SQLAlchemy Core** — no ORM; explicit table definitions and batch SQL
+3. **UUID v7 primary keys** — all entities use time-sortable UUIDs (stored as TEXT)
+4. **Job queue in database** — persistent, resumable background processing
+5. **Library zones** — incoming, staging, library, archive
+6. **Confidence scores** — per-field metadata confidence stored alongside values
+7. **Fingerprint persistence** — never recompute unless file identity changes
+8. **Alembic migrations** — schema evolves with versioned upgrade scripts
 
 ## Entity-Relationship Diagram
 
 ```mermaid
 erDiagram
     libraries ||--o{ tracks : contains
-    libraries ||--o{ scan_sessions : has
+    libraries ||--o{ jobs : has
+    libraries ||--o{ review_items : has
     artists ||--o{ albums : creates
     albums ||--o{ tracks : contains
     albums ||--o{ album_artists : has
     artists ||--o{ album_artists : credited_on
-    tracks ||--o| fingerprints : has
-    tracks ||--o{ track_hashes : has
+    tracks ||--o| file_identity : has
     tracks ||--o{ track_artwork : has
     artwork ||--o{ track_artwork : used_by
     artwork ||--o{ album_artwork : covers
     albums ||--o{ album_artwork : has
     tracks ||--o{ duplicate_members : grouped_in
     duplicate_groups ||--o{ duplicate_members : contains
+    tracks ||--o{ metadata_confidence : has
     tracks ||--o{ change_history : modified
     operations ||--o{ change_history : caused
     operations ||--o| rollback_snapshots : backed_by
-    scan_sessions ||--o{ scan_results : produced
+    libraries ||--o{ rules : configures
+    jobs ||--o{ jobs : parent_child
 ```
 
-## Tables
+---
 
-### Core Library
+## Core Library Tables
 
-#### `libraries`
-
-Represents a music library (one or more root paths).
+### `libraries`
 
 | Column | Type | Constraints | Description |
 |--------|------|-------------|-------------|
-| `id` | INTEGER | PK, AUTO | |
+| `id` | TEXT | PK | UUID v7 |
 | `name` | TEXT | NOT NULL | Display name |
-| `root_paths` | TEXT | NOT NULL | JSON array of root directories |
+| `incoming_path` | TEXT | NOT NULL | Watch folder path |
+| `staging_path` | TEXT | NOT NULL | Staging zone path |
+| `library_path` | TEXT | NOT NULL | Canonical library path |
+| `archive_path` | TEXT | NOT NULL | Archive zone path |
+| `watch_enabled` | BOOLEAN | DEFAULT FALSE | Auto-process incoming |
+| `auto_approve_threshold` | REAL | DEFAULT 0.90 | Min confidence for auto-approve |
 | `created_at` | TEXT | NOT NULL | ISO 8601 |
 | `updated_at` | TEXT | NOT NULL | ISO 8601 |
-| `track_count` | INTEGER | DEFAULT 0 | Denormalized count |
-| `album_count` | INTEGER | DEFAULT 0 | Denormalized |
-| `artist_count` | INTEGER | DEFAULT 0 | Denormalized |
-| `total_size_bytes` | INTEGER | DEFAULT 0 | Denormalized |
-| `last_scan_id` | INTEGER | FK → scan_sessions | Most recent scan |
 
-#### `artists`
+### `artists`
 
 | Column | Type | Constraints | Description |
 |--------|------|-------------|-------------|
-| `id` | INTEGER | PK, AUTO | |
-| `name` | TEXT | NOT NULL | Canonical artist name |
-| `sort_name` | TEXT | NOT NULL | For alphabetical sorting |
-| `mbid` | TEXT | UNIQUE, NULL | MusicBrainz artist ID |
-| `type` | TEXT | NULL | Person, Group, Orchestra, etc. |
+| `id` | TEXT | PK | UUID v7 |
+| `name` | TEXT | NOT NULL | Canonical name |
+| `sort_name` | TEXT | NOT NULL | Sort key |
+| `mbid` | TEXT | NULL | MusicBrainz artist ID |
+| `discogs_id` | TEXT | NULL | Discogs artist ID |
+| `type` | TEXT | NULL | Person, Group, Orchestra |
 | `country` | TEXT | NULL | ISO 3166-1 alpha-2 |
 | `created_at` | TEXT | NOT NULL | |
 | `updated_at` | TEXT | NOT NULL | |
 
 **Indexes**: `idx_artists_name`, `idx_artists_sort_name`, `idx_artists_mbid`
 
-#### `albums`
+### `albums`
 
 | Column | Type | Constraints | Description |
 |--------|------|-------------|-------------|
-| `id` | INTEGER | PK, AUTO | |
+| `id` | TEXT | PK | UUID v7 |
 | `title` | TEXT | NOT NULL | |
 | `sort_title` | TEXT | NOT NULL | |
-| `album_artist_id` | INTEGER | FK → artists, NULL | Album-level artist |
-| `year` | INTEGER | NULL | Release year |
-| `release_date` | TEXT | NULL | Full date if known |
-| `mbid` | TEXT | UNIQUE, NULL | MusicBrainz release ID |
-| `release_group_mbid` | TEXT | NULL | MB release group ID |
+| `album_artist_id` | TEXT | FK → artists | |
+| `year` | INTEGER | NULL | |
+| `mbid` | TEXT | NULL | MusicBrainz release ID |
+| `release_group_mbid` | TEXT | NULL | |
+| `discogs_id` | TEXT | NULL | |
 | `type` | TEXT | NULL | Album, Single, EP, Compilation |
-| `genre` | TEXT | NULL | Primary genre |
-| `label` | TEXT | NULL | Record label |
-| `catalog_number` | TEXT | NULL | |
-| `country` | TEXT | NULL | Release country |
+| `genre` | TEXT | NULL | |
 | `disc_count` | INTEGER | DEFAULT 1 | |
 | `track_count` | INTEGER | DEFAULT 0 | Denormalized |
 | `is_compilation` | BOOLEAN | DEFAULT FALSE | |
-| `is_soundtrack` | BOOLEAN | DEFAULT FALSE | |
-| `is_classical` | BOOLEAN | DEFAULT FALSE | |
-| `is_audiobook` | BOOLEAN | DEFAULT FALSE | |
 | `created_at` | TEXT | NOT NULL | |
 | `updated_at` | TEXT | NOT NULL | |
 
-**Indexes**: `idx_albums_title`, `idx_albums_mbid`, `idx_albums_release_group_mbid`, `idx_albums_artist_year`
+**Indexes**: `idx_albums_title`, `idx_albums_mbid`, `idx_albums_artist`
 
-#### `album_artists`
-
-Junction table for multi-artist albums.
-
-| Column | Type | Constraints |
-|--------|------|-------------|
-| `album_id` | INTEGER | PK, FK → albums |
-| `artist_id` | INTEGER | PK, FK → artists |
-| `role` | TEXT | DEFAULT 'primary' |
-| `position` | INTEGER | DEFAULT 0 |
-
-#### `tracks`
-
-Central table — one row per audio file.
+### `tracks`
 
 | Column | Type | Constraints | Description |
 |--------|------|-------------|-------------|
-| `id` | INTEGER | PK, AUTO | |
-| `library_id` | INTEGER | FK → libraries, NOT NULL | |
-| `album_id` | INTEGER | FK → albums, NULL | NULL = unlinked |
-| `artist_id` | INTEGER | FK → artists, NULL | Track artist |
-| `file_path` | TEXT | NOT NULL | Absolute path |
-| `file_name` | TEXT | NOT NULL | Base name |
+| `id` | TEXT | PK | UUID v7 |
+| `library_id` | TEXT | FK → libraries, NOT NULL | |
+| `album_id` | TEXT | FK → albums, NULL | |
+| `artist_id` | TEXT | FK → artists, NULL | |
+| `zone` | TEXT | NOT NULL | `incoming`, `staging`, `library`, `archive` |
+| `file_path` | TEXT | NOT NULL, UNIQUE | Absolute path |
+| `file_name` | TEXT | NOT NULL | |
 | `file_size` | INTEGER | NOT NULL | Bytes |
-| `file_modified` | TEXT | NOT NULL | ISO 8601 mtime |
-| `title` | TEXT | NULL | From tags |
+| `file_modified` | TEXT | NOT NULL | ISO mtime |
+| `title` | TEXT | NULL | |
 | `track_number` | INTEGER | NULL | |
 | `disc_number` | INTEGER | DEFAULT 1 | |
-| `duration_ms` | INTEGER | NULL | Milliseconds |
+| `duration_ms` | INTEGER | NULL | |
 | `bitrate` | INTEGER | NULL | kbps |
-| `bit_depth` | INTEGER | NULL | bits |
+| `bit_depth` | INTEGER | NULL | |
 | `sample_rate` | INTEGER | NULL | Hz |
 | `channels` | INTEGER | NULL | |
-| `codec` | TEXT | NULL | flac, mp3, aac, etc. |
+| `codec` | TEXT | NULL | |
 | `is_lossless` | BOOLEAN | DEFAULT FALSE | |
 | `quality_score` | INTEGER | NULL | 0–100 |
-| `replaygain_track` | REAL | NULL | dB |
-| `replaygain_album` | REAL | NULL | dB |
-| `mb_recording_id` | TEXT | NULL | MusicBrainz recording ID |
-| `mb_track_id` | TEXT | NULL | MusicBrainz track ID |
+| `mb_recording_id` | TEXT | NULL | |
 | `composer` | TEXT | NULL | |
 | `genre` | TEXT | NULL | |
 | `year` | INTEGER | NULL | |
 | `has_embedded_art` | BOOLEAN | DEFAULT FALSE | |
 | `is_corrupt` | BOOLEAN | DEFAULT FALSE | |
-| `is_unknown` | BOOLEAN | DEFAULT FALSE | Failed identification |
-| `scan_session_id` | INTEGER | FK → scan_sessions | Last scan that touched this |
+| `overall_confidence` | REAL | NULL | Min field confidence |
+| `needs_review` | BOOLEAN | DEFAULT FALSE | |
 | `created_at` | TEXT | NOT NULL | |
 | `updated_at` | TEXT | NOT NULL | |
 
 **Indexes**:
-- `idx_tracks_library` ON (`library_id`)
-- `idx_tracks_album` ON (`album_id`)
-- `idx_tracks_artist` ON (`artist_id`)
-- `idx_tracks_file_path` UNIQUE ON (`file_path`)
-- `idx_tracks_mb_recording` ON (`mb_recording_id`)
+- `idx_tracks_library_zone` ON (`library_id`, `zone`)
+- `idx_tracks_file_path` UNIQUE
+- `idx_tracks_album`
+- `idx_tracks_mb_recording`
+- `idx_tracks_needs_review` WHERE `needs_review = TRUE`
 - `idx_tracks_quality` ON (`quality_score`)
-- `idx_tracks_unknown` ON (`is_unknown`) WHERE `is_unknown` = TRUE
-- `idx_tracks_codec` ON (`codec`)
 
-### Fingerprints & Hashes
+---
 
-#### `fingerprints`
+## File Identity (Fingerprint Persistence)
 
-| Column | Type | Constraints | Description |
-|--------|------|-------------|-------------|
-| `id` | INTEGER | PK, AUTO | |
-| `track_id` | INTEGER | FK → tracks, UNIQUE, NOT NULL | |
-| `chromaprint` | BLOB | NOT NULL | Raw fingerprint bytes |
-| `chromaprint_duration` | REAL | NOT NULL | Seconds |
-| `acoustid_id` | TEXT | NULL | AcoustID lookup result |
-| `acoustid_score` | REAL | NULL | Match confidence 0.0–1.0 |
-| `generated_at` | TEXT | NOT NULL | |
+### `file_identity`
 
-**Indexes**: `idx_fingerprints_acoustid` ON (`acoustid_id`)
-
-#### `track_hashes`
-
-Multiple hash types per track for duplicate detection.
+Stores computed hashes and fingerprints. Workers skip recomputation when all identity fields match.
 
 | Column | Type | Constraints | Description |
 |--------|------|-------------|-------------|
-| `id` | INTEGER | PK, AUTO | |
-| `track_id` | INTEGER | FK → tracks, NOT NULL | |
-| `hash_type` | TEXT | NOT NULL | `content_md5`, `content_sha256`, `audio_hash` |
-| `hash_value` | TEXT | NOT NULL | Hex string |
+| `track_id` | TEXT | PK, FK → tracks | |
+| `content_hash_sha256` | TEXT | NOT NULL | Full file hash |
+| `fingerprint_data` | BLOB | NULL | Chromaprint bytes |
+| `fingerprint_duration` | REAL | NULL | Seconds |
+| `fingerprint_hash` | TEXT | NULL | SHA256 of fingerprint bytes |
+| `acoustid_id` | TEXT | NULL | |
+| `acoustid_score` | REAL | NULL | |
+| `file_size` | INTEGER | NOT NULL | Snapshot at computation time |
+| `file_modified` | TEXT | NOT NULL | Snapshot at computation time |
+| `hash_computed_at` | TEXT | NULL | |
+| `fingerprint_computed_at` | TEXT | NULL | |
 
-**Indexes**: `idx_hashes_type_value` ON (`hash_type`, `hash_value`)
+**Skip logic**: If `file_size` + `file_modified` on track match `file_identity` → skip hash and fingerprint workers entirely.
 
-### Artwork
+**Indexes**: `idx_file_identity_acoustid` ON (`acoustid_id`)
 
-#### `artwork`
+---
+
+## Metadata Confidence
+
+### `metadata_confidence`
+
+Per-field confidence scores from metadata arbitration.
 
 | Column | Type | Constraints | Description |
 |--------|------|-------------|-------------|
-| `id` | INTEGER | PK, AUTO | |
-| `source` | TEXT | NOT NULL | `embedded`, `cover_art_archive`, `discogs`, `manual` |
-| `source_id` | TEXT | NULL | External ID (CAA release ID, etc.) |
-| `mime_type` | TEXT | NOT NULL | `image/jpeg`, `image/png` |
-| `width` | INTEGER | NOT NULL | Pixels |
-| `height` | INTEGER | NOT NULL | Pixels |
-| `file_size` | INTEGER | NOT NULL | Bytes |
-| `data` | BLOB | NULL | Stored locally (optional, for embedded cache) |
-| `file_path` | TEXT | NULL | Path if stored on disk |
-| `is_front` | BOOLEAN | DEFAULT TRUE | |
+| `id` | TEXT | PK | UUID v7 |
+| `track_id` | TEXT | FK → tracks, NOT NULL | |
+| `field_name` | TEXT | NOT NULL | `artist`, `album`, `title`, `year`, ... |
+| `value` | TEXT | NULL | Resolved value |
+| `confidence` | REAL | NOT NULL | 0.0–1.0 |
+| `source` | TEXT | NOT NULL | `musicbrainz`, `discogs`, `local_tags`, `filename` |
+| `updated_at` | TEXT | NOT NULL | |
+
+**Indexes**: `idx_metadata_conf_track` ON (`track_id`)
+**Unique**: (`track_id`, `field_name`)
+
+---
+
+## Job Queue
+
+### `jobs`
+
+Central job queue — the backbone of all background processing.
+
+| Column | Type | Constraints | Description |
+|--------|------|-------------|-------------|
+| `id` | TEXT | PK | UUID v7 |
+| `library_id` | TEXT | FK → libraries, NOT NULL | |
+| `job_type` | TEXT | NOT NULL | See JobType enum |
+| `status` | TEXT | NOT NULL | `pending`, `running`, `completed`, `failed`, `retry`, `cancelled` |
+| `priority` | INTEGER | DEFAULT 100 | Lower = higher priority |
+| `payload` | TEXT | NOT NULL | JSON job-specific data |
+| `parent_job_id` | TEXT | FK → jobs, NULL | Pipeline chaining |
+| `attempt_count` | INTEGER | DEFAULT 0 | |
+| `max_attempts` | INTEGER | DEFAULT 3 | |
+| `error_message` | TEXT | NULL | |
 | `created_at` | TEXT | NOT NULL | |
+| `started_at` | TEXT | NULL | |
+| `completed_at` | TEXT | NULL | |
+| `scheduled_at` | TEXT | NULL | For delayed retry |
 
-#### `track_artwork`
+**Indexes**:
+- `idx_jobs_claim` ON (`status`, `job_type`, `priority`, `created_at`) — worker claim query
+- `idx_jobs_library` ON (`library_id`, `status`)
+- `idx_jobs_parent` ON (`parent_job_id`)
 
-| Column | Type | Constraints |
-|--------|------|-------------|
-| `track_id` | INTEGER | PK, FK → tracks |
-| `artwork_id` | INTEGER | PK, FK → artwork |
+### Job Types
 
-#### `album_artwork`
+| job_type | Enqueued By | Enqueues |
+|----------|------------|----------|
+| `scan_directory` | User / FileWatcher | `hash_file` |
+| `hash_file` | Scanner | `fingerprint_file` (if changed) |
+| `fingerprint_file` | HashWorker | `identify_metadata` |
+| `identify_metadata` | FingerprintWorker | `fetch_artwork`, `detect_duplicates`, `evaluate_rules` |
+| `fetch_artwork` | MetadataWorker | `organize_file` or review |
+| `detect_duplicates` | MetadataWorker | (terminal or review) |
+| `evaluate_rules` | MetadataWorker | `organize_file` or review |
+| `organize_file` | Artwork/RuleWorker | `sync_media_server` |
+| `sync_media_server` | OrganizerWorker | (terminal) |
+| `generate_report` | User | (terminal) |
 
-| Column | Type | Constraints |
-|--------|------|-------------|
-| `album_id` | INTEGER | PK, FK → albums |
-| `artwork_id` | INTEGER | PK, FK → artwork |
-| `is_primary` | BOOLEAN | DEFAULT TRUE |
+---
 
-### Duplicates
+## Review Queue
 
-#### `duplicate_groups`
+### `review_items`
 
 | Column | Type | Constraints | Description |
 |--------|------|-------------|-------------|
-| `id` | INTEGER | PK, AUTO | |
-| `library_id` | INTEGER | FK → libraries, NOT NULL | |
+| `id` | TEXT | PK | UUID v7 |
+| `library_id` | TEXT | FK → libraries, NOT NULL | |
+| `track_id` | TEXT | FK → tracks, NULL | |
+| `album_id` | TEXT | FK → albums, NULL | |
+| `duplicate_group_id` | TEXT | FK → duplicate_groups, NULL | |
+| `review_type` | TEXT | NOT NULL | See ReviewType enum |
+| `status` | TEXT | NOT NULL | `pending`, `approved`, `rejected`, `deferred` |
+| `title` | TEXT | NOT NULL | User-visible summary |
+| `description` | TEXT | NULL | Detail / diff |
+| `confidence` | REAL | NULL | Triggering confidence score |
+| `payload` | TEXT | NULL | JSON context for GUI |
+| `created_at` | TEXT | NOT NULL | |
+| `resolved_at` | TEXT | NULL | |
+| `resolved_by` | TEXT | NULL | `user`, `auto`, `rule` |
+
+**Indexes**: `idx_review_library_status` ON (`library_id`, `status`)
+
+### Review Types
+
+| review_type | Trigger |
+|-------------|---------|
+| `unknown_artist` | Artist confidence < threshold |
+| `unknown_album` | Album confidence < threshold |
+| `metadata_conflict` | Providers disagree > 10% |
+| `possible_duplicate` | Duplicate worker match |
+| `artwork_missing` | No artwork found |
+| `artwork_low_res` | Below min resolution |
+| `low_quality` | Rule engine flag |
+| `rule_action` | Rule requires approval |
+
+---
+
+## Rules Engine
+
+### `rules`
+
+| Column | Type | Constraints | Description |
+|--------|------|-------------|-------------|
+| `id` | TEXT | PK | UUID v7 |
+| `library_id` | TEXT | FK → libraries, NOT NULL | |
+| `name` | TEXT | NOT NULL | |
+| `enabled` | BOOLEAN | DEFAULT TRUE | |
+| `priority` | INTEGER | DEFAULT 100 | |
+| `conditions` | TEXT | NOT NULL | JSON condition tree |
+| `actions` | TEXT | NOT NULL | JSON action list |
+| `requires_approval` | BOOLEAN | DEFAULT FALSE | |
+| `created_at` | TEXT | NOT NULL | |
+| `updated_at` | TEXT | NOT NULL | |
+
+---
+
+## Duplicates
+
+### `duplicate_groups`
+
+| Column | Type | Constraints | Description |
+|--------|------|-------------|-------------|
+| `id` | TEXT | PK | UUID v7 |
+| `library_id` | TEXT | FK → libraries | |
 | `match_type` | TEXT | NOT NULL | `fingerprint`, `mbid`, `hash`, `fuzzy` |
-| `match_confidence` | REAL | NOT NULL | 0.0–1.0 |
-| `best_track_id` | INTEGER | FK → tracks | Highest quality_score |
+| `match_confidence` | REAL | NOT NULL | |
+| `best_track_id` | TEXT | FK → tracks | Highest quality_score |
 | `track_count` | INTEGER | NOT NULL | |
 | `detected_at` | TEXT | NOT NULL | |
-| `resolved` | BOOLEAN | DEFAULT FALSE | User acted on this group |
-| `resolution` | TEXT | NULL | `kept_best`, `manual`, `ignored` |
+| `status` | TEXT | DEFAULT `open` | `open`, `resolved`, `ignored` |
+| `resolution` | TEXT | NULL | `kept_best`, `archived`, `manual` |
 
-**Indexes**: `idx_dup_groups_library` ON (`library_id`, `resolved`)
-
-#### `duplicate_members`
+### `duplicate_members`
 
 | Column | Type | Constraints |
 |--------|------|-------------|
-| `group_id` | INTEGER | PK, FK → duplicate_groups |
-| `track_id` | INTEGER | PK, FK → tracks |
+| `group_id` | TEXT | PK, FK → duplicate_groups |
+| `track_id` | TEXT | PK, FK → tracks |
 | `quality_score` | INTEGER | NOT NULL |
 | `is_best` | BOOLEAN | DEFAULT FALSE |
+| `zone` | TEXT | NOT NULL | Zone at detection time |
 
-### Scanning
+---
 
-#### `scan_sessions`
+## Operations & Rollback
 
-| Column | Type | Constraints | Description |
-|--------|------|-------------|-------------|
-| `id` | INTEGER | PK, AUTO | |
-| `library_id` | INTEGER | FK → libraries, NOT NULL | |
-| `scan_type` | TEXT | NOT NULL | `full`, `incremental` |
-| `status` | TEXT | NOT NULL | `running`, `completed`, `failed`, `cancelled` |
-| `started_at` | TEXT | NOT NULL | |
-| `completed_at` | TEXT | NULL | |
-| `files_found` | INTEGER | DEFAULT 0 | |
-| `files_added` | INTEGER | DEFAULT 0 | |
-| `files_updated` | INTEGER | DEFAULT 0 | |
-| `files_removed` | INTEGER | DEFAULT 0 | |
-| `files_skipped` | INTEGER | DEFAULT 0 | |
-| `files_errored` | INTEGER | DEFAULT 0 | |
-| `error_log` | TEXT | NULL | JSON array of errors |
-
-#### `scan_results`
-
-Per-file scan outcome (for incremental scan optimization).
+### `operations`
 
 | Column | Type | Constraints | Description |
 |--------|------|-------------|-------------|
-| `id` | INTEGER | PK, AUTO | |
-| `scan_session_id` | INTEGER | FK → scan_sessions, NOT NULL | |
-| `file_path` | TEXT | NOT NULL | |
-| `action` | TEXT | NOT NULL | `added`, `updated`, `removed`, `skipped`, `error` |
-| `track_id` | INTEGER | FK → tracks, NULL | |
-| `error_message` | TEXT | NULL | |
-| `duration_ms` | INTEGER | NULL | Processing time |
-
-**Indexes**: `idx_scan_results_session` ON (`scan_session_id`)
-
-### Operations & Rollback
-
-#### `operations`
-
-| Column | Type | Constraints | Description |
-|--------|------|-------------|-------------|
-| `id` | INTEGER | PK, AUTO | |
-| `operation_type` | TEXT | NOT NULL | `metadata_fix`, `rename`, `organize`, `artwork_embed`, `duplicate_resolve` |
-| `status` | TEXT | NOT NULL | `pending`, `preview`, `running`, `completed`, `rolled_back`, `failed` |
+| `id` | TEXT | PK | UUID v7 |
+| `operation_type` | TEXT | NOT NULL | |
+| `status` | TEXT | NOT NULL | |
 | `is_dry_run` | BOOLEAN | DEFAULT FALSE | |
-| `description` | TEXT | NULL | User-visible summary |
+| `description` | TEXT | NULL | |
 | `affected_count` | INTEGER | DEFAULT 0 | |
 | `started_at` | TEXT | NOT NULL | |
 | `completed_at` | TEXT | NULL | |
-| `snapshot_id` | INTEGER | FK → rollback_snapshots, NULL | |
+| `snapshot_id` | TEXT | FK → rollback_snapshots | |
 
-#### `change_history`
-
-Individual change records within an operation.
+### `change_history`
 
 | Column | Type | Constraints | Description |
 |--------|------|-------------|-------------|
-| `id` | INTEGER | PK, AUTO | |
-| `operation_id` | INTEGER | FK → operations, NOT NULL | |
-| `track_id` | INTEGER | FK → tracks, NULL | |
-| `change_type` | TEXT | NOT NULL | `metadata`, `rename`, `move`, `artwork`, `delete` |
-| `field_name` | TEXT | NULL | Which field changed |
-| `old_value` | TEXT | NULL | JSON-encoded previous value |
-| `new_value` | TEXT | NULL | JSON-encoded new value |
-| `old_file_path` | TEXT | NULL | For rename/move |
-| `new_file_path` | TEXT | NULL | For rename/move |
+| `id` | TEXT | PK | UUID v7 |
+| `operation_id` | TEXT | FK → operations | |
+| `track_id` | TEXT | FK → tracks | |
+| `change_type` | TEXT | NOT NULL | |
+| `field_name` | TEXT | NULL | |
+| `old_value` | TEXT | NULL | JSON |
+| `new_value` | TEXT | NULL | JSON |
+| `old_file_path` | TEXT | NULL | |
+| `new_file_path` | TEXT | NULL | |
+| `old_zone` | TEXT | NULL | |
+| `new_zone` | TEXT | NULL | |
 | `timestamp` | TEXT | NOT NULL | |
 
-**Indexes**: `idx_change_history_operation` ON (`operation_id`), `idx_change_history_track` ON (`track_id`)
-
-#### `rollback_snapshots`
+### `rollback_snapshots`
 
 | Column | Type | Constraints | Description |
 |--------|------|-------------|-------------|
-| `id` | INTEGER | PK, AUTO | |
-| `operation_id` | INTEGER | FK → operations, NOT NULL | |
-| `snapshot_data` | BLOB | NOT NULL | Compressed JSON of full pre-state |
+| `id` | TEXT | PK | UUID v7 |
+| `operation_id` | TEXT | FK → operations | |
+| `snapshot_data` | BLOB | NOT NULL | Compressed JSON |
 | `created_at` | TEXT | NOT NULL | |
-| `restored_at` | TEXT | NULL | NULL = not yet restored |
+| `restored_at` | TEXT | NULL | |
 
-### Plugins & Configuration
+---
 
-#### `plugin_state`
+## Artwork, Plugins, Statistics
 
-| Column | Type | Constraints | Description |
-|--------|------|-------------|-------------|
-| `id` | INTEGER | PK, AUTO | |
-| `plugin_id` | TEXT | UNIQUE, NOT NULL | Entry point name |
-| `enabled` | BOOLEAN | DEFAULT TRUE | |
-| `config` | TEXT | NULL | JSON plugin-specific config |
-| `last_used_at` | TEXT | NULL | |
+Structure unchanged from v1 except all PKs/FKs are UUID TEXT. See v1 schema for column details.
 
-### Statistics (Materialized)
+Additional tables:
+- `artwork`, `track_artwork`, `album_artwork`
+- `plugin_state`
+- `library_stats` (materialized dashboard counters)
+- `media_server_state` (connection config, last sync per server plugin)
 
-#### `library_stats`
+### `media_server_state`
 
-Refreshed after each scan for fast dashboard queries.
+| Column | Type | Description |
+|--------|------|-------------|
+| `id` | TEXT | UUID v7 |
+| `library_id` | TEXT | FK |
+| `plugin_id` | TEXT | e.g. `navidrome` |
+| `server_url` | TEXT | |
+| `db_path` | TEXT | Optional direct DB path (Navidrome) |
+| `config` | TEXT | JSON |
+| `last_sync_at` | TEXT | |
+| `last_sync_status` | TEXT | |
 
-| Column | Type | Constraints | Description |
-|--------|------|-------------|-------------|
-| `library_id` | INTEGER | PK, FK → libraries | |
-| `total_tracks` | INTEGER | DEFAULT 0 | |
-| `total_albums` | INTEGER | DEFAULT 0 | |
-| `total_artists` | INTEGER | DEFAULT 0 | |
-| `total_size_bytes` | INTEGER | DEFAULT 0 | |
-| `duplicate_groups` | INTEGER | DEFAULT 0 | |
-| `unknown_tracks` | INTEGER | DEFAULT 0 | |
-| `missing_artwork_albums` | INTEGER | DEFAULT 0 | |
-| `corrupt_tracks` | INTEGER | DEFAULT 0 | |
-| `format_breakdown` | TEXT | NULL | JSON: `{"flac": 50000, "mp3": 30000}` |
-| `quality_breakdown` | TEXT | NULL | JSON: `{"lossless": 60000, "lossy": 20000}` |
-| `refreshed_at` | TEXT | NOT NULL | |
+---
 
 ## SQLite Configuration
 
 ```python
-# Applied on engine creation
-PRAGMA journal_mode = WAL;
-PRAGMA synchronous = NORMAL;
-PRAGMA cache_size = -64000;      # 64 MB page cache
-PRAGMA mmap_size = 268435456;    # 256 MB memory-mapped I/O
-PRAGMA temp_store = MEMORY;
-PRAGMA foreign_keys = ON;
+PRAGMAS = [
+    "PRAGMA journal_mode = WAL",
+    "PRAGMA synchronous = NORMAL",
+    "PRAGMA cache_size = -64000",       # 64 MB
+    "PRAGMA mmap_size = 268435456",     # 256 MB
+    "PRAGMA temp_store = MEMORY",
+    "PRAGMA foreign_keys = ON",
+    "PRAGMA busy_timeout = 5000",
+]
 ```
 
 ## Migration Strategy
 
-- **Tool**: Alembic
+- **Tool**: Alembic (works with SQLAlchemy Core `MetaData`)
 - **Location**: `src/musicvault/infrastructure/database/migrations/versions/`
-- **Naming**: `001_initial_schema.py`, `002_add_composer_column.py`
-- **Auto-run**: On application startup, pending migrations applied automatically
-- **Backup**: Database copied to `backups/auto/` before each migration
+- **First migration**: `001_initial_schema_v2.py`
+- **Auto-run**: On startup; backup to `backups/auto/` before applying
 
-## Estimated Storage (1M tracks)
+## Storage Estimate (1M tracks)
 
 | Table | Rows | Est. Size |
 |-------|------|-----------|
-| tracks | 1,000,000 | ~500 MB |
-| fingerprints | 1,000,000 | ~200 MB |
-| track_hashes | 3,000,000 | ~300 MB |
-| albums | ~100,000 | ~30 MB |
-| artists | ~50,000 | ~10 MB |
-| change_history | ~500,000 | ~200 MB |
-| **Total** | | **~1.2 GB** |
+| tracks | 1,000,000 | ~600 MB (UUID overhead) |
+| file_identity | 1,000,000 | ~350 MB (includes fingerprint BLOBs) |
+| metadata_confidence | ~8,000,000 | ~400 MB (~8 fields × 1M tracks) |
+| jobs (rolling) | ~50,000 active | ~20 MB |
+| review_items | ~10,000 | ~5 MB |
+| **Total** | | **~1.4 GB** |
 
-Acceptable for a desktop application with a dedicated music library.
-
-## Query Patterns & Index Justification
-
-| GUI Page | Query | Supporting Index |
-|----------|-------|-----------------|
-| Library browse | `SELECT * FROM tracks WHERE library_id = ? ORDER BY artist, album, track_number` | `idx_tracks_library`, `idx_tracks_album` |
-| Unknown tracks | `SELECT * FROM tracks WHERE is_unknown = TRUE` | `idx_tracks_unknown` (partial) |
-| Duplicates | `SELECT * FROM duplicate_groups WHERE library_id = ? AND resolved = FALSE` | `idx_dup_groups_library` |
-| Artist page | `SELECT * FROM albums WHERE album_artist_id = ?` | `idx_albums_artist_year` |
-| Fingerprint lookup | `SELECT track_id FROM fingerprints WHERE acoustid_id = ?` | `idx_fingerprints_acoustid` |
-| Hash duplicate | `SELECT track_id FROM track_hashes WHERE hash_type = ? AND hash_value = ?` | `idx_hashes_type_value` |
-| Dashboard stats | `SELECT * FROM library_stats WHERE library_id = ?` | PK only (single row) |
+Acceptable for desktop. Fingerprint BLOBs are the largest contributor; optional offload to disk cache is a post-1.0 optimization.

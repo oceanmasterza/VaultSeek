@@ -1,464 +1,284 @@
-# 04 — Service Layer
+# 04 — Service Layer (v2)
+
+> **Revision**: v2 — Job queue replaces direct service chains. See [10-revision-v2.md](10-revision-v2.md).
 
 ## Overview
 
-The service layer (`application/`) orchestrates use cases by coordinating domain logic, repositories, and plugins. Services are **stateless** — all persistent state lives in the database.
+The application layer orchestrates use cases through a **persistent job queue** and **worker pools**. Services are stateless; all state lives in SQLite. Workers are invoked by `JobDispatcher`, not by each other directly.
 
-## Service Catalog
+## Architecture Shift: v1 → v2
 
-| Service | Responsibility | Dependencies |
-|---------|---------------|--------------|
-| `ScannerService` | Discover and ingest audio files | `FileWalker`, `AudioFileReader`, `FingerprintGenerator`, `TrackRepository`, `ScanRepository` |
-| `FingerprintService` | Generate and lookup fingerprints | `FingerprintGenerator`, `AcoustIDClient`, `FingerprintRepository` |
-| `MetadataService` | Identify and fix metadata | `PluginManager`, `TrackRepository`, `AlbumRepository`, `ArtistRepository` |
-| `DuplicateService` | Detect and manage duplicates | `DuplicateMatcher`, `QualityScorer`, `DuplicateRepository` |
-| `OrganizerService` | Move files to target folder structure | `OrganizeEngine`, `FileOperations`, `TrackRepository` |
-| `RenameService` | Clean filenames and paths | `RenameEngine`, `FileOperations`, `TrackRepository` |
-| `ArtworkService` | Detect, download, embed artwork | `PluginManager`, `ArtworkProcessor`, `ArtworkRepository` |
-| `RollbackService` | Snapshot and restore operations | `RollbackRepository`, `ChangeHistoryRepository`, `FileOperations` |
-| `ReportService` | Generate HTML/CSV/Excel/PDF reports | Various repositories, template engine |
-| `OperationOrchestrator` | Gate all mutating operations | `RollbackService`, all mutating services |
+| v1 | v2 |
+|----|-----|
+| `ScannerService.scan_library()` calls everything | Scanner enqueues jobs; workers process independently |
+| `MetadataService` calls MusicBrainz | `MetadataArbitrator` ranks all providers |
+| Auto-apply metadata | Review queue for confidence < 90% |
+| Direct organize to library | Organize to staging; approve → library |
+| Integer track IDs | UUID v7 everywhere |
 
-## Interface Definitions (Protocols)
+## Application Services
 
-All interfaces live in `domain/interfaces/`. Services depend on protocols, not implementations.
+| Service | Responsibility |
+|---------|---------------|
+| `JobQueueService` | Enqueue, claim, complete, fail, retry jobs |
+| `JobDispatcher` | Poll queue, dispatch to worker pools, crash recovery |
+| `MetadataArbitrator` | Multi-provider metadata with per-field confidence |
+| `ReviewQueueService` | Manage review items (create, approve, reject, defer) |
+| `RulesEngine` | Evaluate user rules against tracks |
+| `WatchFolderService` | Monitor incoming folder, enqueue scan jobs |
+| `OperationOrchestrator` | Safety gate: dry-run, snapshot, execute, rollback |
+| `ReportService` | Generate HTML/CSV/Excel/PDF reports |
 
-### Repository Protocols
+## Workers (Job Handlers)
 
-```python
-from typing import Protocol, Sequence
-from musicvault.domain.entities.track import Track
+Workers are **not** services — they are stateless job executors registered with the dispatcher:
 
-class TrackRepository(Protocol):
-    def get_by_id(self, track_id: int) -> Track | None: ...
-    def get_by_path(self, file_path: str) -> Track | None: ...
-    def get_by_library(self, library_id: int, *, offset: int = 0, limit: int = 100) -> Sequence[Track]: ...
-    def get_unknown(self, library_id: int) -> Sequence[Track]: ...
-    def upsert(self, track: Track) -> Track: ...
-    def upsert_batch(self, tracks: Sequence[Track]) -> int: ...
-    def delete(self, track_id: int) -> None: ...
-    def count_by_library(self, library_id: int) -> int: ...
-    def update_quality_scores(self, scores: dict[int, int]) -> None: ...
-```
+| Worker | Job Type | Enqueues |
+|--------|----------|----------|
+| `ScannerWorker` | `scan_directory` | `hash_file` per file |
+| `HashWorker` | `hash_file` | `fingerprint_file` if identity changed |
+| `FingerprintWorker` | `fingerprint_file` | `identify_metadata` |
+| `MetadataWorker` | `identify_metadata` | `fetch_artwork`, `detect_duplicates`, `evaluate_rules` |
+| `ArtworkWorker` | `fetch_artwork` | (terminal or review) |
+| `DuplicateWorker` | `detect_duplicates` | review item if match found |
+| `RuleWorker` | `evaluate_rules` | `organize_file` or review item |
+| `OrganizerWorker` | `organize_file` | `sync_media_server` |
+| `MediaServerWorker` | `sync_media_server` | (terminal) |
+| `ReportWorker` | `generate_report` | (terminal) |
 
-```python
-class AlbumRepository(Protocol):
-    def get_by_id(self, album_id: int) -> Album | None: ...
-    def get_by_mbid(self, mbid: str) -> Album | None: ...
-    def get_by_artist(self, artist_id: int) -> Sequence[Album]: ...
-    def upsert(self, album: Album) -> Album: ...
-    def get_missing_artwork(self, library_id: int) -> Sequence[Album]: ...
-```
+## JobQueueService
 
 ```python
-class ScanRepository(Protocol):
-    def create_session(self, library_id: int, scan_type: str) -> ScanSession: ...
-    def update_progress(self, session_id: int, **stats) -> None: ...
-    def complete_session(self, session_id: int, status: str) -> None: ...
-    def get_latest(self, library_id: int) -> ScanSession | None: ...
-    def get_history(self, library_id: int, limit: int = 20) -> Sequence[ScanSession]: ...
-```
+class JobQueueService:
+    def __init__(self, job_repository: JobRepository) -> None: ...
 
-```python
-class DuplicateRepository(Protocol):
-    def save_group(self, group: DuplicateGroup) -> DuplicateGroup: ...
-    def get_unresolved(self, library_id: int) -> Sequence[DuplicateGroup]: ...
-    def mark_resolved(self, group_id: int, resolution: str) -> None: ...
-    def clear_library(self, library_id: int) -> None: ...
-```
-
-```python
-class RollbackRepository(Protocol):
-    def create_snapshot(self, operation_id: int, data: bytes) -> int: ...
-    def get_snapshot(self, snapshot_id: int) -> bytes | None: ...
-    def mark_restored(self, snapshot_id: int) -> None: ...
-```
-
-### Infrastructure Protocols
-
-```python
-class AudioFileReader(Protocol):
-    SUPPORTED_EXTENSIONS: frozenset[str]
-
-    def read_metadata(self, file_path: str) -> AudioMetadata: ...
-    def read_artwork(self, file_path: str) -> bytes | None: ...
-    def can_read(self, file_path: str) -> bool: ...
-```
-
-```python
-class FingerprintGenerator(Protocol):
-    def generate(self, file_path: str) -> FingerprintResult: ...
-    def is_available(self) -> bool: ...
-```
-
-```python
-class FileOperations(Protocol):
-    def move(self, src: str, dst: str) -> None: ...
-    def rename(self, src: str, dst: str) -> None: ...
-    def safe_delete(self, path: str) -> None: ...
-    def exists(self, path: str) -> bool: ...
-    def ensure_directory(self, path: str) -> None: ...
-```
-
-## Service Implementations
-
-### ScannerService
-
-```python
-@dataclass
-class ScanOptions:
-    scan_type: Literal["full", "incremental"] = "incremental"
-    generate_fingerprints: bool = True
-    compute_hashes: bool = True
-    max_workers: int = 8
-
-@dataclass
-class ScanProgress:
-    session_id: int
-    files_processed: int
-    files_total: int
-    files_added: int
-    files_updated: int
-    files_errored: int
-    current_file: str
-
-class ScannerService:
-    def __init__(
+    def enqueue(
         self,
-        file_walker: FileWalker,
-        audio_reader: AudioFileReader,
-        fingerprint_gen: FingerprintGenerator,
-        hash_calculator: HashCalculator,
-        track_repo: TrackRepository,
-        scan_repo: ScanRepository,
-        quality_scorer: QualityScorer,
-    ) -> None: ...
+        job_type: JobType,
+        library_id: UUID,
+        payload: dict[str, Any],
+        *,
+        priority: int = 100,
+        parent_job_id: UUID | None = None,
+    ) -> UUID: ...
 
-    def scan_library(
-        self,
-        library_id: int,
-        options: ScanOptions,
-        progress_callback: Callable[[ScanProgress], None] | None = None,
-    ) -> ScanSession: ...
+    def enqueue_batch(self, jobs: Sequence[JobCreate]) -> list[UUID]: ...
 
-    def cancel_scan(self, session_id: int) -> None: ...
+    def claim_pending(self, job_type: JobType, limit: int = 10) -> Sequence[Job]: ...
+
+    def mark_running(self, job_id: UUID) -> None: ...
+    def mark_completed(self, job_id: UUID) -> None: ...
+    def mark_failed(self, job_id: UUID, error: str) -> None: ...
+
+    def get_stats(self, library_id: UUID) -> JobStats: ...
+    def cancel(self, job_id: UUID) -> None: ...
+    def retry_failed(self, job_id: UUID) -> None: ...
+
+    def recover_orphaned(self) -> int:
+        """Reset running→retry on startup. Returns count recovered."""
+        ...
 ```
 
-**Incremental scan logic**:
-1. Walk filesystem, collect all audio file paths + mtimes
-2. Compare against `tracks.file_path` + `tracks.file_modified` in DB
-3. Only process files that are new or modified
-4. Mark tracks whose files no longer exist as `removed`
-
-### MetadataService
-
-```python
-@dataclass
-class MetadataMatch:
-    track_id: int
-    mb_recording_id: str | None
-    mb_release_id: str | None
-    artist: str
-    album: str
-    title: str
-    track_number: int | None
-    disc_number: int | None
-    year: int | None
-    genre: str | None
-    composer: str | None
-    confidence: float
-
-@dataclass
-class MetadataFixResult:
-    track_id: int
-    fields_changed: dict[str, tuple[str | None, str | None]]
-    match_source: str
-
-class MetadataService:
-    def __init__(
-        self,
-        plugin_manager: PluginManager,
-        track_repo: TrackRepository,
-        album_repo: AlbumRepository,
-        artist_repo: ArtistRepository,
-    ) -> None: ...
-
-    def identify_track(self, track_id: int) -> MetadataMatch | None: ...
-    def identify_batch(self, track_ids: Sequence[int]) -> list[MetadataMatch]: ...
-    def apply_match(self, match: MetadataMatch) -> MetadataFixResult: ...
-    def apply_matches(self, matches: Sequence[MetadataMatch]) -> list[MetadataFixResult]: ...
-```
-
-**Identification priority**:
-1. AcoustID fingerprint lookup → MusicBrainz recording
-2. Existing MusicBrainz IDs in tags
-3. Fuzzy tag match (artist + title + duration) via RapidFuzz
-4. Mark as `is_unknown = TRUE` if all fail
-
-### DuplicateService
-
-```python
-@dataclass
-class DuplicateDetectionOptions:
-    use_fingerprints: bool = True
-    use_mbids: bool = True
-    use_hashes: bool = True
-    use_fuzzy: bool = True
-    min_confidence: float = 0.85
-
-@dataclass
-class DuplicateReport:
-    groups_found: int
-    total_duplicates: int
-    potential_savings_bytes: int
-    groups: Sequence[DuplicateGroup]
-
-class DuplicateService:
-    def __init__(
-        self,
-        duplicate_matcher: DuplicateMatcher,
-        quality_scorer: QualityScorer,
-        duplicate_repo: DuplicateRepository,
-        track_repo: TrackRepository,
-    ) -> None: ...
-
-    def detect_duplicates(
-        self,
-        library_id: int,
-        options: DuplicateDetectionOptions,
-    ) -> DuplicateReport: ...
-
-    def resolve_group(
-        self,
-        group_id: int,
-        action: Literal["keep_best", "keep_all", "ignore"],
-    ) -> None: ...
-```
-
-**Detection algorithm**:
-1. **Exact hash match** — `content_sha256` identical → confidence 1.0
-2. **MusicBrainz recording ID** — same `mb_recording_id` → confidence 0.99
-3. **AcoustID match** — same `acoustid_id` → confidence 0.95
-4. **Fuzzy match** — similar fingerprint + duration within 2s → confidence 0.85–0.94
-5. Within each group, `QualityScorer` ranks tracks; highest wins
-
-### QualityScorer (Domain Service)
+## MetadataArbitrator
 
 ```python
 @dataclass(frozen=True)
-class QualityWeights:
-    """Configurable quality scoring weights."""
-    flac_24bit: int = 100
-    flac_16bit: int = 95
-    ape: int = 92
-    alac: int = 90
-    wav: int = 88
-    aiff: int = 88
-    dsd: int = 98
-    lossless_base: int = 85
-    mp3_320: int = 70
-    mp3_256: int = 60
-    mp3_192: int = 50
-    mp3_128: int = 35
-    mp3_below_128: int = 20
-    aac_256: int = 55
-    opus_128: int = 55
+class FieldConfidence:
+    field: str
+    value: str | int | None
+    confidence: float
+    source: str
 
-class QualityScorer:
-    def __init__(self, weights: QualityWeights) -> None: ...
+@dataclass(frozen=True)
+class ArbitrationResult:
+    track_id: UUID
+    fields: dict[str, FieldConfidence]
+    overall_confidence: float
+    needs_review: bool
 
-    def score(self, track: Track) -> int: ...
-    def rank(self, tracks: Sequence[Track]) -> list[Track]: ...
-    def best(self, tracks: Sequence[Track]) -> Track: ...
-```
-
-### OrganizerService
-
-```python
-@dataclass
-class OrganizeRule:
-    name: str
-    priority: int
-    conditions: OrganizeConditions   # codec, genre, is_compilation, etc.
-    path_template: str               # "{format}/{artist}/{year} - {album}"
-
-class OrganizerService:
+class MetadataArbitrator:
     def __init__(
         self,
-        organize_engine: OrganizeEngine,
-        file_ops: FileOperations,
-        track_repo: TrackRepository,
+        plugin_manager: PluginManager,
+        confidence_threshold: float = 0.90,
     ) -> None: ...
 
-    def preview(self, track_ids: Sequence[int], rules: Sequence[OrganizeRule]) -> list[OrganizePreview]: ...
-    def organize(self, track_ids: Sequence[int], rules: Sequence[OrganizeRule]) -> OrganizeResult: ...
+    def resolve(self, track: Track, fingerprint: FingerprintData | None) -> ArbitrationResult:
+        """Query all providers, arbitrate per-field, return result."""
+        ...
+
+    def _query_providers(self, track: Track, fp: FingerprintData | None) -> list[ProviderResult]: ...
+    def _arbitrate_fields(self, results: list[ProviderResult]) -> dict[str, FieldConfidence]: ...
 ```
 
-### RenameService
+Provider priority (configurable):
+
+1. MusicBrainz (fingerprint, tags, MBID)
+2. Discogs
+3. Local embedded tags
+4. Filename parser
+
+Artwork uses separate chain: Cover Art Archive → Discogs → embedded.
+
+## ReviewQueueService
 
 ```python
-class RenameService:
+class ReviewQueueService:
+    def create_item(self, item: ReviewItemCreate) -> UUID: ...
+
+    def get_pending(self, library_id: UUID) -> Sequence[ReviewItem]: ...
+    def get_by_type(self, library_id: UUID, review_type: ReviewType) -> Sequence[ReviewItem]: ...
+
+    def approve(self, item_id: UUID) -> None:
+        """Apply metadata, move staging→library if applicable."""
+        ...
+
+    def reject(self, item_id: UUID, reason: str | None = None) -> None: ...
+    def defer(self, item_id: UUID) -> None: ...
+
+    def approve_with_edits(self, item_id: UUID, edits: dict[str, Any]) -> None: ...
+```
+
+## RulesEngine
+
+```python
+class RulesEngine:
+    def __init__(self, rule_repository: RuleRepository) -> None: ...
+
+    def evaluate(self, track: Track, context: RuleContext) -> list[RuleMatch]: ...
+    def evaluate_batch(self, track_ids: Sequence[UUID]) -> dict[UUID, list[RuleMatch]]: ...
+
+@dataclass(frozen=True)
+class RuleMatch:
+    rule_id: UUID
+    rule_name: str
+    actions: list[RuleAction]
+    requires_approval: bool
+```
+
+`RuleContext` includes: track metadata, quality score, duplicate status, zone, codec, bitrate, `has_lossless_duplicate` flag.
+
+## WatchFolderService
+
+```python
+class WatchFolderService:
     def __init__(
         self,
-        rename_engine: RenameEngine,
-        file_ops: FileOperations,
-        track_repo: TrackRepository,
+        job_queue: JobQueueService,
+        config: WatchFolderConfig,
     ) -> None: ...
 
-    def preview(self, track_ids: Sequence[int]) -> list[RenamePreview]: ...
-    def rename(self, track_ids: Sequence[int]) -> RenameResult: ...
-```
+    def start(self, library_id: UUID) -> None:
+        """Begin monitoring incoming_path using ReadDirectoryChangesW."""
+        ...
 
-**RenameEngine** strips scene patterns:
-- Release group tags: `-SINGLE-`, `-WEB-`, `-FLAC-`, `-16BIT-`, `-24BIT-`
-- Scene prefixes: `[AFO]`, `[OBZEN]`, `[FMC]`, `[SCENE]`
-- Release IDs: `(KR147)`, `[WEB]`
-- Replaces underscores with spaces, normalizes whitespace
+    def stop(self) -> None: ...
 
-### RollbackService
-
-```python
-class RollbackService:
-    def __init__(
-        self,
-        rollback_repo: RollbackRepository,
-        change_history_repo: ChangeHistoryRepository,
-        file_ops: FileOperations,
-        track_repo: TrackRepository,
-    ) -> None: ...
-
-    def create_snapshot(self, operation_id: int, track_ids: Sequence[int]) -> int: ...
-    def rollback(self, operation_id: int) -> RollbackResult: ...
-    def can_rollback(self, operation_id: int) -> bool: ...
-    def list_operations(self, limit: int = 50) -> Sequence[Operation]: ...
-```
-
-**Snapshot contents** (compressed JSON):
-```json
-{
-  "tracks": [
-    {
-      "id": 42,
-      "file_path": "D:/Music/original/path.flac",
-      "metadata": { "title": "...", "artist": "...", ... },
-      "artwork_bytes_base64": "..."
-    }
-  ]
-}
-```
-
-### OperationOrchestrator
-
-Central gate ensuring safety for all mutating operations.
-
-```python
-@dataclass
-class OperationRequest:
-    operation_type: str
-    track_ids: Sequence[int]
-    options: dict[str, Any]
-    dry_run: bool = True
-
-@dataclass
-class OperationResult:
-    operation_id: int
-    status: str
-    changes: Sequence[ChangeRecord]
-    errors: Sequence[str]
-
-class OperationOrchestrator:
-    def __init__(
-        self,
-        rollback_service: RollbackService,
-        metadata_service: MetadataService,
-        rename_service: RenameService,
-        organizer_service: OrganizerService,
-        artwork_service: ArtworkService,
-        duplicate_service: DuplicateService,
-    ) -> None: ...
-
-    def preview(self, request: OperationRequest) -> OperationResult: ...
-    def execute(self, request: OperationRequest) -> OperationResult: ...
-    def rollback(self, operation_id: int) -> OperationResult: ...
-```
-
-**Workflow**:
-```
-preview(dry_run=True)  →  user reviews  →  execute(dry_run=False)
-                                              ↓
-                                        create_snapshot()
-                                              ↓
-                                        apply_changes()
-                                              ↓
-                                        record_change_history()
-```
-
-## Event / Progress Callbacks
-
-Services do not use Qt signals directly. Instead, they accept optional callback functions:
-
-```python
-ProgressCallback = Callable[[ScanProgress], None]
-```
-
-The GUI layer wraps these in `QRunnable` workers that emit Qt signals:
-
-```python
-class ScanWorker(QRunnable):
-    def run(self) -> None:
-        self._service.scan_library(
+    def _on_file_created(self, path: Path) -> None:
+        self._job_queue.enqueue(
+            JobType.SCAN_DIRECTORY,
             library_id=self._library_id,
-            options=self._options,
-            progress_callback=self._emit_progress,
+            payload={"path": str(path), "source": "watch_folder"},
+            priority=50,  # Higher priority than bulk scans
         )
 ```
 
-This keeps the application layer free of Qt dependencies.
+## OperationOrchestrator
 
-## Error Handling in Services
-
-Services catch infrastructure exceptions and wrap them in domain exceptions:
+Unchanged in responsibility, updated for zones and UUIDs:
 
 ```python
-# domain/exceptions.py hierarchy
-class MusicVaultError(Exception): ...
-class ScanError(MusicVaultError): ...
-class CorruptFileError(ScanError): ...
-class MetadataLookupError(MusicVaultError): ...
-class OperationError(MusicVaultError): ...
-class RollbackError(MusicVaultError): ...
+class OperationOrchestrator:
+    def preview(self, request: OperationRequest) -> OperationResult: ...
+    def execute(self, request: OperationRequest) -> OperationResult: ...
+    def rollback(self, operation_id: UUID) -> OperationResult: ...
 ```
 
-Services never let raw exceptions propagate to the GUI. The `OperationOrchestrator` collects errors per-track and returns them in `OperationResult.errors`.
+All mutating operations:
+1. Create rollback snapshot
+2. Record `change_history` including `old_zone` / `new_zone`
+3. Never move files from staging → library without explicit approval
 
-## DTOs (Data Transfer Objects)
+## Repository Protocols (UUID-based)
 
-DTOs in `application/dto/` are immutable dataclasses for GUI consumption. They are deliberately simpler than domain entities:
+```python
+class TrackRepository(Protocol):
+    def get_by_id(self, track_id: UUID) -> Track | None: ...
+    def get_by_path(self, file_path: str) -> Track | None: ...
+    def get_by_library(
+        self, library_id: UUID, zone: LibraryZone | None = None,
+        *, offset: int = 0, limit: int = 100,
+    ) -> Sequence[Track]: ...
+    def upsert_batch(self, tracks: Sequence[Track]) -> int: ...
+    def update_zone(self, track_id: UUID, zone: LibraryZone) -> None: ...
+```
+
+All repositories use **SQLAlchemy Core** — no ORM session, no identity map.
+
+## DTOs
 
 ```python
 @dataclass(frozen=True)
 class TrackSummaryDTO:
-    id: int
+    id: UUID
     title: str
     artist_name: str
     album_title: str
+    zone: LibraryZone
     file_path: str
-    duration_ms: int | None
-    codec: str | None
     quality_score: int | None
-    has_artwork: bool
-    is_unknown: bool
+    overall_confidence: float | None
+    needs_review: bool
+
+@dataclass(frozen=True)
+class JobStatsDTO:
+    pending: int
+    running: int
+    failed: int
+    completed_today: int
+    by_type: dict[str, int]
+
+@dataclass(frozen=True)
+class ReviewItemDTO:
+    id: UUID
+    review_type: ReviewType
+    title: str
+    confidence: float | None
+    track: TrackSummaryDTO | None
+    duplicate_group: DuplicateGroupDTO | None
+    created_at: datetime
 ```
 
-Mapping from entities to DTOs happens in the service layer or a dedicated `DtoMapper`.
+## Event Flow: GUI ↔ Job Queue
 
-## Service Lifecycle
+ViewModels never call workers directly:
 
-| Phase | Action |
-|-------|--------|
-| App startup | Container creates all service singletons |
-| Plugin load | `PluginManager` registers providers; services receive updated manager |
-| Scan | `ScannerService` created per-request with thread pool |
-| Shutdown | Services flushed; DB connections closed |
+```
+User clicks "Scan Library"
+  → LibraryViewModel.start_scan()
+    → JobQueueService.enqueue(SCAN_DIRECTORY, ...)
+    → JobMonitorViewModel polls JobQueueService.get_stats()
 
-Services are **not** recreated per operation. The DI container manages their lifetime.
+JobDispatcher (background thread)
+  → claims jobs → executes workers → updates status
+
+Worker completes
+  → JobQueueService.mark_completed()
+  → (optional) notify GUI via callback/signal
+
+Review item created
+  → ReviewQueueService.create_item()
+  → ReviewViewModel refresh on next poll
+```
+
+## Error Handling
+
+| Failure | Worker Behavior |
+|---------|----------------|
+| Corrupt file | Mark job completed with warning; create review item |
+| API rate limit | Mark job retry with 60s delay |
+| API timeout | Retry up to max_attempts |
+| DB locked | Retry with 1s backoff |
+| Unknown error | Mark failed; user can retry from Job Monitor |
+
+Workers never raise unhandled exceptions — all caught, logged, recorded in `jobs.error_message`.

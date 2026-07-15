@@ -1,402 +1,273 @@
-# 07 — Development Roadmap
+# 07 — Development Roadmap (v2)
+
+> **Revision**: v2 — Realigned phases for job queue, review, rules, staging. CI from Phase 1.
+> See [10-revision-v2.md](10-revision-v2.md).
 
 ## Principles
 
-1. **Each phase compiles, runs, and passes tests** before the next begins
-2. **Git commit after every milestone** with descriptive message
-3. **CHANGELOG updated** with each phase
-4. **No phase is skipped** — dependencies are sequential
-5. **Vertical slices** where possible — deliver working features, not layers in isolation
+1. Each phase compiles, runs, and passes CI before the next begins
+2. Git commit after every milestone
+3. CHANGELOG updated with each phase
+4. **CI gates every commit from Phase 1** (ruff, black, mypy, pytest)
+5. No application code until Phase 0b (this revision) is committed
 
 ## Phase Overview
 
 ```
-Phase 0  ██████████ Architecture (CURRENT)
-Phase 1  ░░░░░░░░░░ Project scaffold
-Phase 2  ░░░░░░░░░░ Database layer
-Phase 3  ░░░░░░░░░░ Domain models
-Phase 4  ░░░░░░░░░░ Library scanner
-Phase 5  ░░░░░░░░░░ Fingerprint engine
-Phase 6  ░░░░░░░░░░ Metadata engine
-Phase 7  ░░░░░░░░░░ Duplicates & quality
-Phase 8  ░░░░░░░░░░ Organizer & rename
-Phase 9  ░░░░░░░░░░ Artwork manager
-Phase 10 ░░░░░░░░░░ Rollback engine
-Phase 11 ░░░░░░░░░░ Reports
-Phase 12 ░░░░░░░░░░ GUI
-Phase 13 ░░░░░░░░░░ Plugins & Navidrome
-Phase 14 ░░░░░░░░░░ Packaging & installer
+Phase 0   ██████████ Architecture v1
+Phase 0b  ██████████ Architecture v2 revision (CURRENT)
+Phase 1   ░░░░░░░░░░ Scaffold + CI
+Phase 2   ░░░░░░░░░░ Database (Core + UUID + jobs)
+Phase 3   ░░░░░░░░░░ Domain models + repositories
+Phase 4   ░░░░░░░░░░ Job dispatcher + scanner/hash workers
+Phase 5   ░░░░░░░░░░ Fingerprint worker + persistence
+Phase 6   ░░░░░░░░░░ Metadata arbitrator + providers
+Phase 7   ░░░░░░░░░░ Review queue + confidence scoring
+Phase 8   ░░░░░░░░░░ Rules engine
+Phase 9   ░░░░░░░░░░ Duplicate worker + quality scoring
+Phase 10  ░░░░░░░░░░ Organizer + staging zones + watch folder
+Phase 11  ░░░░░░░░░░ Artwork worker
+Phase 12  ░░░░░░░░░░ Rollback engine
+Phase 13  ░░░░░░░░░░ Reports
+Phase 14  ░░░░░░░░░░ GUI (all pages)
+Phase 15  ░░░░░░░░░░ Media server plugins
+Phase 16  ░░░░░░░░░░ Packaging + installer
 ```
 
 ---
 
-## Phase 0: Architecture & Documentation
+## Phase 0b: Architecture Revision v2
 
 **Status**: In progress
 
 ### Deliverables
-- [x] Architecture documentation (this directory)
-- [x] README.md
-- [x] CHANGELOG.md
-- [x] .gitignore
-- [ ] Initial git commit
+- [x] Scalability risk review (10 critical/high risks identified)
+- [x] Revised architecture document (10-revision-v2.md)
+- [x] Updated database schema (UUID, jobs, review, staging, file_identity)
+- [x] Updated service layer (job queue, arbitrator, rules engine)
+- [x] Updated plugin API (10 media servers, metadata ranking)
+- [x] Updated GUI architecture (review, jobs, duplicates, rules)
+- [x] CI pipeline specification (11-ci-pipeline.md)
+- [ ] Git commit
 
 ### Acceptance Criteria
-- All architecture documents reviewed and internally consistent
-- Database schema covers all 20 features
-- Service layer interfaces defined for all major use cases
-- Plugin API specification complete
+- All v2 documents internally consistent
+- v1 conflicts explicitly superseded
+- Phase 1 scope clearly defined and bounded
 
 ---
 
-## Phase 1: Project Scaffold
+## Phase 1: Project Scaffold + CI
 
-**Goal**: Runnable empty application with DI, config, and logging.
+**Goal**: Runnable empty application with DI, config, logging, and CI pipeline.
 
 ### Deliverables
-- `pyproject.toml` with all dependencies pinned
-- `src/musicvault/` package structure (empty modules with docstrings)
-- `core/config.py` — load, validate, migrate JSON config
-- `core/container.py` — DI container wiring
-- `core/logging.py` — Loguru setup with rotation
-- `core/paths.py` — platform-specific app data directories
-- `core/exceptions.py` — exception hierarchy
-- `app.py` — bootstrap sequence
-- `__main__.py` — entry point
-- `config/defaults.json` — default configuration
-- `tests/conftest.py` — shared fixtures
+- `pyproject.toml` with dependencies and tool config
+- `src/musicvault/` package structure (empty modules)
+- `core/config.py`, `container.py`, `logging.py`, `paths.py`, `exceptions.py`
+- `app.py`, `__main__.py`
+- `config/defaults.json`
+- `tests/conftest.py` + one smoke test
+- `.github/workflows/ci.yml` (ruff, black, mypy, pytest)
 - `CONTRIBUTING.md`
 
 ### Acceptance Criteria
-- `python -m musicvault` launches without error (prints version, exits)
-- `pytest` runs (0 tests, 0 failures)
-- `mypy src/` passes with strict mode
-- Config loads from defaults, saves to `%APPDATA%/MusicVault/`
-- Logs written to `%APPDATA%/MusicVault/logs/`
-- Git commit: `feat: project scaffold with DI, config, and logging`
+- `python -m musicvault` exits 0, prints version
+- `pytest` passes (≥1 test)
+- `mypy src/ --strict` passes
+- `ruff check` and `black --check` pass
+- GitHub Actions green on push
+- Git commit: `feat: project scaffold with CI pipeline`
+
+**Handoff point**: Switch to implementation-focused model for Phases 2+.
 
 ---
 
 ## Phase 2: Database Layer
 
-**Goal**: SQLite database with full schema, migrations, and repository stubs.
+**Goal**: SQLAlchemy Core tables, Alembic migrations, UUID schema, job queue tables.
 
-### Deliverables
-- SQLAlchemy ORM models for all tables (see 03-database-schema.md)
-- Alembic migration: `001_initial_schema.py`
-- `database/engine.py` — engine factory with WAL pragmas
-- Repository implementations (CRUD for all entities)
-- `tests/integration/test_database.py` — create DB, insert/query/delete
+### Key Deliverables
+- `infrastructure/database/tables.py` — Core table definitions
+- Alembic migration `001_initial_schema_v2`
+- Repository implementations (Core, batch upsert)
+- Job, review, rules, file_identity repositories
 
 ### Acceptance Criteria
-- `python -m musicvault` auto-creates database on first run
-- All tables created with correct indexes
-- Repository round-trip tests pass for Track, Album, Artist
+- DB auto-created on first run with all v2 tables
+- UUID v7 generated for all PKs
+- Batch upsert 500 tracks < 1 second
 - Alembic upgrade/downgrade works
-- Git commit: `feat: database layer with SQLAlchemy models and Alembic migrations`
 
 ---
 
-## Phase 3: Domain Models & Repositories
+## Phase 3: Domain Models
 
-**Goal**: Pure domain entities, value objects, and domain services.
+**Goal**: Pure domain entities, value objects, domain services.
 
-### Deliverables
-- Domain entities: `Track`, `Album`, `Artist`, `Artwork`, `DuplicateGroup`, `ScanSession`
-- Value objects: `AudioFormat`, `QualityScore`, `FileHash`, `MetadataTags`, `OrganizePath`
-- Domain services: `QualityScorer`, `DuplicateMatcher`, `RenameEngine`, `OrganizeEngine`
-- Repository protocol definitions in `domain/interfaces/`
-- Entity ↔ ORM model mapping
-- Unit tests for all domain services
-
-### Acceptance Criteria
-- Domain layer has zero imports from infrastructure or GUI
-- `QualityScorer` correctly ranks all format/bitrate combinations
-- `RenameEngine` correctly cleans all scene naming patterns
-- `OrganizeEngine` generates correct paths from rules
-- `DuplicateMatcher` groups tracks by fingerprint/MBID/hash
+### Key Deliverables
+- Entities with UUID identities
+- `QualityScorer`, `DuplicateMatcher`, `RenameEngine`, `OrganizeEngine`
+- `RuleCondition`, `RuleAction`, `FieldConfidence`
 - 100% unit test coverage on domain services
-- Git commit: `feat: domain models, value objects, and domain services`
 
 ---
 
-## Phase 4: Library Scanner
+## Phase 4: Job Dispatcher + Scanner/Hash Workers
 
-**Goal**: Multi-threaded scanner that ingests audio files into the database.
+**Goal**: Persistent job queue with scanner and hash workers.
 
-### Deliverables
-- `AudioFileReader` (Mutagen) — read metadata from all supported formats
-- `FileWalker` — recursive directory discovery with extension filter
-- `HashCalculator` — MD5/SHA256 content hashes
-- `ScannerService` — orchestrate scan with thread pool
-- `ScanWorker` — QRunnable wrapper (for future GUI)
-- Incremental scan support (mtime comparison)
-- `tests/integration/test_scanner.py` — scan test fixture directory
-
-### Acceptance Criteria
-- Scans a directory of mixed-format audio files
-- Correctly reads bitrate, duration, codec, channels, bit depth
-- Detects embedded artwork presence
-- Incremental scan skips unchanged files
-- Processes ≥ 100 files/second on SSD
-- Progress callback reports accurate counts
-- Corrupt files logged and skipped (not crashed)
-- Git commit: `feat: multi-threaded library scanner with incremental scan`
+### Key Deliverables
+- `JobQueueService`, `JobDispatcher`
+- `ScannerWorker`, `HashWorker`
+- Crash recovery (orphaned job reset)
+- Pipeline chaining (scan → hash → fingerprint)
 
 ---
 
-## Phase 5: Fingerprint Engine
+## Phase 5: Fingerprint Worker
 
-**Goal**: Chromaprint fingerprinting and AcoustID identification.
+**Goal**: Chromaprint generation with permanent storage and skip logic.
 
-### Deliverables
-- `ChromaprintGenerator` — wrapper around `fpcalc` binary
-- `AcoustIDClient` — API client with rate limiting
-- `FingerprintService` — generate + lookup workflow
-- AcoustID plugin (builtin)
-- Fingerprint caching on disk
-- `tests/integration/test_fingerprint.py`
-
-### Acceptance Criteria
-- Generates Chromaprint fingerprint for any supported audio file
-- Looks up AcoustID and returns MusicBrainz recording IDs
-- Handles missing `fpcalc` gracefully (warns user, disables fingerprinting)
-- Rate-limits AcoustID API calls (3/second max)
-- Caches results to avoid repeat lookups
-- Git commit: `feat: Chromaprint fingerprinting and AcoustID identification`
+### Key Deliverables
+- `FingerprintWorker`
+- `file_identity` persistence
+- Skip unchanged files
+- AcoustID plugin
 
 ---
 
-## Phase 6: Metadata Engine
+## Phase 6: Metadata Arbitrator
 
-**Goal**: MusicBrainz-driven metadata identification and correction.
+**Goal**: Multi-provider metadata with per-field confidence.
 
-### Deliverables
-- MusicBrainz plugin (builtin) — fingerprint, tag, and ID lookup
-- `MetadataService` — identify, match, apply workflow
-- Fuzzy tag matching with RapidFuzz
-- Metadata diff preview (old vs. new)
-- Tag writing back to files (via Mutagen)
-- `tests/integration/test_metadata.py` with recorded API responses
-
-### Acceptance Criteria
-- Identifies tracks by fingerprint even with wrong filenames
-- Fixes artist, album, track number, genre, year, composer
-- Writes MusicBrainz IDs to file tags
-- Respects MusicBrainz rate limit (1 req/sec)
-- Preview shows exactly what will change before applying
-- Unknown tracks marked correctly
-- Git commit: `feat: MusicBrainz metadata identification and correction`
+### Key Deliverables
+- `MetadataArbitrator`
+- MusicBrainz + filename parser plugins
+- `metadata_confidence` storage
+- Provider priority configuration
 
 ---
 
-## Phase 7: Duplicate Detection & Quality Scoring
+## Phase 7: Review Queue
 
-**Goal**: Detect duplicates by fingerprint/MBID/hash and rank by quality.
+**Goal**: Human approval gate for uncertain metadata.
 
-### Deliverables
-- `DuplicateService` — full detection pipeline
-- `QualityScorer` integration with configurable weights
-- Duplicate group storage and resolution
-- Detection of: same track different encoding, remasters, deluxe editions
-- `tests/integration/test_duplicates.py`
-
-### Acceptance Criteria
-- Detects exact duplicates (same hash)
-- Detects same recording different format (fingerprint + MBID)
-- Distinguishes remasters (different MB release group)
-- Quality scoring ranks 24-bit FLAC > 16-bit FLAC > 320 MP3 correctly
-- "Keep best" resolution marks duplicates and calculates storage savings
-- Git commit: `feat: duplicate detection and quality scoring engine`
+### Key Deliverables
+- `ReviewQueueService`
+- Auto-create review items when confidence < threshold
+- Approve/reject/defer/edit workflow
 
 ---
 
-## Phase 8: Folder Organization & Rename Engine
+## Phase 8: Rules Engine
 
-**Goal**: Configurable folder structures and intelligent file renaming.
+**Goal**: User-configurable automation rules.
 
-### Deliverables
-- `OrganizerService` — preview and execute folder moves
-- `RenameService` — preview and execute file renames
-- Default organize rules (FLAC/MP3/Various Artists/Singles/Classical)
-- Scene name cleaning patterns (configurable regex list)
-- Multi-disc folder support
-- `tests/integration/test_organizer.py`, `test_rename.py`
-
-### Acceptance Criteria
-- Default rules produce correct folder structure
-- Scene-named files correctly cleaned
-- Multi-disc albums organized into Disc 1, Disc 2 folders
-- Preview shows all moves before executing
-- Rollback restores original paths (requires Phase 10, stub for now)
-- Git commit: `feat: folder organization and rename engine`
+### Key Deliverables
+- `RulesEngine` with condition evaluation
+- Default rules (archive MP3, detect VA, flag low quality)
+- Rule CRUD via config/API (GUI in Phase 14)
 
 ---
 
-## Phase 9: Artwork Manager
+## Phase 9: Duplicate Detection
 
-**Goal**: Detect, download, embed, and replace artwork.
+**Goal**: Fingerprint/MBID/hash duplicate detection with quality ranking.
 
-### Deliverables
-- Cover Art Archive plugin (builtin)
-- `ArtworkService` — missing detection, download, embed, replace
-- `ArtworkProcessor` (Pillow) — resize, validate, format conversion
-- Artwork report (albums missing art, low resolution)
-- `tests/integration/test_artwork.py`
-
-### Acceptance Criteria
-- Detects albums without artwork (no embedded, no downloaded)
-- Downloads front cover from Cover Art Archive by MB release ID
-- Embeds artwork into audio files (FLAC, MP3, M4A)
-- Replaces artwork below configurable resolution threshold
-- Artwork report lists all missing/low-res albums
-- Git commit: `feat: artwork detection, download, and embedding`
+### Key Deliverables
+- `DuplicateWorker`
+- Duplicate group storage
+- Quality-based best-track selection
 
 ---
 
-## Phase 10: Rollback Engine
+## Phase 10: Organizer + Watch Folder
 
-**Goal**: Every operation is reversible with full undo support.
+**Goal**: Staging zones, folder organization, incoming watch folder.
 
-### Deliverables
-- `RollbackService` — snapshot creation and restoration
-- `OperationOrchestrator` — gate all mutating operations
-- `change_history` recording for every field change
-- Snapshot compression and storage
-- Undo via UI and CLI
-- `tests/integration/test_rollback.py`
-
-### Acceptance Criteria
-- Metadata fix can be fully rolled back (tags restored)
-- File rename/move can be rolled back (original paths restored)
-- Artwork embed can be rolled back (original artwork restored)
-- Multiple sequential rollbacks work correctly
-- Operations without snapshots cannot be rolled back (safety check)
-- Git commit: `feat: rollback engine with operation orchestration`
+### Key Deliverables
+- `OrganizerWorker`, `WatchFolderService`
+- Zone state machine (incoming → staging → library)
+- Auto-approve when confidence ≥ threshold
 
 ---
 
-## Phase 11: Reports
+## Phase 11: Artwork Worker
 
-**Goal**: Generate HTML, CSV, Excel, and PDF reports.
+**Goal**: Detect, download, embed artwork.
 
-### Deliverables
-- `ReportService` — report generation for all report types
-- HTML reports with embedded CSS (self-contained files)
-- CSV export for all data types
-- Excel export via `openpyxl`
-- PDF export via `weasyprint` or `reportlab`
-- Report types: library stats, duplicates, missing artwork, unknown, corrupt, storage
-
-### Acceptance Criteria
-- HTML report renders correctly in browser with stats, tables, and charts
-- CSV export opens correctly in Excel with proper encoding (UTF-8 BOM)
-- PDF report is printable and professional
-- Reports generate in < 30 seconds for 100K tracks
-- Git commit: `feat: report generation (HTML, CSV, Excel, PDF)`
+### Key Deliverables
+- `ArtworkWorker`
+- Cover Art Archive plugin
+- Missing/low-res detection
 
 ---
 
-## Phase 12: GUI
+## Phase 12: Rollback Engine
 
-**Goal**: Full Qt6 dark-mode interface with all pages.
+**Goal**: Reversible operations with snapshots.
 
-### Deliverables
-- `MainWindow` with sidebar navigation
-- All 11 views and ViewModels
-- Custom widgets: `TrackTable`, `AlbumGrid`, `ProgressPanel`, `OperationPreview`
-- Dark theme QSS
-- All dialogs (scan, preview, confirm, settings)
-- Worker integration for all long-running operations
-- `pytest-qt` tests for ViewModels
-
-### Acceptance Criteria
-- Application launches with dark-themed GUI
-- Dashboard shows correct library statistics
-- Library page lists tracks with sort, filter, search
-- Scan runs with live progress in status bar
-- Metadata fix shows preview dialog before applying
-- Duplicates page shows groups with quality comparison
-- Settings page edits and saves all configuration sections
-- All long-running operations run in background without freezing UI
-- Git commit: `feat: complete Qt6 GUI with dark theme`
+### Key Deliverables
+- `OperationOrchestrator` with rollback
+- Zone-aware change history
 
 ---
 
-## Phase 13: Plugin System & Navidrome Integration
+## Phase 13: Reports
 
-**Goal**: Formalized plugin loading and Navidrome media server integration.
-
-### Deliverables
-- `PluginManager` — entry point discovery, loading, lifecycle
-- Plugin settings UI (enable/disable, configure)
-- Navidrome plugin — connect, validate, rescan
-- Plugin caching layer
-- Third-party plugin documentation
-- `tests/integration/test_plugins.py`, `test_navidrome.py`
-
-### Acceptance Criteria
-- Built-in plugins discovered and loaded at startup
-- Plugins can be enabled/disabled without restart
-- Plugin configuration persisted in database
-- Navidrome: connect, list albums, detect metadata mismatches
-- Navidrome: trigger rescan after local changes
-- Failed plugin does not crash application
-- Git commit: `feat: plugin system and Navidrome integration`
+**Goal**: HTML, CSV, Excel, PDF reports.
 
 ---
 
-## Phase 14: Packaging & Windows Installer
+## Phase 14: GUI
 
-**Goal**: Distributable Windows application.
+**Goal**: Full Qt6 interface including Review Queue, Job Monitor, Duplicate Viewer, Rules Editor.
 
-### Deliverables
-- PyInstaller spec (`packaging/musicvault.spec`)
-- Bundled dependencies (FFmpeg, fpcalc)
-- Inno Setup installer script
-- Auto-update check (GitHub Releases API)
-- Code signing documentation
-- CI release workflow (GitHub Actions)
+---
 
-### Acceptance Criteria
-- `MusicVault.exe` runs on clean Windows 10/11 without Python installed
-- Installer creates Start Menu shortcut and desktop icon
-- Uninstaller removes all files cleanly
-- Application data preserved on uninstall
-- Installer size < 100 MB
-- Git commit: `feat: Windows packaging and installer`
+## Phase 15: Media Server Plugins
+
+**Goal**: Navidrome (with DB access), Jellyfin, Plex, and remaining servers.
+
+---
+
+## Phase 16: Packaging
+
+**Goal**: PyInstaller + Windows installer. CI release workflow builds on tags.
 
 ---
 
 ## Milestone Summary
 
-| Phase | Version | Key Deliverable | Est. Duration |
-|-------|---------|----------------|---------------|
-| 0 | 0.0.0 | Architecture docs | 1 week |
-| 1 | 0.1.0 | Runnable scaffold | 1 week |
-| 2 | 0.2.0 | Database layer | 1 week |
-| 3 | 0.3.0 | Domain models | 2 weeks |
-| 4 | 0.4.0 | Library scanner | 2 weeks |
-| 5 | 0.5.0 | Fingerprint engine | 1 week |
-| 6 | 0.6.0 | Metadata engine | 2 weeks |
-| 7 | 0.7.0 | Duplicates & quality | 2 weeks |
-| 8 | 0.8.0 | Organizer & rename | 2 weeks |
-| 9 | 0.9.0 | Artwork manager | 1 week |
-| 10 | 0.10.0 | Rollback engine | 2 weeks |
-| 11 | 0.11.0 | Reports | 1 week |
-| 12 | 1.0.0-beta | Full GUI | 3 weeks |
-| 13 | 1.0.0-rc | Plugins & Navidrome | 2 weeks |
-| 14 | 1.0.0 | Windows installer | 1 week |
+| Phase | Version | Key Deliverable |
+|-------|---------|----------------|
+| 0b | 0.0.1 | Architecture v2 revision |
+| 1 | 0.1.0 | Scaffold + CI |
+| 2 | 0.2.0 | SQLAlchemy Core + UUID schema |
+| 3 | 0.3.0 | Domain models |
+| 4 | 0.4.0 | Job queue + scanner |
+| 5 | 0.5.0 | Fingerprint worker |
+| 6 | 0.6.0 | Metadata arbitrator |
+| 7 | 0.7.0 | Review queue |
+| 8 | 0.8.0 | Rules engine |
+| 9 | 0.9.0 | Duplicates |
+| 10 | 0.10.0 | Staging + watch folder |
+| 11 | 0.11.0 | Artwork |
+| 12 | 0.12.0 | Rollback |
+| 13 | 0.13.0 | Reports |
+| 14 | 1.0.0-beta | Full GUI |
+| 15 | 1.0.0-rc | Media servers |
+| 16 | 1.0.0 | Windows installer |
 
-**Total estimated duration**: ~24 weeks (6 months) for a single experienced developer.
-
-## Risk Register
+## Risk Register (Updated)
 
 | Risk | Impact | Mitigation |
 |------|--------|------------|
-| Chromaprint binary not available on all systems | Fingerprinting disabled | Bundle `fpcalc` in installer; graceful fallback |
-| MusicBrainz rate limiting slows bulk identification | Poor UX for large libraries | Aggressive caching, batch mode, offline queue |
-| SQLite performance at 1M+ tracks | Slow queries | WAL mode, indexes, pagination, materialized stats |
-| PyInstaller bundle size | Large download | Exclude unused Qt modules, UPX compression |
-| Mutagen tag writing breaks some files | Data loss | Always snapshot before write; validate after write |
-| Plugin API changes break third-party plugins | Ecosystem friction | Semantic versioning, deprecation warnings, adapter layer |
+| SQLAlchemy Core learning curve | Medium | Clear repository examples in Phase 2 |
+| Job queue contention at 1M jobs | High | Batch claim, index on (status, job_type, priority) |
+| UUID index size | Low | v7 time-sortable; acceptable overhead |
+| Navidrome DB schema changes | Medium | Version-check; API fallback |
+| Watch folder race conditions | Medium | Debounce 2s; enqueue only after file stable |
+| Review queue overwhelming user | Medium | Auto-approve threshold configurable; bulk approve |
+| Rule engine complexity | Medium | Start with simple conditions; expand gradually |

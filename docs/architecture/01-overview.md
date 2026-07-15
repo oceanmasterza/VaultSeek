@@ -1,193 +1,185 @@
-# 01 — System Overview
+# 01 — System Overview (v2)
+
+> **Revision**: v2 — See [10-revision-v2.md](10-revision-v2.md) for full rationale and scalability review.
 
 ## Purpose
 
-MusicVault is a desktop Windows application that automates music library management for collectors and self-hosted media server users. It operates as a **local-first** tool: all data lives on the user's machine in SQLite, with optional integration to remote services (MusicBrainz, Navidrome) via plugins.
+MusicVault is a desktop Windows application that automates music library management for collectors and self-hosted media server users. It operates as a **local-first, job-driven** system: all data lives in SQLite, processing happens through a persistent job queue, and uncertain results go to a human review queue before touching the canonical library.
+
+## Target Users
+
+- Power users and collectors with 100,000–1,000,000+ tracks
+- Audiophiles managing FLAC, DSD, and multi-format collections
+- Self-hosted media server operators using:
+  - **Navidrome**, **Jellyfin**, **Plex Media Server**, **Emby**
+  - **Ampache**, **Koel**, **Subsonic**, **Funkwhale**
+  - **Lyrion Music Server** (Logitech Media Server), **mStream**
 
 ## System Context
 
 ```mermaid
 C4Context
-    title MusicVault System Context
+    title MusicVault System Context (v2)
 
-    Person(user, "Power User", "Collector with 100K+ tracks")
-    System(mv, "MusicVault", "Desktop library manager")
-    System_Ext(mb, "MusicBrainz", "Metadata API")
-    System_Ext(ac, "AcoustID", "Fingerprint lookup")
-    System_Ext(nd, "Navidrome", "Self-hosted music server")
-    System_Ext(fs, "File System", "Music library on disk")
+    Person(user, "Power User", "Collector / Navidrome admin")
+    System(mv, "MusicVault", "Job-driven library manager")
+    System_Ext(fs, "File System", "Incoming / Staging / Library / Archive")
+    System_Ext(mb, "MusicBrainz", "Metadata")
+    System_Ext(dc, "Discogs", "Metadata + artwork")
+    System_Ext(nd, "Navidrome", "Media server + SQLite DB")
+    System_Ext(other, "Jellyfin / Plex / ...", "Media servers")
 
-    Rel(user, mv, "Manages library via GUI")
-    Rel(mv, fs, "Scans, organizes, renames")
+    Rel(user, mv, "Review, approve, configure rules")
+    Rel(mv, fs, "Watch, stage, organize")
     Rel(mv, mb, "Metadata lookup", "Plugin")
-    Rel(mv, ac, "Track identification", "Plugin")
-    Rel(mv, nd, "Validate & rescan", "Plugin")
+    Rel(mv, dc, "Metadata lookup", "Plugin")
+    Rel(mv, nd, "Validate, rescan, read DB", "Plugin")
+    Rel(mv, other, "Validate, rescan", "Plugin")
 ```
 
 ## Layered Architecture
 
-MusicVault follows a strict **four-layer architecture** with an orthogonal **plugin layer**.
-
 ### Layer 1: Presentation (GUI)
 
-- **Responsibility**: Display data, capture user input, show progress
-- **Technology**: PySide6, MVVM pattern
-- **Rules**:
-  - Views contain zero business logic
-  - ViewModels call Application Services only (never repositories)
-  - Long-running operations run in `QThreadPool` workers; results delivered via signals
-  - All UI strings externalized for future i18n
+- PySide6 MVVM — Views, ViewModels, Workers
+- New pages: **Review Queue**, **Job Monitor**, **Duplicate Viewer**, **Rules Editor**
+- ViewModels read job status and review items from application services
 
 ### Layer 2: Application
 
-- **Responsibility**: Orchestrate use cases, coordinate services, enforce workflows
-- **Key components**: `ScannerService`, `MetadataService`, `DuplicateService`, `OrganizerService`, `RollbackService`, `ReportService`, `OperationOrchestrator`
-- **Rules**:
-  - Services are stateless; state lives in the database
-  - Every mutating operation goes through `OperationOrchestrator` for rollback support
-  - Services depend on interfaces (protocols), not concrete implementations
+| Component | Responsibility |
+|-----------|---------------|
+| `JobQueueService` | Enqueue, claim, complete, retry jobs |
+| `JobDispatcher` | Poll queue, assign to worker pools |
+| `MetadataArbitrator` | Multi-provider lookup with per-field confidence |
+| `ReviewQueueService` | Create, approve, reject review items |
+| `RulesEngine` | Evaluate user-defined IF/THEN rules |
+| `OperationOrchestrator` | Safety gate with rollback snapshots |
+| `WatchFolderService` | Monitor Incoming/, enqueue pipeline |
+
+Legacy service names (`ScannerService`, etc.) become **worker implementations** invoked by the job dispatcher, not direct call chains.
 
 ### Layer 3: Domain
 
-- **Responsibility**: Core business rules, entities, value objects
-- **Key components**: `Track`, `Album`, `Artist`, `Fingerprint`, `QualityScore`, `DuplicateGroup`, `OrganizeRule`, `RenamePattern`
-- **Rules**:
-  - No imports from GUI, SQLAlchemy, or Qt
-  - Pure Python with dataclasses and protocols
-  - Domain services contain logic that spans multiple entities (e.g., `QualityScorer`, `DuplicateMatcher`)
+- Pure Python dataclasses with UUID identities
+- `QualityScorer`, `DuplicateMatcher`, `RenameEngine`, `OrganizeEngine`
+- `RuleCondition`, `RuleAction`, `FieldConfidence`, `ArbitrationResult`
+- No SQLAlchemy, no Qt imports
 
 ### Layer 4: Infrastructure
 
-- **Responsibility**: External system integration — database, filesystem, FFmpeg, HTTP
-- **Key components**: SQLAlchemy repositories, `AudioFileReader` (Mutagen), `FingerprintGenerator` (Chromaprint), `FileOperations` (Send2Trash)
-- **Rules**:
-  - Implements interfaces defined in Domain/Application layers
-  - All I/O is behind interfaces for testability
+- **SQLAlchemy Core** repositories (not ORM)
+- Mutagen, Chromaprint, FFmpeg, Send2Trash
+- File watcher (ReadDirectoryChangesW)
 
 ### Orthogonal: Plugin Layer
 
-- **Responsibility**: Extend metadata, artwork, and media server integration
-- **Rules**:
-  - Plugins implement well-defined protocols
-  - Core application never imports plugin implementations directly
-  - Plugin manager discovers and registers plugins at startup
+- Metadata providers ranked: MusicBrainz → Discogs → Local Tags → Filename
+- Artwork providers: Cover Art Archive → Discogs
+- Media server plugins with optional direct DB access
 
-## Core Data Flows
+## Core Data Flow: Watch Folder Pipeline
 
-### Scan Flow
+The primary automation flow — zero clicks after initial setup:
 
 ```
-User clicks "Scan"
-  → ScanViewModel.start_scan()
-    → ScannerService.scan_library(paths, options)
-      → FileWalker.discover_files()          [Infrastructure]
-      → ThreadPool: for each file:
-          → AudioFileReader.read_metadata()   [Infrastructure / Mutagen]
-          → FingerprintGenerator.generate()   [Infrastructure / Chromaprint]
-          → HashCalculator.compute()          [Infrastructure]
-          → TrackRepository.upsert()          [Infrastructure / SQLAlchemy]
-      → ScanRepository.record_scan()          [Infrastructure]
-    → Signal: scan_progress(percent, stats)
-    → Signal: scan_complete(scan_id)
+File lands in Incoming/
+  │
+  ▼
+FileWatcher → enqueue scan_file job
+  │
+  ▼
+HashWorker → file_identity unchanged? → skip to metadata
+           → changed? → enqueue fingerprint_file
+  │
+  ▼
+FingerprintWorker → store in file_identity → enqueue identify_metadata
+  │
+  ▼
+MetadataWorker → MetadataArbitrator
+               → per-field confidence stored
+               → any field < 90%? → create review_item
+  │
+  ▼
+ArtworkWorker + DuplicateWorker + RuleEngine (parallel jobs)
+  │
+  ▼
+OrganizerWorker → move to Staging/ (never directly to Library/)
+  │
+  ▼
+All confidence ≥ 90% AND no review items?
+  YES → auto-approve → move Staging → Library
+  NO  → wait in Review Queue for user
+  │
+  ▼
+MediaServerWorker → trigger Navidrome rescan
 ```
 
-### Metadata Fix Flow
+Every step is a row in `jobs`. Crash at any point → restart → pending jobs resume.
 
-```
-User selects tracks → "Fix Metadata"
-  → MetadataViewModel.fix_metadata(track_ids)
-    → OperationOrchestrator.begin_operation("metadata_fix")
-      → RollbackService.snapshot(tracks)     [store originals]
-      → MetadataService.identify(tracks)
-        → PluginManager.get("musicbrainz").lookup(fingerprint)
-        → MetadataService.apply_matches(tracks, matches)
-      → OperationOrchestrator.commit()       [or rollback on cancel]
-    → Signal: operation_complete(report)
-```
+## Library Zones
 
-### Duplicate Detection Flow
+| Zone | Purpose | User Access |
+|------|---------|-------------|
+| `incoming` | Watch folder; new downloads | Drop files here |
+| `staging` | Processed, awaiting approval | Review before commit |
+| `library` | Canonical approved collection | Normal browsing |
+| `archive` | Superseded copies (MP3 when FLAC exists) | Recovery if needed |
 
-```
-DuplicateService.detect_duplicates(library_id)
-  → Load all fingerprints from DB
-  → Group by AcoustID / MusicBrainz recording ID
-  → For unmatched: fuzzy match on (duration, fingerprint similarity)
-  → QualityScorer.score(each track in group)
-  → DuplicateRepository.save_groups()
-  → Return DuplicateReport
-```
+## Metadata Arbitration
+
+Not MusicBrainz-only. The `MetadataArbitrator`:
+
+1. Queries all enabled providers in priority order
+2. Collects results with per-field confidence
+3. Selects highest-confidence value **per field**
+4. Flags fields below 90% threshold for review
+5. Stores provenance (`source: musicbrainz, confidence: 0.98`)
+
+## Safety Model
+
+1. **Watch folder** → always lands in Staging first
+2. **Confidence gate** → uncertain metadata goes to Review Queue
+3. **Rules engine** → configurable automation with optional approval
+4. **Dry-run / preview** → for bulk operations
+5. **Rollback snapshots** → before every approved change
+6. **Send2Trash** → never hard-delete
+7. **Zone isolation** → mistakes in Staging don't affect Library
 
 ## Dependency Injection
 
-All services are constructed via a central `Container` (using `dependency-injector` or a lightweight manual registry):
-
 ```python
-# Conceptual — not implemented yet
 class Container:
     # Infrastructure
-    session_factory: Callable[[], Session]
+    engine: Engine                          # SQLAlchemy Core
     track_repository: TrackRepository
-    audio_file_reader: AudioFileReader
-
-    # Domain
-    quality_scorer: QualityScorer
-    duplicate_matcher: DuplicateMatcher
+    job_repository: JobRepository
 
     # Application
-    scanner_service: ScannerService
-    metadata_service: MetadataService
-    duplicate_service: DuplicateService
+    job_queue_service: JobQueueService
+    job_dispatcher: JobDispatcher
+    metadata_arbitrator: MetadataArbitrator
+    review_queue_service: ReviewQueueService
+    rules_engine: RulesEngine
+    watch_folder_service: WatchFolderService
+    operation_orchestrator: OperationOrchestrator
 
     # Plugins
     plugin_manager: PluginManager
 ```
 
-Services receive dependencies through constructor injection. The GUI receives the `Container` (or a facade) and resolves ViewModels from it.
-
-## Operation Safety Model
-
-Every mutating operation follows this contract:
-
-1. **Dry-run mode** — compute changes without applying (default for first run)
-2. **Preview** — show user a diff of proposed changes
-3. **Confirmation** — explicit user approval
-4. **Snapshot** — `RollbackService` captures pre-state (file path, metadata, artwork bytes, DB row)
-5. **Execute** — apply changes transactionally
-6. **Log** — record in `change_history` and `operation_log`
-7. **Rollback** — user can undo any operation via `RollbackService.restore(snapshot_id)`
-
-File deletions always use `Send2Trash` (Recycle Bin).
-
 ## Configuration
 
-- **Location**: `%APPDATA%/MusicVault/config.json`
-- **Format**: Versioned JSON with schema migration
-- **Sections**: `library_paths`, `organize_rules`, `rename_patterns`, `quality_weights`, `plugins`, `ui_preferences`, `scan_options`
-- **Migration**: `ConfigMigrator` upgrades older versions automatically on load
+- Location: `%APPDATA%/MusicVault/config.json`
+- Versioned JSON with migration chain
+- Key sections: `library_zones`, `watch_folder`, `auto_approve_threshold`, `metadata_providers`, `rules`, `quality_weights`, `plugins`
 
 ## Logging
 
-| Log | Path | Level | Purpose |
-|-----|------|-------|---------|
-| User log | `%APPDATA%/MusicVault/logs/musicvault.log` | INFO | Operations, scan results, user actions |
-| Developer log | `%APPDATA%/MusicVault/logs/debug.log` | DEBUG | Full diagnostic detail |
-| Crash report | `%APPDATA%/MusicVault/logs/crashes/` | ERROR | Uncaught exceptions with stack traces |
+| Log | Level | Purpose |
+|-----|-------|---------|
+| `musicvault.log` | INFO | User-visible operations |
+| `debug.log` | DEBUG | Job dispatch, SQL queries, API calls |
+| `crashes/` | ERROR | Uncaught exceptions |
 
-Loguru handles rotation (10 MB, 5 backups), structured logging, and sink configuration.
-
-## Error Handling Strategy
-
-| Category | Handling |
-|----------|----------|
-| Corrupt audio file | Log warning, skip file, include in scan report |
-| Network timeout (MusicBrainz) | Retry with exponential backoff, rate-limit respect |
-| Database locked | Retry with WAL mode, connection pooling |
-| Permission denied (file) | Log error, skip file, notify user |
-| Unhandled exception | Catch at service boundary, log crash report, show user-friendly dialog |
-
-## Security Considerations
-
-- No remote code execution from plugins (plugins are local Python packages)
-- API keys stored in `%APPDATA%/MusicVault/secrets.json` (not in config)
-- MusicBrainz user-agent identification required
-- No telemetry; all data stays local unless user configures cloud backup plugin
+Job transitions logged: `Job {id} hash_file pending→running→completed (142ms)`.

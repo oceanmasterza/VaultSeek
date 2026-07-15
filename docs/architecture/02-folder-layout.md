@@ -61,16 +61,26 @@ MusicVault/
 │       │
 │       ├── application/            # Use case orchestration
 │       │   ├── __init__.py
-│       │   ├── scanner_service.py
-│       │   ├── metadata_service.py
-│       │   ├── fingerprint_service.py
-│       │   ├── duplicate_service.py
-│       │   ├── organizer_service.py
-│       │   ├── rename_service.py
-│       │   ├── artwork_service.py
-│       │   ├── rollback_service.py
-│       │   ├── report_service.py
+│       │   ├── job_queue_service.py
+│       │   ├── job_dispatcher.py
+│       │   ├── metadata_arbitrator.py
+│       │   ├── review_queue_service.py
+│       │   ├── rules_engine.py
+│       │   ├── watch_folder_service.py
 │       │   ├── operation_orchestrator.py
+│       │   ├── report_service.py
+│       │   ├── workers/            # Job handler implementations
+│       │   │   ├── __init__.py
+│       │   │   ├── scanner_worker.py
+│       │   │   ├── hash_worker.py
+│       │   │   ├── fingerprint_worker.py
+│       │   │   ├── metadata_worker.py
+│       │   │   ├── artwork_worker.py
+│       │   │   ├── duplicate_worker.py
+│       │   │   ├── rule_worker.py
+│       │   │   ├── organizer_worker.py
+│       │   │   ├── media_server_worker.py
+│       │   │   └── report_worker.py
 │       │   └── dto/                # Data transfer objects for GUI
 │       │       ├── __init__.py
 │       │       ├── scan_dto.py
@@ -82,8 +92,8 @@ MusicVault/
 │       │   ├── __init__.py
 │       │   ├── database/
 │       │   │   ├── __init__.py
-│       │   │   ├── engine.py       # SQLAlchemy engine, session factory
-│       │   │   ├── models.py       # SQLAlchemy ORM models
+│       │   │   ├── engine.py       # SQLAlchemy Core engine factory
+│       │   │   ├── tables.py       # SQLAlchemy Core Table definitions
 │       │   │   ├── migrations/     # Alembic migration scripts
 │       │   │   │   ├── env.py
 │       │   │   │   └── versions/
@@ -92,7 +102,10 @@ MusicVault/
 │       │   │       ├── track_repo.py
 │       │   │       ├── album_repo.py
 │       │   │       ├── artist_repo.py
-│       │   │       ├── scan_repo.py
+│       │   │       ├── job_repo.py
+│       │   │       ├── review_repo.py
+│       │   │       ├── rule_repo.py
+│       │   │       ├── file_identity_repo.py
 │       │   │       ├── duplicate_repo.py
 │       │   │       ├── artwork_repo.py
 │       │   │       ├── rollback_repo.py
@@ -126,10 +139,20 @@ MusicVault/
 │       │   └── builtin/            # Shipped plugins
 │       │       ├── __init__.py
 │       │       ├── musicbrainz/
+│       │       ├── discogs/
 │       │       ├── acoustid/
-│       │       ├── navidrome/
 │       │       ├── cover_art_archive/
-│       │       └── discogs/        # Future
+│       │       ├── filename_parser/
+│       │       ├── navidrome/
+│       │       ├── jellyfin/
+│       │       ├── plex/
+│       │       ├── emby/
+│       │       ├── ampache/
+│       │       ├── koel/
+│       │       ├── subsonic/
+│       │       ├── funkwhale/
+│       │       ├── lyrion/
+│       │       └── mstream/
 │       │
 │       └── gui/                    # Presentation layer
 │           ├── __init__.py
@@ -144,12 +167,14 @@ MusicVault/
 │           │   ├── __init__.py
 │           │   ├── dashboard_view.py
 │           │   ├── library_view.py
+│           │   ├── review_view.py
 │           │   ├── artists_view.py
 │           │   ├── albums_view.py
 │           │   ├── duplicates_view.py
-│           │   ├── unknown_view.py
+│           │   ├── job_monitor_view.py
 │           │   ├── artwork_view.py
 │           │   ├── reports_view.py
+│           │   ├── rules_view.py
 │           │   ├── logs_view.py
 │           │   ├── settings_view.py
 │           │   └── plugins_view.py

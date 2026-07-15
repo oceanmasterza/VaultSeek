@@ -1,64 +1,76 @@
 # MusicVault Architecture Documentation
 
-This directory contains the complete software architecture for MusicVault, designed before any application code is written.
+Complete software architecture for MusicVault — designed before application code is written.
+
+> **Current version**: v2 (2026-07-15). Start with [10-revision-v2.md](10-revision-v2.md).
 
 ## Documents
 
 | # | Document | Purpose |
 |---|----------|---------|
-| 01 | [Overview](01-overview.md) | System context, layered architecture, data flows |
-| 02 | [Folder Layout](02-folder-layout.md) | Repository structure and module boundaries |
-| 03 | [Database Schema](03-database-schema.md) | SQLite tables, indexes, migrations |
-| 04 | [Service Layer](04-service-layer.md) | Application services, domain logic, interfaces |
-| 05 | [Plugin API](05-plugin-api.md) | Plugin contracts, lifecycle, built-in plugins |
-| 06 | [GUI Architecture](06-gui-architecture.md) | MVVM, views, view models, threading |
-| 07 | [Roadmap](07-roadmap.md) | Phased implementation plan with acceptance criteria |
-| 08 | [Performance](08-performance.md) | Scalability for 1M+ tracks |
-| 09 | [Testing Strategy](09-testing-strategy.md) | Test pyramid, fixtures, CI |
+| **10** | **[Revision v2](10-revision-v2.md)** | **Master revision — start here** |
+| 01 | [Overview](01-overview.md) | System design, job pipeline, library zones |
+| 02 | [Folder Layout](02-folder-layout.md) | Project structure |
+| 03 | [Database Schema](03-database-schema.md) | UUID schema, jobs, review, staging |
+| 04 | [Service Layer](04-service-layer.md) | Job queue, arbitrator, rules engine |
+| 05 | [Plugin API](05-plugin-api.md) | 10 media servers, metadata ranking |
+| 06 | [GUI Architecture](06-gui-architecture.md) | Review queue, duplicate viewer, jobs |
+| 07 | [Roadmap](07-roadmap.md) | 16-phase implementation plan |
+| 08 | [Performance](08-performance.md) | Million-track scalability |
+| 09 | [Testing Strategy](09-testing-strategy.md) | Test pyramid, fixtures |
+| 11 | [CI Pipeline](11-ci-pipeline.md) | GitHub Actions from Phase 1 |
+
+## v2 Key Changes (from v1)
+
+| Change | Impact |
+|--------|--------|
+| SQLAlchemy **Core** (not ORM) | 3–5× faster bulk inserts |
+| **UUID v7** primary keys | Import/export, plugin sync safe |
+| **Job queue** + independent workers | Resumable, crash-safe pipeline |
+| **Metadata arbitration** with confidence | Multi-provider, per-field ranking |
+| **Review queue** | Human gate for confidence < 90% |
+| **Staging library** | Incoming → Staging → Review → Library |
+| **Rules engine** | User-configurable IF/THEN automation |
+| **Watch folder** | Zero-click incoming pipeline |
+| **10 media server plugins** | Navidrome DB access, Jellyfin, Plex, … |
+| **CI from Phase 1** | ruff, black, mypy, pytest on every commit |
 
 ## Design Goals
 
-1. **Production quality** — not a script; designed for hundreds of contributors
-2. **Separation of concerns** — GUI, application logic, domain, infrastructure are isolated
-3. **Plugin-first** — metadata providers, artwork, media servers are plugins from day one
-4. **Reversible operations** — every mutating action is logged and rollback-capable
-5. **Scale** — comfortable with 1,000,000+ tracks via incremental scans and indexed storage
-6. **Type safety** — full annotations, dataclasses, mypy strict mode
-
-## Key Architectural Decisions
-
-| Decision | Choice | Rationale |
-|----------|--------|-----------|
-| GUI framework | PySide6 (Qt6) | Native Windows look, mature widget set, signals/slots, dark mode |
-| Database | SQLite + SQLAlchemy 2.x | Embedded, zero-config, WAL mode for concurrency, proven at scale |
-| DI container | `dependency-injector` or manual constructor injection | Testability without framework magic |
-| Async model | Thread pools + Qt signals (not asyncio in GUI) | Qt is not asyncio-native; CPU-bound work in threads |
-| Plugin loading | Entry points (`pyproject.toml`) + runtime discovery | Standard Python packaging, hot-reload in dev |
-| Config format | Versioned JSON with migration chain | Human-readable, diffable, auto-upgraded |
-| File safety | Send2Trash + pre-operation snapshots | Never hard-delete; always recoverable |
+1. Production quality — designed for hundreds of contributors
+2. Job-driven processing — everything async, resumable, observable
+3. Human-in-the-loop — review queue prevents metadata corruption
+4. Plugin-first — metadata, artwork, media servers as plugins
+5. Reversible — rollback snapshots for every mutation
+6. Scale — 1,000,000+ tracks via Core SQL, job queue, fingerprint caching
 
 ## Layer Diagram
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
 │                    Presentation (GUI)                        │
-│  PySide6 Views  ←→  ViewModels  ←→  Application Facade      │
+│  Views ←→ ViewModels ←→ Application Services                 │
 ├─────────────────────────────────────────────────────────────┤
 │                    Application Layer                         │
-│  ScannerService  MetadataService  DuplicateService  ...      │
-│  OperationOrchestrator  RollbackService  ReportService       │
+│  JobQueueService │ MetadataArbitrator │ ReviewQueueService   │
+│  RulesEngine │ OperationOrchestrator │ WatchFolderService   │
 ├─────────────────────────────────────────────────────────────┤
-│                    Domain Layer                                │
-│  Entities  Value Objects  Domain Services  Specifications    │
+│                    Workers (Job Handlers)                    │
+│  Scanner │ Hash │ Fingerprint │ Metadata │ Artwork │ ...    │
 ├─────────────────────────────────────────────────────────────┤
-│                    Infrastructure Layer                      │
-│  SQLAlchemy Repos  FileSystem  FFmpeg  Chromaprint  HTTP    │
+│                    Domain Layer                              │
+│  Entities (UUID) │ Value Objects │ Domain Services           │
+├─────────────────────────────────────────────────────────────┤
+│                    Infrastructure                            │
+│  Repositories (SQLAlchemy Core) │ FileSystem │ HTTP         │
 ├─────────────────────────────────────────────────────────────┤
 │                    Plugin Layer                              │
-│  MusicBrainz  AcoustID  Navidrome  ArtworkProviders  ...   │
+│  MusicBrainz │ Discogs │ Navidrome │ Jellyfin │ Plex │ ... │
 └─────────────────────────────────────────────────────────────┘
 ```
 
 ## Reading Order
 
-For new contributors, read documents 01 → 07 in order. Documents 08 and 09 are reference material consulted during implementation of their respective phases.
+1. **[10-revision-v2.md](10-revision-v2.md)** — scalability review + all design decisions
+2. **01 → 07** — detailed specifications
+3. **08, 09, 11** — reference during implementation

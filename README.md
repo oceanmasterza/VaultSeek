@@ -1,6 +1,6 @@
 # MusicVault
 
-**Lightroom for Music** — a professional, open-source Windows application for managing large music libraries with Navidrome, Jellyfin, Plex, and self-hosted media servers.
+**Lightroom for Music** — a professional, open-source Windows application for managing large music libraries with self-hosted media servers.
 
 [![Python 3.13](https://img.shields.io/badge/python-3.13-blue.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
@@ -10,24 +10,28 @@
 
 MusicVault automates the complete lifecycle of a music library:
 
-- **Scan** — multi-threaded ingestion of every major audio format
+- **Watch folder** — drop files in Incoming/, everything else is automatic
 - **Fingerprint** — Chromaprint + AcoustID identification regardless of filename
-- **Fix metadata** — MusicBrainz-driven correction with rollback
-- **Organize** — configurable folder structures and intelligent renaming
-- **Detect duplicates** — fingerprint, MBID, hash, and quality-aware deduplication
-- **Score quality** — automatic ranking so the best copy wins
-- **Manage artwork** — detect, download, embed, and report
-- **Integrate** — Navidrome, Jellyfin, Plex via plugins
-- **Report** — HTML, CSV, Excel, PDF exports
+- **Multi-provider metadata** — MusicBrainz, Discogs, local tags, ranked by confidence
+- **Review queue** — uncertain matches require human approval before entering the library
+- **Rules engine** — configurable IF/THEN automation (archive MP3 when FLAC exists, etc.)
+- **Staging library** — Incoming → Staging → Review → Library (mistakes are reversible)
+- **Detect duplicates** — visual side-by-side comparison with quality scores
+- **Organize & rename** — configurable folder structures, scene name cleaning
+- **Media server integration** — Navidrome, Jellyfin, Plex, Emby, Ampache, Koel, and more
 - **Rollback** — every operation is reversible
 
 Designed for power users with libraries of **100,000–1,000,000+ tracks**.
 
+## Target Users
+
+Collectors, audiophiles, and self-hosted media server operators using **Navidrome**, **Jellyfin**, **Plex**, **Emby**, **Ampache**, **Koel**, **Subsonic**, **Funkwhale**, **Lyrion Music Server**, or **mStream**.
+
 ## Status
 
-**Phase 0 — Architecture** (current)
+**Phase 0b — Architecture v2** (current)
 
-The project is in the architecture and design phase. No application code has been written yet. See [Architecture Documentation](docs/architecture/README.md) for the complete design.
+Architecture revision complete. No application code yet. See [Architecture Documentation](docs/architecture/README.md).
 
 ## Tech Stack
 
@@ -35,78 +39,50 @@ The project is in the architecture and design phase. No application code has bee
 |-------|------------|
 | Language | Python 3.13 |
 | GUI | PySide6 (Qt6) |
-| Database | SQLite + SQLAlchemy 2.x |
+| Database | SQLite + **SQLAlchemy Core** (not ORM) |
+| Identities | **UUID v7** (all entities) |
+| Processing | **Persistent job queue** with independent workers |
 | Audio metadata | Mutagen |
-| Identification | MusicBrainz, AcoustID, Chromaprint |
+| Identification | MusicBrainz, Discogs, AcoustID, Chromaprint |
 | Fuzzy matching | RapidFuzz |
 | Media processing | FFmpeg |
-| Images | Pillow |
-| HTTP | Requests |
-| Safe delete | Send2Trash |
 | Logging | Loguru |
-| Testing | pytest |
+| Testing | pytest + mypy strict |
+| CI | GitHub Actions (ruff, black, mypy, pytest) |
 | Packaging | PyInstaller |
 
-## Architecture Principles
+## Architecture Highlights (v2)
 
-- **SOLID** — single responsibility, dependency inversion throughout
-- **Layered architecture** — GUI → Application Services → Domain → Infrastructure
-- **Plugin system** — metadata providers, artwork, media servers as plugins
-- **Type safety** — full type annotations, mypy-compatible
-- **Testability** — dependency injection, repository pattern, interface segregation
-- **Scalability** — incremental scans, indexed queries, thread pools, caching
-- **Safety** — dry-run, preview, confirmation, recycle bin, automatic backups, rollback
+| Decision | Choice | Why |
+|----------|--------|-----|
+| Database access | SQLAlchemy Core | 3–5× faster than ORM at 1M+ rows |
+| Processing | Job queue + workers | Resumable, crash-safe, observable |
+| Metadata | Multi-provider arbitration | No single source of truth |
+| Uncertain data | Review queue (< 90% confidence) | Prevents metadata corruption |
+| File placement | Staging library | Mistakes don't touch canonical library |
+| Automation | Rules engine + watch folder | Zero-click processing |
+| CI | From Phase 1 | No broken commits from day one |
 
 ## Documentation
 
 | Document | Description |
 |----------|-------------|
-| [Architecture Overview](docs/architecture/01-overview.md) | System design, layers, data flow |
-| [Folder Layout](docs/architecture/02-folder-layout.md) | Project structure |
-| [Database Schema](docs/architecture/03-database-schema.md) | Tables, indexes, relationships |
-| [Service Layer](docs/architecture/04-service-layer.md) | Application and domain services |
-| [Plugin API](docs/architecture/05-plugin-api.md) | Extension points and contracts |
-| [GUI Architecture](docs/architecture/06-gui-architecture.md) | Qt6 MVVM presentation layer |
-| [Development Roadmap](docs/architecture/07-roadmap.md) | Phased implementation plan |
-| [Performance Strategy](docs/architecture/08-performance.md) | Million-track scalability |
-| [Testing Strategy](docs/architecture/09-testing-strategy.md) | Unit, integration, E2E |
+| **[Architecture v2](docs/architecture/10-revision-v2.md)** | Master revision with scalability review |
+| [Overview](docs/architecture/01-overview.md) | Job pipeline, library zones |
+| [Database Schema](docs/architecture/03-database-schema.md) | UUID schema, jobs, review queue |
+| [Service Layer](docs/architecture/04-service-layer.md) | Job queue, arbitrator, rules |
+| [Plugin API](docs/architecture/05-plugin-api.md) | 10 media servers |
+| [Roadmap](docs/architecture/07-roadmap.md) | 16-phase plan |
+| [CI Pipeline](docs/architecture/11-ci-pipeline.md) | GitHub Actions spec |
 
 ## Development Roadmap (Summary)
 
 | Phase | Milestone | Status |
 |-------|-----------|--------|
-| 0 | Architecture & documentation | **In progress** |
-| 1 | Project scaffold, DI container, config | Planned |
-| 2 | Database layer & migrations | Planned |
-| 3 | Domain models & repositories | Planned |
-| 4 | Library scanner service | Planned |
-| 5 | Fingerprint & identification engine | Planned |
-| 6 | Metadata engine | Planned |
-| 7 | Duplicate detection & quality scoring | Planned |
-| 8 | Folder organization & rename engine | Planned |
-| 9 | Artwork manager | Planned |
-| 10 | Rollback engine | Planned |
-| 11 | Reports | Planned |
-| 12 | GUI shell & pages | Planned |
-| 13 | Plugin system & Navidrome integration | Planned |
-| 14 | Packaging & Windows installer | Planned |
-
-## Getting Started (Future)
-
-```powershell
-# Clone and setup (not yet available)
-git clone https://github.com/musicvault/musicvault.git
-cd musicvault
-python -m venv .venv
-.venv\Scripts\activate
-pip install -e ".[dev]"
-pytest
-python -m musicvault
-```
-
-## Contributing
-
-Contributions welcome once Phase 1 scaffolding is complete. See `CONTRIBUTING.md` (coming in Phase 1).
+| 0 | Architecture v1 | Complete |
+| **0b** | **Architecture v2 revision** | **Current** |
+| 1 | Scaffold + CI | Next |
+| 2–16 | Database → GUI → Plugins → Installer | Planned |
 
 ## License
 
