@@ -18,7 +18,7 @@ Phase 0   ██████████ Architecture v1
 Phase 0b  ██████████ Architecture v2 revision (CURRENT)
 Phase 1   ██████████ Scaffold + CI
 Phase 2   ██████████ Database (Core + UUID + jobs)
-Phase 3   ░░░░░░░░░░ Domain models + repositories
+Phase 3   ██████████ Domain models + repositories
 Phase 4   ░░░░░░░░░░ Job dispatcher + scanner/hash workers
 Phase 5   ░░░░░░░░░░ Fingerprint worker + persistence
 Phase 6   ░░░░░░░░░░ Metadata arbitrator + providers
@@ -177,13 +177,93 @@ Phase 16  ░░░░░░░░░░ Packaging + installer
 
 ## Phase 3: Domain Models
 
+**Status**: Complete
+
 **Goal**: Pure domain entities, value objects, domain services.
 
 ### Key Deliverables
-- Entities with UUID identities
-- `QualityScorer`, `DuplicateMatcher`, `RenameEngine`, `OrganizeEngine`
-- `RuleCondition`, `RuleAction`, `FieldConfidence`
-- 100% unit test coverage on domain services
+- [x] `Track`, `Album`, `Artist` entities + `LibraryZone` enum
+      (`models/entities/`), matching `03-database-schema.md` column-for-column
+- [x] `TrackRepository`, `AlbumRepository`, `ArtistRepository`
+      (`db/repositories/`) — `TrackRepository`'s method names
+      (`get_by_id`, `get_by_path`, `get_by_library`, `upsert_batch`,
+      `update_zone`) follow the protocol documented in `04-service-layer.md`
+      exactly
+- [x] `QualityScorer` + `QualityWeights` (`models/services/`) — matches the
+      exact example scores in `09-testing-strategy.md` (FLAC 24-bit → 100,
+      FLAC 16-bit → 95, MP3 320 → 70); see scope note below for the
+      additional brackets
+- [x] `RenameEngine.clean_filename` (`models/services/`) — matches the 3
+      documented scene-name-cleanup examples in `09-testing-strategy.md`
+      exactly
+- [x] Rules AST: `RuleNode`/`ConditionLeaf`/`AndNode`/`OrNode` + `parse_conditions`
+      (`models/value_objects/rule_condition.py`), implementing the AST
+      evaluation approach from `12-pipeline-engine-v3.md`
+- [x] `RuleAction`, `FieldConfidence` value objects
+      (`models/value_objects/`), matching `10-revision-v2.md` and
+      `04-service-layer.md` respectively
+- [x] All Phase 3 repositories wired into `Container.bootstrap`
+- [x] 100% unit test coverage on every domain service
+      (`quality_scorer.py`, `rename_engine.py`, `rule_condition.py`)
+
+### Scope Decisions (recorded 2026-07-15, confirmed with user before implementation)
+1. **`DuplicateMatcher` and `OrganizeEngine` deferred to Phases 9 and 10.**
+   The original Phase 3 deliverable list included both, but neither has an
+   actual specified algorithm anywhere in the architecture docs (no
+   documented duplicate-matching thresholds, no documented folder-structure
+   template syntax) — and both are *re-listed* as deliverables of their own
+   dedicated phases, where the docs describe real consumers and behavior
+   (`duplicate_groups` storage + quality-based best-track selection for
+   Phase 9; the zone state machine + auto-approve threshold for Phase 10).
+   Building them now would mean guessing at behavior those phases would
+   likely have to redesign anyway. `QualityScorer` and `RenameEngine`, by
+   contrast, both have concrete example-based specs in
+   `09-testing-strategy.md` and no such dependency, so they stayed in scope.
+2. **`QualityWeights` brackets beyond the 3 documented examples are this
+   implementation's own fill-in**, not a documented formula. FLAC
+   24-bit/16-bit and MP3 320 are exact per `09-testing-strategy.md`; the
+   MP3 256/192/128 and AAC 256/128 brackets, and the `default_lossy`
+   fallback, are reasonable defaults exposed as named, overridable fields
+   on `QualityWeights` — see the module docstring in
+   `models/services/quality_scorer.py`.
+3. **`RuleCondition`'s AST nodes are pure value objects with no wired
+   consumer yet.** `parse_conditions`/`RuleNode.evaluate` operate on a
+   plain `Mapping[str, Any]` context rather than a typed `RuleContext`,
+   because building the real context (track fields + `has_lossless_duplicate`
+   and other duplicate-detection flags) requires `DuplicateMatcher`, which
+   doesn't exist until Phase 9. `Rule.conditions`/`Rule.actions` (Phase 2)
+   remain plain parsed JSON — the AST is a typed *parse* of that same JSON,
+   used by whichever service actually evaluates rules (`RulesEngine`, Phase 8).
+4. **Fixed a YAML example inconsistency** in `12-pipeline-engine-v3.md`
+   ("Rules Engine — AST Evaluation"): it used `op`/`type`/`params` as key
+   names, which didn't match the actual `RuleCondition`/`RuleAction`
+   dataclass fields (`operator`/`action_type`/`parameters`) documented in
+   `10-revision-v2.md` and implemented here. Corrected to keep the example
+   consistent with the code.
+
+### Acceptance Criteria
+- [x] `Track`/`Album`/`Artist` entities round-trip every documented column
+      through their repositories
+- [x] `QualityScorer` reproduces all documented example scores exactly,
+      including custom-weight overrides
+- [x] `RenameEngine.clean_filename` reproduces all 3 documented examples exactly
+- [x] Rules AST parses and evaluates the documented example rule
+      (archive MP3 when FLAC exists) correctly
+- [x] `pytest` passes (213/213, 99% coverage overall; 100% on every domain
+      service module)
+- [x] `mypy`, `ruff check`, `black --check` pass
+- [x] `lint-imports` passes (3/3 contracts kept)
+- [x] GitHub Actions green on push
+- [x] Git commit: `feat: Phase 3 domain models — Track/Album/Artist, QualityScorer, RenameEngine, rules AST`
+
+### Notes
+- `Track.zone`/`LibraryZone` lives in `models/entities/track.py` rather than
+  a shared "zones" module — nothing else needs it yet, and it can move if a
+  second consumer appears in Phase 10.
+- `TrackRepository.upsert_batch` returns the row count, matching how many
+  rows SQLite's `INSERT ... ON CONFLICT DO UPDATE` guarantees end up present
+  (each input row is either newly inserted or updated — always exactly one
+  resulting row), so no round-trip query is needed just to count.
 
 ---
 

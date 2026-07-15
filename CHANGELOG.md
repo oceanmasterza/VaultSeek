@@ -9,6 +9,41 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Phase 3 domain models** — the richer domain layer deferred from Phase 2:
+  - `Track`, `Album`, `Artist` entities (`models/entities/`) + `LibraryZone`
+    enum, matching the `tracks`/`albums`/`artists` tables column-for-column
+  - `TrackRepository`, `AlbumRepository`, `ArtistRepository`
+    (`db/repositories/`) — `TrackRepository`'s methods (`get_by_id`,
+    `get_by_path`, `get_by_library`, `upsert_batch`, `update_zone`) follow
+    the protocol documented in `04-service-layer.md` exactly
+  - `QualityScorer` + `QualityWeights` (`models/services/`) — reproduces the
+    documented example scores exactly (FLAC 24-bit → 100, FLAC 16-bit → 95,
+    MP3 320 → 70), with additional named, overridable brackets for common
+    MP3/AAC bitrates
+  - `RenameEngine.clean_filename` (`models/services/`) — strips
+    scene-release tag blocks (`-(KR147)-...`, `-[AFO]-...`) from filenames,
+    matching the 3 documented examples exactly
+  - Rules AST — `RuleNode`/`ConditionLeaf`/`AndNode`/`OrNode` +
+    `parse_conditions` (`models/value_objects/rule_condition.py`),
+    implementing the AST evaluation approach from `12-pipeline-engine-v3.md`
+  - `RuleAction`, `FieldConfidence` value objects (`models/value_objects/`)
+  - All five Phase 3 repositories wired into `Container.bootstrap`
+  - `DuplicateMatcher` and `OrganizeEngine` deliberately deferred to Phases
+    9 and 10, where the docs actually specify their behavior (see
+    `07-roadmap.md`, Phase 3 scope decisions)
+  - 213 tests total (up from 127), 99% coverage overall, 100% on every
+    domain service module
+
+### Fixed
+
+- **Corrected a YAML example inconsistency** in `12-pipeline-engine-v3.md`
+  ("Rules Engine — AST Evaluation"): it used `op`/`type`/`params` as key
+  names, which didn't match the actual `RuleCondition`/`RuleAction`
+  dataclass fields (`operator`/`action_type`/`parameters`) documented in
+  `10-revision-v2.md`. Caught while implementing the rules AST in Phase 3.
+
+### Added
+
 - **Phase 2 database layer** — SQLAlchemy Core, UUIDv7, Alembic migrations, and the
   first four repositories:
   - `db/tables.py` — all 15 fully-specified v2 tables as SQLAlchemy Core `Table`

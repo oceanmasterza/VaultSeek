@@ -23,10 +23,13 @@ from musicvault.core.event_bus import EventBus
 from musicvault.core.paths import AppPaths
 from musicvault.db.engine import create_sqlite_engine
 from musicvault.db.migrations.runner import run_migrations
+from musicvault.db.repositories.album_repo import AlbumRepository
+from musicvault.db.repositories.artist_repo import ArtistRepository
 from musicvault.db.repositories.file_identity_repo import FileIdentityRepository
 from musicvault.db.repositories.job_repo import JobRepository
 from musicvault.db.repositories.review_repo import ReviewRepository
 from musicvault.db.repositories.rule_repo import RuleRepository
+from musicvault.db.repositories.track_repo import TrackRepository
 
 
 @dataclass
@@ -40,6 +43,9 @@ class Container:
     review_repo: ReviewRepository
     rule_repo: RuleRepository
     file_identity_repo: FileIdentityRepository
+    track_repo: TrackRepository
+    album_repo: AlbumRepository
+    artist_repo: ArtistRepository
     event_bus: EventBus = field(default_factory=EventBus)
 
     @classmethod
@@ -61,6 +67,9 @@ class Container:
             review_repo=ReviewRepository(engine),
             rule_repo=RuleRepository(engine),
             file_identity_repo=FileIdentityRepository(engine),
+            track_repo=TrackRepository(engine),
+            album_repo=AlbumRepository(engine),
+            artist_repo=ArtistRepository(engine),
         )
 
     def close(self) -> None:

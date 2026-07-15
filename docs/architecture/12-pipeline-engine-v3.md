@@ -384,18 +384,25 @@ priority: 10
 conditions:
   all:
     - field: codec
-      op: eq
+      operator: eq
       value: mp3
     - field: has_lossless_duplicate
-      op: eq
+      operator: eq
       value: true
 actions:
-  - type: move_to_zone
-    params: { zone: archive }
-  - type: flag_review
-    params: { reason: "MP3 archived — FLAC copy exists" }
+  - action_type: move_to_zone
+    parameters: { zone: archive }
+  - action_type: flag_review
+    parameters: { reason: "MP3 archived — FLAC copy exists" }
 requires_approval: false
 ```
+
+> **Correction (Phase 3)**: This example originally used `op`/`type`/`params` as
+> the YAML keys. That doesn't match the actual `RuleCondition`/`RuleAction`
+> dataclass fields defined in [10-revision-v2.md](10-revision-v2.md#rules-engine)
+> (`operator`, `action_type`, `parameters`) and implemented in
+> `models/value_objects/rule_condition.py` / `rule_action.py`. Corrected to keep
+> the documented example consistent with the code.
 
 ```python
 @dataclass(frozen=True)

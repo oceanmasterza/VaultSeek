@@ -8,10 +8,13 @@ from musicvault.core.config import AppConfig
 from musicvault.core.container import Container
 from musicvault.core.event_bus import EventBus
 from musicvault.core.paths import AppPaths
+from musicvault.db.repositories.album_repo import AlbumRepository
+from musicvault.db.repositories.artist_repo import ArtistRepository
 from musicvault.db.repositories.file_identity_repo import FileIdentityRepository
 from musicvault.db.repositories.job_repo import JobRepository
 from musicvault.db.repositories.review_repo import ReviewRepository
 from musicvault.db.repositories.rule_repo import RuleRepository
+from musicvault.db.repositories.track_repo import TrackRepository
 
 
 def test_bootstrap_wires_provided_paths_and_config(
@@ -53,11 +56,19 @@ def test_bootstrap_creates_the_database_file_with_all_tables(
             row.name
             for row in conn.execute(text("SELECT name FROM sqlite_master WHERE type = 'table'"))
         }
-    assert {"jobs", "review_items", "rules", "file_identity"}.issubset(tables)
+    assert {
+        "jobs",
+        "review_items",
+        "rules",
+        "file_identity",
+        "tracks",
+        "albums",
+        "artists",
+    }.issubset(tables)
     container.close()
 
 
-def test_bootstrap_wires_all_four_phase_2_repositories(
+def test_bootstrap_wires_all_phase_2_repositories(
     app_paths: AppPaths, app_config: AppConfig
 ) -> None:
     container = Container.bootstrap(paths=app_paths, config=app_config)
@@ -66,6 +77,17 @@ def test_bootstrap_wires_all_four_phase_2_repositories(
     assert isinstance(container.review_repo, ReviewRepository)
     assert isinstance(container.rule_repo, RuleRepository)
     assert isinstance(container.file_identity_repo, FileIdentityRepository)
+    container.close()
+
+
+def test_bootstrap_wires_all_phase_3_repositories(
+    app_paths: AppPaths, app_config: AppConfig
+) -> None:
+    container = Container.bootstrap(paths=app_paths, config=app_config)
+
+    assert isinstance(container.track_repo, TrackRepository)
+    assert isinstance(container.album_repo, AlbumRepository)
+    assert isinstance(container.artist_repo, ArtistRepository)
     container.close()
 
 

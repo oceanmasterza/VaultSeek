@@ -4,9 +4,14 @@ Every repository test needs a real, schema-initialized SQLite database
 with foreign keys enforced, and — since `jobs`, `review_items`, `rules`,
 and `file_identity` all require a valid `library_id` (and
 `file_identity` requires a valid `track_id`) — a library and track row
-already inserted to satisfy those foreign keys. There are no
-`LibraryRepository`/`TrackRepository` yet (Phase 3), so these fixtures
-insert directly via Core rather than through a repository.
+already inserted to satisfy those foreign keys. There is still no
+`LibraryRepository` (no phase creates one yet — libraries are seeded by
+the user via the GUI in later phases, not scanned/upserted in bulk like
+tracks), so the `library_id` fixture inserts directly via Core. The
+`track_id` fixture could go through `TrackRepository` now that it
+exists, but stays on a direct Core insert too, to keep both fixtures
+consistent and independent of the repository under test in
+`test_track_repo.py`.
 """
 
 from __future__ import annotations
@@ -18,7 +23,7 @@ from uuid import UUID
 import pytest
 from sqlalchemy import Engine, create_engine, event, insert
 
-from musicvault.db.tables import libraries, metadata, tracks
+from musicvault.db.tables import artists, libraries, metadata, tracks
 from musicvault.db.uuid_utils import generate_uuid7, uuid_to_blob
 
 
@@ -55,6 +60,25 @@ def library_id(engine: Engine) -> UUID:
             )
         )
     return lib_id
+
+
+@pytest.fixture
+def artist_id(engine: Engine) -> UUID:
+    """A valid `artists.id` for tests that need a real FK target on
+    `tracks.artist_id`/`albums.album_artist_id` without exercising
+    `ArtistRepository` itself."""
+    art_id = generate_uuid7()
+    with engine.begin() as conn:
+        conn.execute(
+            insert(artists).values(
+                id=uuid_to_blob(art_id),
+                name="Test Artist",
+                sort_name="Artist, Test",
+                created_at="2026-07-15T00:00:00",
+                updated_at="2026-07-15T00:00:00",
+            )
+        )
+    return art_id
 
 
 @pytest.fixture

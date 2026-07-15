@@ -29,14 +29,17 @@ Collectors, audiophiles, and self-hosted media server operators using **Navidrom
 
 ## Status
 
-**Phase 2 — Database Layer** (current)
+**Phase 3 — Domain Models** (current)
 
 Architecture is finalized (v3). The runnable scaffold exists: DI container, versioned
 config, logging, event bus, and CI pipeline. The database layer is in place: SQLAlchemy
 Core tables (all 15 fully-specified v2 tables), UUIDv7 primary keys, Alembic migrations,
-and the job/review/rule/file-identity repositories — all wired into application startup,
-which auto-creates and migrates the database on first run. `python -m musicvault`
-bootstraps and exits cleanly. See [Architecture Documentation](docs/architecture/README.md).
+and repositories for jobs, reviews, rules, file identity, tracks, albums, and artists —
+all wired into application startup, which auto-creates and migrates the database on
+first run. The domain layer now includes `Track`/`Album`/`Artist` entities,
+`QualityScorer`, `RenameEngine`, and a rules AST for condition evaluation.
+`python -m musicvault` bootstraps and exits cleanly. See
+[Architecture Documentation](docs/architecture/README.md).
 
 ```powershell
 git clone https://github.com/musicvault/musicvault.git
@@ -44,7 +47,7 @@ cd musicvault
 python -m venv .venv
 .venv\Scripts\activate
 pip install -e ".[dev]"
-pytest              # 127 passed
+pytest              # 213 passed
 python -m musicvault  # MusicVault 0.1.0
 ```
 
@@ -100,8 +103,10 @@ python -m musicvault  # MusicVault 0.1.0
 |-------|-----------|--------|
 | 0 | Architecture v1 | Complete |
 | 0b | Architecture v2 revision | Complete |
-| **1** | **Scaffold + CI** | **Current** |
-| 2–16 | Database → GUI → Plugins → Installer | Planned |
+| 1 | Scaffold + CI | Complete |
+| 2 | Database Layer | Complete |
+| **3** | **Domain Models** | **Current** |
+| 4–16 | Job Dispatcher → GUI → Plugins → Installer | Planned |
 
 ## License
 
