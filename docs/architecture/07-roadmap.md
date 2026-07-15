@@ -154,7 +154,8 @@ Phase 16  ░░░░░░░░░░ Packaging + installer
 - [x] `pytest` passes (127/127, 98% coverage)
 - [x] `mypy`, `ruff check`, `black --check` pass
 - [x] `lint-imports` passes (3/3 contracts kept)
-- [x] Git commit: `feat: database layer with UUIDv7, Alembic migrations, and Phase 2 repositories`
+- [x] GitHub Actions green on push (verified: https://github.com/oceanmasterza/MusicVault/actions/runs/29395697039)
+- [x] Git commit: `feat: Phase 2 database layer with UUIDv7, Alembic migrations, and repositories`
 
 ### Notes
 - **`DatabaseError` added to `core/exceptions.py`** so `db/migrations/runner.py` can
