@@ -45,7 +45,12 @@ def dispatcher(
     disp.stop()
 
 
-def _wait_until(predicate: Callable[[], bool], *, timeout: float = 5.0) -> bool:
+def _wait_until(predicate: Callable[[], bool], *, timeout: float = 20.0) -> bool:
+    """20s (not a tighter, snappier value) because `ProcessPoolExecutor`
+    spawn time on Windows CI runners is meaningfully slower and more
+    variable than on a local dev machine — the worker process has to
+    boot a fresh interpreter and re-import SQLAlchemy et al. before
+    `compute_hash` can even run."""
     deadline = time.monotonic() + timeout
     while time.monotonic() < deadline:
         if predicate():
@@ -87,7 +92,7 @@ def test_run_cycle_dispatches_a_scan_directory_job_via_the_thread_pool(
 
     futures = dispatcher.run_cycle()
     assert len(futures) == 1
-    futures[0].result(timeout=5)  # ThreadPool path: no done-callback race
+    futures[0].result(timeout=20)  # ThreadPool path: no done-callback race
 
     job = job_repo.get(job_id)
     assert job is not None
@@ -135,7 +140,7 @@ def test_run_cycle_promotes_due_retries_before_claiming(
     futures = dispatcher.run_cycle()
 
     assert len(futures) == 1
-    futures[0].result(timeout=5)
+    futures[0].result(timeout=20)
     assert job_repo.get(job_id).status is JobStatus.COMPLETED  # type: ignore[union-attr]
 
 
