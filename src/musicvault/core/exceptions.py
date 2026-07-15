@@ -39,6 +39,10 @@ class PluginLoadError(PluginError):
         self.cause = cause
 
 
+class DatabaseError(MusicVaultError):
+    """Raised when the database cannot be opened, migrated, or queried."""
+
+
 class JobError(MusicVaultError):
     """Base class for job queue and worker failures."""
 

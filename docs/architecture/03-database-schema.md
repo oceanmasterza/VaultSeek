@@ -369,14 +369,26 @@ Central job queue — the backbone of all background processing.
 
 ## Artwork, Plugins, Statistics
 
-Structure unchanged from v1 except all PKs/FKs are UUID v7 stored as **BLOB(16)**
-(see [12-pipeline-engine-v3.md](12-pipeline-engine-v3.md#uuid-storage-v7-as-blob16)).
-See v1 schema for column details.
+> **Documentation gap, found during Phase 2 (2026-07-15)**: this section originally
+> said "unchanged from v1, see v1 schema for column details" — but the v1 schema
+> document no longer exists (fully superseded by this v2 document), so the column
+> details for `artwork`, `track_artwork`, `album_artwork`, and `plugin_state` were
+> never actually carried forward. Rather than invent columns without a real spec,
+> these tables are **deferred and will be designed properly when their owning phase
+> starts**: `artwork`/`track_artwork`/`album_artwork` in Phase 11 (Artwork worker),
+> `plugin_state` in Phase 6 (metadata providers) or Phase 15 (media server plugins).
+> `library_stats` is deferred to Phase 13 (Reports) for the same reason.
+> `media_server_state` is fully specified below and **is** created in Phase 2.
 
-Additional tables:
-- `artwork`, `track_artwork`, `album_artwork`
-- `plugin_state`
-- `library_stats` (materialized dashboard counters)
+Structure (once designed) will follow v2 conventions: all PKs/FKs are UUID v7 stored
+as **BLOB(16)** (see [12-pipeline-engine-v3.md](12-pipeline-engine-v3.md#uuid-storage-v7-as-blob16)).
+
+Deferred tables (not yet created):
+- `artwork`, `track_artwork`, `album_artwork` — Phase 11
+- `plugin_state` — Phase 6/15
+- `library_stats` (materialized dashboard counters) — Phase 13
+
+Created in Phase 2:
 - `media_server_state` (connection config, last sync per server plugin)
 
 ### `media_server_state`

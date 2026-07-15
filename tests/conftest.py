@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterator
 from pathlib import Path
 
 import pytest
@@ -32,6 +33,12 @@ def app_config() -> AppConfig:
 
 
 @pytest.fixture
-def container(app_paths: AppPaths, app_config: AppConfig) -> Container:
-    """A fully wired container using isolated test paths and default config."""
-    return Container.bootstrap(paths=app_paths, config=app_config)
+def container(app_paths: AppPaths, app_config: AppConfig) -> Iterator[Container]:
+    """A fully wired container using isolated test paths and default config.
+
+    Closes the container's database engine on teardown so tests don't
+    leak SQLite connections into later test cases.
+    """
+    built = Container.bootstrap(paths=app_paths, config=app_config)
+    yield built
+    built.close()

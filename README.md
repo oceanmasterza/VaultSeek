@@ -29,11 +29,14 @@ Collectors, audiophiles, and self-hosted media server operators using **Navidrom
 
 ## Status
 
-**Phase 1 — Project Scaffold** (current)
+**Phase 2 — Database Layer** (current)
 
 Architecture is finalized (v3). The runnable scaffold exists: DI container, versioned
-config, logging, event bus, and CI pipeline. `python -m musicvault` bootstraps and exits
-cleanly. See [Architecture Documentation](docs/architecture/README.md).
+config, logging, event bus, and CI pipeline. The database layer is in place: SQLAlchemy
+Core tables (all 15 fully-specified v2 tables), UUIDv7 primary keys, Alembic migrations,
+and the job/review/rule/file-identity repositories — all wired into application startup,
+which auto-creates and migrates the database on first run. `python -m musicvault`
+bootstraps and exits cleanly. See [Architecture Documentation](docs/architecture/README.md).
 
 ```powershell
 git clone https://github.com/musicvault/musicvault.git
@@ -41,7 +44,7 @@ cd musicvault
 python -m venv .venv
 .venv\Scripts\activate
 pip install -e ".[dev]"
-pytest              # 43 passed
+pytest              # 127 passed
 python -m musicvault  # MusicVault 0.1.0
 ```
 

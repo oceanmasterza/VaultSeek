@@ -1,9 +1,10 @@
 """Application bootstrap sequence.
 
-Wires together paths, configuration, logging, and the dependency
+Wires together paths, configuration, logging, the database (migrated
+and opened by :meth:`Container.bootstrap`), and the dependency
 injection container. This module contains no GUI code — see
 docs/architecture/01-overview.md for the full startup flow once the
-database, job queue, and GUI layers exist (Phases 2–14).
+job queue and GUI layers exist (Phases 4–14).
 """
 
 from __future__ import annotations

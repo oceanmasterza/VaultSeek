@@ -20,8 +20,8 @@ classifiers = [
     "Topic :: Multimedia :: Sound/Audio :: Editors",
 ]
 
-# Runtime dependencies for the full application. Phase 1 only exercises the
-# standard library plus loguru; the remainder are declared now so later
+# Runtime dependencies for the full application. Phase 1 only exercised the
+# standard library plus loguru; the remainder are declared upfront so later
 # phases add functionality without churning project metadata.
 dependencies = [
     "PySide6>=6.7",
@@ -33,6 +33,7 @@ dependencies = [
     "Pillow>=10.4",
     "requests>=2.32",
     "Send2Trash>=1.8",
+    "psutil>=6.0",
     "loguru>=0.7",
 ]
 
@@ -47,6 +48,7 @@ dev = [
     "import-linter>=2.0",
     "responses>=0.25",
     "types-requests>=2.32",
+    "types-psutil>=6.0",
 ]
 build = [
     "pyinstaller>=6.0",

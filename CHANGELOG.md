@@ -7,6 +7,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Phase 2 database layer** — SQLAlchemy Core, UUIDv7, Alembic migrations, and the
+  first four repositories:
+  - `db/tables.py` — all 15 fully-specified v2 tables as SQLAlchemy Core `Table`
+    objects (5 additional tables — `artwork`, `track_artwork`, `album_artwork`,
+    `plugin_state`, `library_stats` — are deferred to the phases that actually need
+    them; their schemas were never fully documented, see `07-roadmap.md`)
+  - `db/uuid_utils.py` — `uuid7()` generation + `uuid_to_blob`/`blob_to_uuid`
+    conversion for `BLOB(16)` primary keys
+  - `db/engine.py` — SQLite engine factory applying WAL mode, foreign keys,
+    busy timeout, and adaptive `mmap_size` (25% of available RAM, floored at
+    256 MB, capped at 30 GB) on every pooled connection
+  - Alembic migrations (`db/migrations/`) with a programmatic `run_migrations`/
+    `downgrade_migrations` runner, `black`/`ruff` post-write hooks, and the
+    `0001_initial_schema` migration
+  - `db/repositories/base.py` — generic `batch_upsert` (SQLite
+    `INSERT ... ON CONFLICT DO UPDATE`), proven against 500 `jobs` rows in
+    under a second
+  - `JobRepository`, `ReviewRepository`, `RuleRepository`, `FileIdentityRepository`,
+    with minimal entities/value objects (`Job`, `ReviewItem`, `Rule`,
+    `FileIdentity`) pulled forward from Phase 3 as their return types
+  - `core/exceptions.DatabaseError` — translates Alembic/SQLAlchemy failures at
+    the migration boundary into MusicVault's own exception hierarchy
+  - `Container.bootstrap` now runs migrations and opens the database on every
+    application startup (satisfying "DB auto-created on first run"), and
+    `Container.close()` disposes the engine on shutdown
+  - 127 tests total (up from 43), 98% coverage
+
 ### Fixed
 
 - **Corrected minimum Python version from 3.13 to 3.14** across `pyproject.toml`, both

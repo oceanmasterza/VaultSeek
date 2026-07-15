@@ -1,9 +1,10 @@
 """Command-line entry point: ``python -m musicvault``.
 
-Phase 1 only verifies that the application can bootstrap successfully —
-load configuration, configure logging, and build the dependency
-container — then exits. The GUI entry point is introduced in Phase 14
-(see docs/architecture/07-roadmap.md).
+For now this only verifies that the application can bootstrap
+successfully — load configuration, configure logging, migrate and open
+the database, and build the dependency container — then exits. The GUI
+entry point is introduced in Phase 14 (see
+docs/architecture/07-roadmap.md).
 """
 
 from __future__ import annotations
@@ -30,7 +31,10 @@ def main() -> int:
         print(f"Failed to start MusicVault: {exc}", file=sys.stderr)
         return 1
 
-    logger.info("MusicVault {} ready (data directory: {})", __version__, container.paths.root)
+    try:
+        logger.info("MusicVault {} ready (data directory: {})", __version__, container.paths.root)
+    finally:
+        container.close()
     return 0
 
 

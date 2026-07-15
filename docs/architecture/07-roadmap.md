@@ -16,8 +16,8 @@
 ```
 Phase 0   ██████████ Architecture v1
 Phase 0b  ██████████ Architecture v2 revision (CURRENT)
-Phase 1   ░░░░░░░░░░ Scaffold + CI
-Phase 2   ░░░░░░░░░░ Database (Core + UUID + jobs)
+Phase 1   ██████████ Scaffold + CI
+Phase 2   ██████████ Database (Core + UUID + jobs)
 Phase 3   ░░░░░░░░░░ Domain models + repositories
 Phase 4   ░░░░░░░░░░ Job dispatcher + scanner/hash workers
 Phase 5   ░░░░░░░░░░ Fingerprint worker + persistence
@@ -101,21 +101,76 @@ Phase 16  ░░░░░░░░░░ Packaging + installer
 
 ## Phase 2: Database Layer
 
+**Status**: Complete
+
 **Goal**: SQLAlchemy Core tables, Alembic migrations, UUID schema, job queue tables.
 
 ### Key Deliverables
-- `db/tables.py` — Core table definitions
-- `db/uuid_utils.py` — `uuid_to_blob` / `blob_to_uuid` conversion helpers
-- `db/engine.py` — engine factory + PRAGMA setup (see [12-pipeline-engine-v3.md](12-pipeline-engine-v3.md))
-- Alembic migration `001_initial_schema_v2`
-- Repository implementations (Core, batch upsert)
-- Job, review, rules, file_identity repositories
+- [x] `db/tables.py` — Core table definitions (the 15 fully-specified v2 tables; see
+  scope note below)
+- [x] `db/uuid_utils.py` — `uuid7()` generation + `uuid_to_blob` / `blob_to_uuid` conversion helpers
+- [x] `db/engine.py` — engine factory + PRAGMA setup (see [12-pipeline-engine-v3.md](12-pipeline-engine-v3.md))
+- [x] Alembic migration `0001_initial_schema`
+- [x] `db/repositories/base.py` — generic batch upsert helper (Core, SQLite upsert)
+- [x] Job, review, rules, file_identity repositories
+- [x] Minimal entities pulled forward from Phase 3 (`Job`, `ReviewItem`, `Rule` in
+  `models/entities/`; `FileIdentity` in `models/value_objects/`) — needed as the
+  return type for this phase's repositories; the *richer* domain models (Track,
+  Album, Artist, QualityScorer, DuplicateMatcher, rules AST evaluation) remain in
+  Phase 3 as originally scoped
+- [x] Migrations wired into `Container.bootstrap` (`core/container.py`) so the
+  database is auto-created and migrated to head on every application startup,
+  with the four repositories constructed and attached to the container
+
+### Scope Decisions (recorded 2026-07-15, confirmed with user before implementation)
+1. **Only 4 repositories now**: job, review, rule, file_identity — matching the
+   original deliverable list exactly. Track/Album/Artist repositories wait for
+   Phase 3, since they depend on domain services (quality scoring, duplicate
+   matching) that don't exist yet.
+2. **"Batch upsert 500 tracks < 1 second" acceptance criterion is deferred** to
+   Phase 3, when a Track repository exists to literally test that claim. For
+   Phase 2, the same generic batch-upsert mechanism is proven against the `jobs`
+   table instead (see acceptance criteria below).
+3. **The single-writer DB thread (`db/writer.py`) is deferred to Phase 4.** It
+   exists to prevent concurrent workers from corrupting SQLite via simultaneous
+   writes — but no concurrent workers exist until Phase 4. Building it now, with
+   nothing to test it against, would be unverifiable. Phase 2 repositories write
+   directly and synchronously, which is safe with a single writer thread (the
+   only thing running so far).
+4. **5 tables deferred — undocumented, not guessed.** `artwork`, `track_artwork`,
+   `album_artwork`, `plugin_state`, and `library_stats` were referenced in
+   `03-database-schema.md` as "unchanged from v1," but the v1 document no longer
+   exists and their column definitions were never actually written down. Rather
+   than invent a schema without a real spec, these are deferred to the phases
+   that actually need them (11, 6/15, 13 respectively) and will be designed
+   properly at that time. See the note in
+   [03-database-schema.md](03-database-schema.md#artwork-plugins-statistics).
 
 ### Acceptance Criteria
-- DB auto-created on first run with all v2 tables
-- UUID v7 generated for all PKs
-- Batch upsert 500 tracks < 1 second
-- Alembic upgrade/downgrade works
+- [x] DB auto-created on first run with all 15 fully-specified v2 tables
+- [x] UUID v7 generated for all PKs
+- [x] Batch upsert 500 rows into `jobs` < 1 second (see Scope Decision 2)
+- [x] Alembic upgrade/downgrade works (round-trip creates and drops all tables cleanly)
+- [x] `pytest` passes (127/127, 98% coverage)
+- [x] `mypy`, `ruff check`, `black --check` pass
+- [x] `lint-imports` passes (3/3 contracts kept)
+- [x] Git commit: `feat: database layer with UUIDv7, Alembic migrations, and Phase 2 repositories`
+
+### Notes
+- **`DatabaseError` added to `core/exceptions.py`** so `db/migrations/runner.py` can
+  translate Alembic/SQLAlchemy failures (locked files, missing directories, corrupt
+  databases) into the application's own exception hierarchy — callers (currently
+  `Container.bootstrap`, eventually the GUI's startup error dialog) only need to
+  catch `MusicVaultError`.
+- **`Container.close()` added** to dispose the database engine's connection pool.
+  `python -m musicvault` calls it before exiting; the test suite's `container`
+  fixture calls it on teardown so tests don't leak SQLite connections into later
+  test cases.
+- Repository tests live under `tests/unit/db/repositories/`, with a shared
+  `conftest.py` providing a schema-initialized temp database plus `library_id`/
+  `track_id` fixtures (inserted directly via Core, since `LibraryRepository`/
+  `TrackRepository` don't exist until Phase 3) to satisfy the foreign keys that
+  `jobs`, `review_items`, `rules`, and `file_identity` all require.
 
 ---
 
