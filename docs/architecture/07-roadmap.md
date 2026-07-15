@@ -79,7 +79,7 @@ Phase 16  ░░░░░░░░░░ Packaging + installer
 - [x] `mypy src/ --strict` passes (0 errors, 29 files)
 - [x] `ruff check` and `black --check` pass
 - [x] `lint-imports` passes (3/3 contracts kept)
-- [ ] GitHub Actions green on push (verify after push to remote)
+- [x] GitHub Actions green on push (verified: https://github.com/oceanmasterza/MusicVault/actions)
 - [x] Git commit: `feat: project scaffold with CI pipeline`
 
 ### Notes
