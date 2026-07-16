@@ -7,9 +7,8 @@ component trivially testable: a test builds its own container from a
 temporary directory and an in-memory configuration instead of relying on
 global state.
 
-Later phases extend this container with the plugin manager and
-application services as those layers are implemented (see
-docs/architecture/07-roadmap.md).
+Later phases extend this container with additional services as those
+layers are implemented (see docs/architecture/07-roadmap.md).
 """
 
 from __future__ import annotations
@@ -18,7 +17,7 @@ from dataclasses import dataclass, field
 
 from sqlalchemy import Engine
 
-from musicvault.core.config import AppConfig
+from musicvault.core.config import AppConfig, MetadataConfig
 from musicvault.core.event_bus import EventBus
 from musicvault.core.paths import AppPaths
 from musicvault.db.engine import create_sqlite_engine
@@ -27,14 +26,23 @@ from musicvault.db.repositories.album_repo import AlbumRepository
 from musicvault.db.repositories.artist_repo import ArtistRepository
 from musicvault.db.repositories.file_identity_repo import FileIdentityRepository
 from musicvault.db.repositories.job_repo import JobRepository
+from musicvault.db.repositories.metadata_confidence_repo import MetadataConfidenceRepository
 from musicvault.db.repositories.review_repo import ReviewRepository
 from musicvault.db.repositories.rule_repo import RuleRepository
 from musicvault.db.repositories.track_repo import TrackRepository
 from musicvault.db.writer import DatabaseWriter
+from musicvault.models.interfaces.metadata import MetadataProvider
+from musicvault.plugins.builtin.acoustid import AcoustIdProvider
+from musicvault.plugins.builtin.filename_parser import FilenameParserProvider
+from musicvault.plugins.builtin.local_tags import LocalTagsProvider
+from musicvault.plugins.builtin.musicbrainz import MusicBrainzProvider
+from musicvault.plugins.manager import PluginManager
 from musicvault.services.job_dispatcher import JobDispatcher
 from musicvault.services.job_queue_service import JobQueueService
+from musicvault.services.metadata_arbitrator import MetadataArbitrator
 from musicvault.workers.cpu.fingerprint_worker import FingerprintWorker
 from musicvault.workers.cpu.hash_worker import HashWorker
+from musicvault.workers.io.metadata_worker import MetadataWorker
 from musicvault.workers.io.scanner_worker import ScannerWorker
 
 
@@ -52,11 +60,15 @@ class Container:
     track_repo: TrackRepository
     album_repo: AlbumRepository
     artist_repo: ArtistRepository
+    metadata_confidence_repo: MetadataConfidenceRepository
     database_writer: DatabaseWriter
     job_queue: JobQueueService
+    plugin_manager: PluginManager
+    metadata_arbitrator: MetadataArbitrator
     scanner_worker: ScannerWorker
     hash_worker: HashWorker
     fingerprint_worker: FingerprintWorker
+    metadata_worker: MetadataWorker
     dispatcher: JobDispatcher
     event_bus: EventBus = field(default_factory=EventBus)
 
@@ -87,6 +99,7 @@ class Container:
         job_repo = JobRepository(engine)
         track_repo = TrackRepository(engine)
         file_identity_repo = FileIdentityRepository(engine)
+        metadata_confidence_repo = MetadataConfidenceRepository(engine)
 
         database_writer = DatabaseWriter(
             engine,
@@ -94,16 +107,32 @@ class Container:
             flush_interval_ms=config.pipeline.db_writer_flush_interval_ms,
         )
         job_queue = JobQueueService(job_repo, config.pipeline)
+
+        plugin_manager = PluginManager(_build_metadata_providers(config.metadata))
+        metadata_arbitrator = MetadataArbitrator(
+            plugin_manager.get_metadata_providers(),
+            confidence_threshold=config.metadata.confidence_threshold,
+        )
+
         scanner_worker = ScannerWorker(track_repo, file_identity_repo, database_writer, job_queue)
         hash_worker = HashWorker(file_identity_repo, database_writer, job_queue)
         fingerprint_worker = FingerprintWorker(file_identity_repo, database_writer, job_queue)
+        metadata_worker = MetadataWorker(
+            track_repo,
+            file_identity_repo,
+            metadata_confidence_repo,
+            metadata_arbitrator,
+            job_queue,
+        )
         dispatcher = JobDispatcher(
             job_queue,
             scanner_worker,
             hash_worker,
             fingerprint_worker,
+            metadata_worker,
             scanner_threads=config.pipeline.scanner_worker_threads,
             hash_processes=config.pipeline.hash_worker_processes,
+            metadata_threads=config.pipeline.metadata_worker_threads,
             claim_batch_size=config.pipeline.job_claim_batch_size,
         )
 
@@ -122,24 +151,44 @@ class Container:
             track_repo=track_repo,
             album_repo=AlbumRepository(engine),
             artist_repo=ArtistRepository(engine),
+            metadata_confidence_repo=metadata_confidence_repo,
             database_writer=database_writer,
             job_queue=job_queue,
+            plugin_manager=plugin_manager,
+            metadata_arbitrator=metadata_arbitrator,
             scanner_worker=scanner_worker,
             hash_worker=hash_worker,
             fingerprint_worker=fingerprint_worker,
+            metadata_worker=metadata_worker,
             dispatcher=dispatcher,
         )
 
     def close(self) -> None:
         """Release resources held by this container.
 
-        Stops the dispatcher (waiting for any in-flight scan/hash work to
-        finish) and the database writer thread (flushing anything still
-        buffered) before disposing the database engine's connection pool.
-        Call this during application shutdown; tests should call it (or
-        use the ``container`` fixture, which does) to avoid leaking
+        Stops the dispatcher (waiting for any in-flight scan/hash/metadata
+        work to finish) and the database writer thread (flushing anything
+        still buffered) before disposing the database engine's connection
+        pool. Call this during application shutdown; tests should call it
+        (or use the ``container`` fixture, which does) to avoid leaking
         SQLite connections and background threads across test cases.
         """
         self.dispatcher.stop()
         self.database_writer.stop()
         self.engine.dispose()
+
+
+def _build_metadata_providers(metadata: MetadataConfig) -> list[MetadataProvider]:
+    """Construct enabled built-in metadata providers (explicit wiring —
+    entry-point discovery stays a later phase)."""
+    enabled = set(metadata.enabled_providers)
+    providers: list[MetadataProvider] = []
+    if "acoustid" in enabled:
+        providers.append(AcoustIdProvider(api_key=metadata.acoustid_api_key or None))
+    if "musicbrainz" in enabled:
+        providers.append(MusicBrainzProvider())
+    if "local_tags" in enabled:
+        providers.append(LocalTagsProvider())
+    if "filename_parser" in enabled:
+        providers.append(FilenameParserProvider())
+    return providers

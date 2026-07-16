@@ -1,5 +1,5 @@
 {
-  "schema_version": 2,
+  "schema_version": 3,
   "log_level": "INFO",
   "theme": "dark",
   "pipeline": {
@@ -8,7 +8,14 @@
     "job_claim_batch_size": 10,
     "scanner_worker_threads": 1,
     "hash_worker_processes": null,
+    "metadata_worker_threads": 1,
     "retry_base_delay_seconds": 5.0,
     "retry_max_delay_seconds": 300.0
+  },
+  "metadata": {
+    "confidence_threshold": 0.90,
+    "provider_order": ["acoustid", "musicbrainz", "local_tags", "filename_parser"],
+    "enabled_providers": ["acoustid", "musicbrainz", "local_tags", "filename_parser"],
+    "acoustid_api_key": ""
   }
 }

@@ -9,6 +9,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Phase 6 metadata arbitrator + providers** — multi-source identification
+  with per-field confidence:
+  - `MetadataProvider` protocol + query/result types
+    (`models/interfaces/metadata.py`)
+  - Built-in providers: AcoustID (HTTP), MusicBrainz, local tags (Mutagen),
+    filename parser (`plugins/builtin/`)
+  - `MetadataArbitrator` — cascade + per-field arbitration;
+    `overall_confidence = min(field confidences)`; sets `needs_review`
+  - `MetadataConfidenceRepository` + `MetadataWorker` (I/O thread pool)
+  - `MetadataConfig` / config schema v2→v3 (provider enablement, order,
+    threshold, AcoustID API key, `metadata_worker_threads`)
+  - `PluginManager` + `Container` wiring; dispatcher claim-then-dispatch
+  - Downstream artwork/duplicates/rules jobs and `review_items` deferred
+    to Phase 7+
+  - 333 tests total (up from 298)
+
+### Added
+
 - **Phase 5 fingerprint worker + Chromaprint persistence** — the next
   pipeline stage after hashing:
   - `FingerprintProvider` / `FingerprintResult`

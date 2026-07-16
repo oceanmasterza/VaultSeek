@@ -6,13 +6,6 @@ Configuration is stored as a single JSON document at
 through a chain of pure functions registered in ``_MIGRATIONS`` until they
 reach :data:`CURRENT_SCHEMA_VERSION`, so upgrading MusicVault never
 requires the user to manually edit or delete their configuration file.
-
-The :class:`AppConfig` dataclass intentionally stays small in Phase 1.
-Sections that configure entities which do not exist yet — library zones,
-watch-folder behaviour, metadata provider priority, rules — are added in
-the phases that introduce those entities (see
-docs/architecture/07-roadmap.md) rather than being stubbed out here
-unused.
 """
 
 from __future__ import annotations
@@ -25,33 +18,46 @@ from typing import Any
 
 from musicvault.core.exceptions import ConfigError, ConfigMigrationError, ConfigVersionError
 
-CURRENT_SCHEMA_VERSION = 2
+CURRENT_SCHEMA_VERSION = 3
 
 
 @dataclass(frozen=True)
 class PipelineConfig:
-    """Tunables for the job queue, dispatcher, and database writer thread
-    (Phase 4 — see docs/architecture/12-pipeline-engine-v3.md, "Execution
-    Engine Architecture"). Defaults match the architecture docs exactly
-    where they specify a value (batch size, flush interval, claim batch
-    size, from 08-performance.md's "Database Writer Queue" table).
-
-    ``hash_worker_processes=None`` means "use every physical core"
-    (``os.process_cpu_count()``), matching the docs' "expect near-linear
-    scaling up to physical core count." `retry_base_delay_seconds` /
-    `retry_max_delay_seconds` aren't quantified anywhere beyond
-    "exponential backoff" (10-revision-v2.md, "Resume After Crash") — this
-    implementation's own reasonable default: ``delay = base * 2**attempt``,
-    capped at ``retry_max_delay_seconds``.
-    """
+    """Tunables for the job queue, dispatcher, and database writer thread."""
 
     db_writer_batch_size: int = 5_000
     db_writer_flush_interval_ms: int = 500
     job_claim_batch_size: int = 10
     scanner_worker_threads: int = 1
     hash_worker_processes: int | None = None
+    metadata_worker_threads: int = 1
     retry_base_delay_seconds: float = 5.0
     retry_max_delay_seconds: float = 300.0
+
+
+@dataclass(frozen=True)
+class MetadataConfig:
+    """Metadata provider enablement, priority order, and API keys.
+
+    ``provider_order`` lists provider ids from highest to lowest priority
+    for settings / display; the built-in providers still carry their own
+    numeric ``priority`` fields used by the arbitrator.
+    """
+
+    confidence_threshold: float = 0.90
+    provider_order: tuple[str, ...] = (
+        "acoustid",
+        "musicbrainz",
+        "local_tags",
+        "filename_parser",
+    )
+    enabled_providers: tuple[str, ...] = (
+        "acoustid",
+        "musicbrainz",
+        "local_tags",
+        "filename_parser",
+    )
+    acoustid_api_key: str = ""
 
 
 @dataclass(frozen=True)
@@ -62,10 +68,18 @@ class AppConfig:
     log_level: str = "INFO"
     theme: str = "dark"
     pipeline: PipelineConfig = field(default_factory=PipelineConfig)
+    metadata: MetadataConfig = field(default_factory=MetadataConfig)
 
     def to_dict(self) -> dict[str, Any]:
         """Return a plain-dict representation suitable for JSON serialization."""
-        return asdict(self)
+        data = asdict(self)
+        metadata = data.get("metadata")
+        if isinstance(metadata, dict):
+            for key in ("provider_order", "enabled_providers"):
+                value = metadata.get(key)
+                if isinstance(value, tuple):
+                    metadata[key] = list(value)
+        return data
 
 
 def default_config() -> AppConfig:
@@ -74,19 +88,25 @@ def default_config() -> AppConfig:
 
 
 def _migrate_v1_to_v2(raw: dict[str, Any]) -> dict[str, Any]:
-    """v1 configs predate the job pipeline (Phase 4) — add its defaults."""
     migrated = dict(raw)
     migrated["schema_version"] = 2
     migrated["pipeline"] = asdict(PipelineConfig())
     return migrated
 
 
-# Each migration receives the raw dict at version N and must return a new
-# dict upgraded to version N + 1, including the updated 'schema_version'
-# key. Register a new entry here every time CURRENT_SCHEMA_VERSION is
-# incremented; never mutate a past migration once it has shipped.
+def _migrate_v2_to_v3(raw: dict[str, Any]) -> dict[str, Any]:
+    migrated = dict(raw)
+    migrated["schema_version"] = 3
+    pipeline = dict(migrated.get("pipeline") or asdict(PipelineConfig()))
+    pipeline.setdefault("metadata_worker_threads", 1)
+    migrated["pipeline"] = pipeline
+    migrated["metadata"] = asdict(MetadataConfig())
+    return migrated
+
+
 _MIGRATIONS: dict[int, Callable[[dict[str, Any]], dict[str, Any]]] = {
     1: _migrate_v1_to_v2,
+    2: _migrate_v2_to_v3,
 }
 
 
@@ -125,19 +145,21 @@ def _from_dict(raw: dict[str, Any]) -> AppConfig:
             **{key: value for key, value in pipeline_raw.items() if key in pipeline_fields}
         )
 
+    metadata_raw = filtered.get("metadata")
+    if isinstance(metadata_raw, dict):
+        metadata_fields = set(MetadataConfig.__dataclass_fields__)
+        coerced = {key: value for key, value in metadata_raw.items() if key in metadata_fields}
+        if "provider_order" in coerced and isinstance(coerced["provider_order"], list):
+            coerced["provider_order"] = tuple(coerced["provider_order"])
+        if "enabled_providers" in coerced and isinstance(coerced["enabled_providers"], list):
+            coerced["enabled_providers"] = tuple(coerced["enabled_providers"])
+        filtered["metadata"] = MetadataConfig(**coerced)
+
     return AppConfig(**filtered)
 
 
 def load_config(path: Path) -> AppConfig:
-    """Load configuration from ``path``, creating it with defaults if missing.
-
-    Raises:
-        ConfigError: if the file exists but contains invalid JSON, or its
-            contents are not a JSON object.
-        ConfigVersionError: if the schema version is missing, malformed, or
-            newer than this build supports.
-        ConfigMigrationError: if migrating an older schema version fails.
-    """
+    """Load configuration from ``path``, creating it with defaults if missing."""
     if not path.exists():
         config = default_config()
         save_config(config, path)
@@ -155,8 +177,6 @@ def load_config(path: Path) -> AppConfig:
     config = _from_dict(migrated)
 
     if migrated is not raw:
-        # A migration ran — persist the upgraded document immediately so
-        # the on-disk file never silently lags behind the in-memory value.
         save_config(config, path)
 
     return config

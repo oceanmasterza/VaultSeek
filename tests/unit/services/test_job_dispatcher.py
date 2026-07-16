@@ -11,16 +11,21 @@ from typing import Any
 from uuid import UUID
 
 import pytest
+from sqlalchemy import Engine
 
 from musicvault.db.repositories.file_identity_repo import FileIdentityRepository
 from musicvault.db.repositories.job_repo import JobRepository
+from musicvault.db.repositories.metadata_confidence_repo import MetadataConfidenceRepository
 from musicvault.db.repositories.track_repo import TrackRepository
 from musicvault.db.writer import DatabaseWriter
 from musicvault.models.entities.job import JobStatus, JobType
+from musicvault.plugins.builtin.filename_parser import FilenameParserProvider
 from musicvault.services.job_dispatcher import JobDispatcher
 from musicvault.services.job_queue_service import JobQueueService
+from musicvault.services.metadata_arbitrator import MetadataArbitrator
 from musicvault.workers.cpu.fingerprint_worker import FingerprintWorker
 from musicvault.workers.cpu.hash_worker import HashWorker
+from musicvault.workers.io.metadata_worker import MetadataWorker
 from musicvault.workers.io.scanner_worker import ScannerWorker
 
 _NOW = datetime(2026, 7, 15, tzinfo=UTC)
@@ -56,17 +61,28 @@ def dispatcher(
     track_repo: TrackRepository,
     file_identity_repo: FileIdentityRepository,
     database_writer: DatabaseWriter,
+    engine: Engine,
 ) -> Iterator[JobDispatcher]:
     scanner = ScannerWorker(track_repo, file_identity_repo, database_writer, job_queue)
     hasher = HashWorker(file_identity_repo, database_writer, job_queue)
     fingerprinter = FingerprintWorker(file_identity_repo, database_writer, job_queue)
+    arbitrator = MetadataArbitrator([FilenameParserProvider()], confidence_threshold=0.90)
+    metadata = MetadataWorker(
+        track_repo,
+        file_identity_repo,
+        MetadataConfidenceRepository(engine),
+        arbitrator,
+        job_queue,
+    )
     disp = JobDispatcher(
         job_queue,
         scanner,
         hasher,
         fingerprinter,
+        metadata,
         scanner_threads=1,
         hash_processes=1,
+        metadata_threads=1,
         claim_batch_size=10,
         poll_interval_seconds=0.05,
     )
@@ -366,3 +382,44 @@ def test_poll_loop_survives_a_run_cycle_exception_and_keeps_polling(
     finally:
         dispatcher.stop()
     assert call_count["n"] >= 2
+
+
+def test_run_cycle_dispatches_an_identify_metadata_job(
+    dispatcher: JobDispatcher,
+    job_queue: JobQueueService,
+    job_repo: JobRepository,
+    track_repo: TrackRepository,
+    library_id: UUID,
+    track_id: UUID,
+) -> None:
+    from musicvault.models.entities.track import LibraryZone, Track
+
+    track_repo.upsert(
+        Track(
+            id=track_id,
+            library_id=library_id,
+            zone=LibraryZone.INCOMING,
+            file_path="C:/music/Artist - Album/01. Song Title.flac",
+            file_name="01. Song Title.flac",
+            file_size=1024,
+            file_modified=_NOW,
+            created_at=_NOW,
+            updated_at=_NOW,
+        )
+    )
+    job_id = job_queue.enqueue(
+        JobType.IDENTIFY_METADATA,
+        library_id,
+        {"track_id": str(track_id)},
+        now=_NOW,
+    )
+
+    futures = dispatcher.run_cycle()
+    assert len(futures) == 1
+    futures[0].result(timeout=_POLL_TIMEOUT_SECONDS)
+
+    assert job_repo.get(job_id).status is JobStatus.COMPLETED  # type: ignore[union-attr]
+    updated = track_repo.get_by_id(track_id)
+    assert updated is not None
+    assert updated.title == "Song Title"
+    assert updated.needs_review is True

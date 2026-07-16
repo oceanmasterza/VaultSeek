@@ -29,15 +29,15 @@ Collectors, audiophiles, and self-hosted media server operators using **Navidrom
 
 ## Status
 
-**Phase 5 — Fingerprint Worker** (current)
+**Phase 6 — Metadata Arbitrator** (current)
 
 Architecture is finalized (v3). The runnable scaffold, database layer, domain
 models, and job pipeline are in place. The processing pipeline now runs
-`ScannerWorker` → `HashWorker` → `FingerprintWorker` (Chromaprint via
-`pyacoustid`/`fpcalc`, persisted on `file_identity`, then chains to
-`identify_metadata` for Phase 6). Unchanged files are skipped via size/mtime
-and content-hash checks. `python -m musicvault` bootstraps, recovers any
-orphaned jobs, and exits cleanly. See
+`ScannerWorker` → `HashWorker` → `FingerprintWorker` → `MetadataWorker`
+(AcoustID / MusicBrainz / local tags / filename, per-field confidence on
+`metadata_confidence`, `needs_review` when below threshold). Unchanged files
+are skipped via size/mtime and content-hash checks. `python -m musicvault`
+bootstraps, recovers any orphaned jobs, and exits cleanly. See
 [Architecture Documentation](docs/architecture/README.md).
 
 ```powershell
@@ -46,7 +46,7 @@ cd musicvault
 python -m venv .venv
 .venv\Scripts\activate
 pip install -e ".[dev]"
-pytest              # 298 passed
+pytest              # 333 passed
 python -m musicvault  # MusicVault 0.1.0
 ```
 

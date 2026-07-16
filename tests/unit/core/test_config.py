@@ -11,6 +11,7 @@ import pytest
 from musicvault.core.config import (
     CURRENT_SCHEMA_VERSION,
     AppConfig,
+    MetadataConfig,
     PipelineConfig,
     default_config,
     load_config,
@@ -21,6 +22,11 @@ from musicvault.core.exceptions import ConfigError, ConfigMigrationError, Config
 
 def test_default_config_uses_current_schema_version() -> None:
     assert default_config().schema_version == CURRENT_SCHEMA_VERSION
+
+
+def test_default_config_includes_metadata_section() -> None:
+    assert default_config().metadata == MetadataConfig()
+    assert default_config().pipeline.metadata_worker_threads == 1
 
 
 def test_load_config_creates_default_file_when_missing(tmp_path: Path) -> None:
@@ -122,6 +128,7 @@ def test_migrating_a_v1_config_adds_default_pipeline_section(tmp_path: Path) -> 
     assert config.log_level == "DEBUG"
     assert config.theme == "light"
     assert config.pipeline == PipelineConfig()
+    assert config.metadata == MetadataConfig()
 
 
 def test_migrating_a_v1_config_persists_the_upgraded_document(tmp_path: Path) -> None:
@@ -133,6 +140,30 @@ def test_migrating_a_v1_config_persists_the_upgraded_document(tmp_path: Path) ->
     persisted = json.loads(config_path.read_text(encoding="utf-8"))
     assert persisted["schema_version"] == CURRENT_SCHEMA_VERSION
     assert persisted["pipeline"] == asdict(PipelineConfig())
+    assert persisted["metadata"] == default_config().to_dict()["metadata"]
+
+
+def test_migrating_a_v2_config_adds_metadata_section(tmp_path: Path) -> None:
+    config_path = tmp_path / "config.json"
+    config_path.write_text(
+        json.dumps(
+            {
+                "schema_version": 2,
+                "log_level": "WARNING",
+                "theme": "dark",
+                "pipeline": asdict(PipelineConfig(db_writer_batch_size=1000)),
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    config = load_config(config_path)
+
+    assert config.schema_version == CURRENT_SCHEMA_VERSION
+    assert config.log_level == "WARNING"
+    assert config.pipeline.db_writer_batch_size == 1000
+    assert config.pipeline.metadata_worker_threads == 1
+    assert config.metadata == MetadataConfig()
 
 
 def test_load_config_raises_when_no_migration_exists_for_an_old_version(tmp_path: Path) -> None:

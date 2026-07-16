@@ -21,6 +21,6 @@ class FieldConfidence:
     with the arbitrator's confidence that it is correct."""
 
     field: str
-    value: str | int | None
+    value: str | int | float | None
     confidence: float
     source: str

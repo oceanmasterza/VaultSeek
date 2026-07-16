@@ -3,10 +3,11 @@ worker pools.
 
 Phase 4 wired `scan_directory` (I/O — `ThreadPoolExecutor`) and
 `hash_file` (CPU — `ProcessPoolExecutor`). Phase 5 adds
-`fingerprint_file` on the same CPU process pool — Chromaprint is also
-CPU-bound (docs/architecture/08-performance.md, "Three-Tier Worker
-Model"). Later phases add one route per new worker as it's built rather
-than pre-registering pools for workers that don't exist yet.
+`fingerprint_file` on the same CPU process pool. Phase 6 adds
+`identify_metadata` on a dedicated I/O thread pool (HTTP + Mutagen —
+docs/architecture/08-performance.md, "Three-Tier Worker Model").
+Later phases add one route per new worker as it's built rather than
+pre-registering pools for workers that don't exist yet.
 
 Crash recovery (docs/architecture/10-revision-v2.md, "Resume After
 Crash") is split into two steps by design:
@@ -33,6 +34,7 @@ from musicvault.models.entities.job import Job, JobType
 from musicvault.services.job_queue_service import JobQueueService
 from musicvault.workers.cpu.fingerprint_worker import FingerprintWorker, compute_fingerprint
 from musicvault.workers.cpu.hash_worker import HashWorker, compute_hash
+from musicvault.workers.io.metadata_worker import MetadataWorker
 from musicvault.workers.io.scanner_worker import ScannerWorker
 
 
@@ -43,9 +45,11 @@ class JobDispatcher:
         scanner_worker: ScannerWorker,
         hash_worker: HashWorker,
         fingerprint_worker: FingerprintWorker,
+        metadata_worker: MetadataWorker,
         *,
         scanner_threads: int = 1,
         hash_processes: int | None = None,
+        metadata_threads: int = 1,
         claim_batch_size: int = 10,
         poll_interval_seconds: float = 1.0,
     ) -> None:
@@ -53,6 +57,7 @@ class JobDispatcher:
         self._scanner_worker = scanner_worker
         self._hash_worker = hash_worker
         self._fingerprint_worker = fingerprint_worker
+        self._metadata_worker = metadata_worker
         self._claim_batch_size = claim_batch_size
         self._poll_interval_seconds = poll_interval_seconds
         self._scan_pool = ThreadPoolExecutor(
@@ -61,6 +66,12 @@ class JobDispatcher:
         # Shared CPU ProcessPool for hash_file and fingerprint_file —
         # both are Tier 1 CPU-bound work (08-performance.md).
         self._cpu_pool = ProcessPoolExecutor(max_workers=hash_processes)
+        # Dedicated I/O ThreadPool for identify_metadata (Tier 2 —
+        # HTTP + Mutagen). Kept separate from scan so a slow AcoustID
+        # / MusicBrainz call cannot starve directory walks.
+        self._metadata_pool = ThreadPoolExecutor(
+            max_workers=metadata_threads, thread_name_prefix="musicvault-meta"
+        )
         self._shutdown = threading.Event()
         self._thread: threading.Thread | None = None
 
@@ -81,20 +92,37 @@ class JobDispatcher:
         """
         self._job_queue.promote_due_retries()
 
+        # Claim every route first, then dispatch. Workers that complete
+        # synchronously (or via done-callbacks) may enqueue the next
+        # pipeline stage; claiming up front keeps those new jobs for the
+        # following cycle instead of nesting work inside this one.
+        scan_jobs = list(
+            self._job_queue.claim_pending(JobType.SCAN_DIRECTORY, self._claim_batch_size)
+        )
+        hash_jobs = list(self._job_queue.claim_pending(JobType.HASH_FILE, self._claim_batch_size))
+        fingerprint_jobs = list(
+            self._job_queue.claim_pending(JobType.FINGERPRINT_FILE, self._claim_batch_size)
+        )
+        metadata_jobs = list(
+            self._job_queue.claim_pending(JobType.IDENTIFY_METADATA, self._claim_batch_size)
+        )
+
         futures: list[Future[Any]] = []
-        for job in self._job_queue.claim_pending(JobType.SCAN_DIRECTORY, self._claim_batch_size):
+        for job in scan_jobs:
             futures.append(self._scan_pool.submit(self._run_scan, job))
-        for job in self._job_queue.claim_pending(JobType.HASH_FILE, self._claim_batch_size):
+        for job in hash_jobs:
             future = self._cpu_pool.submit(compute_hash, job.payload)
             future.add_done_callback(self._make_hash_callback(job))
             futures.append(future)
-        for job in self._job_queue.claim_pending(JobType.FINGERPRINT_FILE, self._claim_batch_size):
+        for job in fingerprint_jobs:
             if self._fingerprint_worker.already_fingerprinted(job):
                 self._fingerprint_worker.complete_without_recompute(job)
                 continue
             future = self._cpu_pool.submit(compute_fingerprint, job.payload)
             future.add_done_callback(self._make_fingerprint_callback(job))
             futures.append(future)
+        for job in metadata_jobs:
+            futures.append(self._metadata_pool.submit(self._run_metadata, job))
         return futures
 
     def start(self) -> None:
@@ -105,13 +133,14 @@ class JobDispatcher:
         self._thread.start()
 
     def stop(self, *, timeout: float | None = 10.0) -> None:
-        """Stop polling and shut down both worker pools, waiting for any
+        """Stop polling and shut down all worker pools, waiting for any
         in-flight work to finish."""
         self._shutdown.set()
         if self._thread is not None:
             self._thread.join(timeout=timeout)
         self._scan_pool.shutdown(wait=True)
         self._cpu_pool.shutdown(wait=True)
+        self._metadata_pool.shutdown(wait=True)
 
     def _poll_loop(self) -> None:
         while not self._shutdown.is_set():
@@ -129,6 +158,14 @@ class JobDispatcher:
             self._scanner_worker.execute(job)
         except Exception as exc:
             logger.exception("ScannerWorker crashed on job {}", job.id)
+            self._job_queue.mark_failed(job.id, str(exc))
+
+    def _run_metadata(self, job: Job) -> None:
+        """Runs on a `_metadata_pool` thread (I/O — HTTP + Mutagen)."""
+        try:
+            self._metadata_worker.execute(job)
+        except Exception as exc:
+            logger.exception("MetadataWorker crashed on job {}", job.id)
             self._job_queue.mark_failed(job.id, str(exc))
 
     def _make_hash_callback(self, job: Job) -> Any:

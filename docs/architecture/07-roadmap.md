@@ -21,8 +21,8 @@ Phase 2   ██████████ Database (Core + UUID + jobs)
 Phase 3   ██████████ Domain models + repositories
 Phase 4   ██████████ Job dispatcher + scanner/hash workers
 Phase 5   ██████████ Fingerprint worker + persistence
-Phase 6   ░░░░░░░░░░ Metadata arbitrator + providers (CURRENT)
-Phase 7   ░░░░░░░░░░ Review queue + confidence scoring
+Phase 6   ██████████ Metadata arbitrator + providers
+Phase 7   ░░░░░░░░░░ Review queue + confidence scoring (CURRENT)
 Phase 8   ░░░░░░░░░░ Rules engine
 Phase 9   ░░░░░░░░░░ Duplicate worker + quality scoring
 Phase 10  ░░░░░░░░░░ Organizer + staging zones + watch folder
@@ -421,13 +421,53 @@ Phase 16  ░░░░░░░░░░ Packaging + installer
 
 ## Phase 6: Metadata Arbitrator
 
+**Status**: Complete
+
 **Goal**: Multi-provider metadata with per-field confidence.
 
 ### Key Deliverables
-- `MetadataArbitrator`
-- MusicBrainz + filename parser plugins
-- `metadata_confidence` storage
-- Provider priority configuration
+- [x] `MetadataProvider` protocol + `FingerprintData` / `MetadataQuery` /
+      `ProviderResult` / `ArbitrationResult` (`models/interfaces/metadata.py`)
+- [x] `MetadataArbitrator` — cascade AcoustID → MusicBrainz by ID →
+      MusicBrainz tags / local tags / filename; per-field winners;
+      `overall_confidence = min(field confidences)`; `needs_review` when
+      below threshold
+- [x] Built-in providers: AcoustID (HTTP), MusicBrainz, local tags
+      (Mutagen), filename parser — Discogs deferred
+- [x] `MetadataConfidenceRepository` — wipe-and-write winners into
+      `metadata_confidence`
+- [x] `MetadataWorker` (`workers/io/`) — I/O Tier 2; persists track
+      fields + confidence rows + optional `acoustid_*` on `file_identity`;
+      does **not** enqueue artwork/duplicates/rules yet (Phase 7+)
+- [x] `MetadataConfig` + schema v2→v3 (`provider_order`,
+      `enabled_providers`, `confidence_threshold`, `acoustid_api_key`,
+      `metadata_worker_threads`)
+- [x] `PluginManager` + explicit provider wiring in `Container.bootstrap`
+- [x] `JobDispatcher` claims `identify_metadata` on a dedicated I/O
+      thread pool (claim-all-then-dispatch so nested enqueues wait a cycle)
+
+### Scope Decisions (recorded 2026-07-16)
+1. **AcoustID is a MetadataProvider** (HTTP lookup), not a FingerprintProvider —
+   Chromaprint generation stayed in Phase 5.
+2. **Cascade inside the arbitrator** rather than a separate orchestrator.
+3. **MVP providers only** — AcoustID, MusicBrainz, local tags, filename;
+   Discogs later.
+4. **No downstream enqueue** of `fetch_artwork` / `detect_duplicates` /
+   `evaluate_rules` until those workers exist.
+5. **`tracks.needs_review` + `overall_confidence` only** — `review_items`
+   creation is Phase 7.
+6. **`overall_confidence = min(field confidences)`**.
+
+### Acceptance Criteria
+- [x] An `identify_metadata` job resolves providers, writes track fields +
+      `metadata_confidence`, and sets `needs_review` when below threshold
+- [x] Provider enablement / order / AcoustID API key configurable via
+      `MetadataConfig` (schema v3)
+- [x] `pytest` passes (333/333)
+- [x] `mypy`, `ruff check`, `black --check` pass
+- [x] `lint-imports` passes (3/3 contracts kept)
+- [ ] GitHub Actions green on push
+- [ ] Git commit: `feat: Phase 6 MetadataArbitrator + metadata providers`
 
 ---
 
