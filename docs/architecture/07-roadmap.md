@@ -497,7 +497,7 @@ Phase 16  ░░░░░░░░░░ Packaging + installer
 - [x] Approve / reject / defer / approve_with_edits work via service API
 - [x] Re-identify refreshes the same pending item (no duplicates)
 - [x] Container wires `ReviewQueueService` into `MetadataWorker`
-- [ ] CI green on GitHub Actions
+- [x] CI green on GitHub Actions
 - [x] Git commit: `feat: Phase 7 ReviewQueueService + metadata review items`
 
 ---
