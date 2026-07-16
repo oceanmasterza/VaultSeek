@@ -40,6 +40,7 @@ from musicvault.plugins.manager import PluginManager
 from musicvault.services.job_dispatcher import JobDispatcher
 from musicvault.services.job_queue_service import JobQueueService
 from musicvault.services.metadata_arbitrator import MetadataArbitrator
+from musicvault.services.review_queue_service import ReviewQueueService
 from musicvault.workers.cpu.fingerprint_worker import FingerprintWorker
 from musicvault.workers.cpu.hash_worker import HashWorker
 from musicvault.workers.io.metadata_worker import MetadataWorker
@@ -63,6 +64,7 @@ class Container:
     metadata_confidence_repo: MetadataConfidenceRepository
     database_writer: DatabaseWriter
     job_queue: JobQueueService
+    review_queue: ReviewQueueService
     plugin_manager: PluginManager
     metadata_arbitrator: MetadataArbitrator
     scanner_worker: ScannerWorker
@@ -98,8 +100,10 @@ class Container:
 
         job_repo = JobRepository(engine)
         track_repo = TrackRepository(engine)
+        review_repo = ReviewRepository(engine)
         file_identity_repo = FileIdentityRepository(engine)
         metadata_confidence_repo = MetadataConfidenceRepository(engine)
+        event_bus = EventBus()
 
         database_writer = DatabaseWriter(
             engine,
@@ -107,6 +111,12 @@ class Container:
             flush_interval_ms=config.pipeline.db_writer_flush_interval_ms,
         )
         job_queue = JobQueueService(job_repo, config.pipeline)
+        review_queue = ReviewQueueService(
+            review_repo,
+            track_repo,
+            event_bus,
+            confidence_threshold=config.metadata.confidence_threshold,
+        )
 
         plugin_manager = PluginManager(_build_metadata_providers(config.metadata))
         metadata_arbitrator = MetadataArbitrator(
@@ -123,6 +133,7 @@ class Container:
             metadata_confidence_repo,
             metadata_arbitrator,
             job_queue,
+            review_queue,
         )
         dispatcher = JobDispatcher(
             job_queue,
@@ -145,7 +156,7 @@ class Container:
             config=config,
             engine=engine,
             job_repo=job_repo,
-            review_repo=ReviewRepository(engine),
+            review_repo=review_repo,
             rule_repo=RuleRepository(engine),
             file_identity_repo=file_identity_repo,
             track_repo=track_repo,
@@ -154,6 +165,7 @@ class Container:
             metadata_confidence_repo=metadata_confidence_repo,
             database_writer=database_writer,
             job_queue=job_queue,
+            review_queue=review_queue,
             plugin_manager=plugin_manager,
             metadata_arbitrator=metadata_arbitrator,
             scanner_worker=scanner_worker,
@@ -161,6 +173,7 @@ class Container:
             fingerprint_worker=fingerprint_worker,
             metadata_worker=metadata_worker,
             dispatcher=dispatcher,
+            event_bus=event_bus,
         )
 
     def close(self) -> None:

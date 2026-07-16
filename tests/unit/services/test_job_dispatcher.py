@@ -23,6 +23,7 @@ from musicvault.plugins.builtin.filename_parser import FilenameParserProvider
 from musicvault.services.job_dispatcher import JobDispatcher
 from musicvault.services.job_queue_service import JobQueueService
 from musicvault.services.metadata_arbitrator import MetadataArbitrator
+from musicvault.services.review_queue_service import ReviewQueueService
 from musicvault.workers.cpu.fingerprint_worker import FingerprintWorker
 from musicvault.workers.cpu.hash_worker import HashWorker
 from musicvault.workers.io.metadata_worker import MetadataWorker
@@ -61,6 +62,7 @@ def dispatcher(
     track_repo: TrackRepository,
     file_identity_repo: FileIdentityRepository,
     database_writer: DatabaseWriter,
+    review_queue: ReviewQueueService,
     engine: Engine,
 ) -> Iterator[JobDispatcher]:
     scanner = ScannerWorker(track_repo, file_identity_repo, database_writer, job_queue)
@@ -73,6 +75,7 @@ def dispatcher(
         MetadataConfidenceRepository(engine),
         arbitrator,
         job_queue,
+        review_queue,
     )
     disp = JobDispatcher(
         job_queue,
@@ -262,7 +265,10 @@ def test_handle_cpu_result_marks_the_job_failed_if_handle_result_raises(
     future.set_result({"track_id": str(library_id)})
 
     dispatcher._handle_cpu_result(  # noqa: SLF001
-        job, future, dispatcher._hash_worker.handle_result, "hash_file"  # noqa: SLF001
+        job,
+        future,
+        dispatcher._hash_worker.handle_result,
+        "hash_file",  # noqa: SLF001
     )
 
     updated = job_repo.get(job_id)

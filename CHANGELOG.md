@@ -9,6 +9,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Phase 7 review queue** — human approval gate for uncertain metadata:
+  - `ReviewQueueService` — create, get_pending, get_by_type, approve,
+    reject, defer, approve_with_edits; idempotent pending upsert per
+    `(track_id, review_type)`
+  - `ReviewItemCreate` DTO + `ReviewItemAddedEvent` on `EventBus`
+  - `MetadataWorker` creates `review_items` when `needs_review`
+    (artist → album → provider-conflict classification)
+  - Approve clears `needs_review` (no zone moves yet — Phase 10)
+  - `ReviewRepository` helpers: `find_pending`, `list_by_type`,
+    `update_pending_content`
+  - Container wiring; GUI review page deferred to Phase 14
+  - 346 tests total (up from 333)
+
+### Added
+
 - **Phase 6 metadata arbitrator + providers** — multi-source identification
   with per-field confidence:
   - `MetadataProvider` protocol + query/result types
@@ -21,8 +36,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - `MetadataConfig` / config schema v2→v3 (provider enablement, order,
     threshold, AcoustID API key, `metadata_worker_threads`)
   - `PluginManager` + `Container` wiring; dispatcher claim-then-dispatch
-  - Downstream artwork/duplicates/rules jobs and `review_items` deferred
-    to Phase 7+
+  - Downstream artwork/duplicates/rules jobs deferred to Phase 8+;
+    `review_items` creation delivered in Phase 7
   - 333 tests total (up from 298)
 
 ### Added

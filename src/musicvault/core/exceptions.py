@@ -47,6 +47,10 @@ class JobError(MusicVaultError):
     """Base class for job queue and worker failures."""
 
 
+class ReviewError(MusicVaultError):
+    """Raised when a review-queue operation is invalid or cannot complete."""
+
+
 class OperationError(MusicVaultError):
     """Raised when a mutating library operation fails."""
 

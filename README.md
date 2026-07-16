@@ -29,13 +29,15 @@ Collectors, audiophiles, and self-hosted media server operators using **Navidrom
 
 ## Status
 
-**Phase 6 — Metadata Arbitrator** (current)
+**Phase 7 — Review Queue** (current)
 
 Architecture is finalized (v3). The runnable scaffold, database layer, domain
-models, and job pipeline are in place. The processing pipeline now runs
+models, and job pipeline are in place. The processing pipeline runs
 `ScannerWorker` → `HashWorker` → `FingerprintWorker` → `MetadataWorker`
 (AcoustID / MusicBrainz / local tags / filename, per-field confidence on
-`metadata_confidence`, `needs_review` when below threshold). Unchanged files
+`metadata_confidence`). When confidence is below threshold, tracks are
+flagged `needs_review` and a pending `review_items` row is created via
+`ReviewQueueService` (approve / reject / defer / edit). Unchanged files
 are skipped via size/mtime and content-hash checks. `python -m musicvault`
 bootstraps, recovers any orphaned jobs, and exits cleanly. See
 [Architecture Documentation](docs/architecture/README.md).

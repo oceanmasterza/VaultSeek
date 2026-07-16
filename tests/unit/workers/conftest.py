@@ -13,13 +13,16 @@ import pytest
 from sqlalchemy import Engine, create_engine, event, insert
 
 from musicvault.core.config import PipelineConfig
+from musicvault.core.event_bus import EventBus
 from musicvault.db.repositories.file_identity_repo import FileIdentityRepository
 from musicvault.db.repositories.job_repo import JobRepository
+from musicvault.db.repositories.review_repo import ReviewRepository
 from musicvault.db.repositories.track_repo import TrackRepository
 from musicvault.db.tables import libraries, metadata, tracks
 from musicvault.db.uuid_utils import generate_uuid7, uuid_to_blob
 from musicvault.db.writer import DatabaseWriter
 from musicvault.services.job_queue_service import JobQueueService
+from musicvault.services.review_queue_service import ReviewQueueService
 
 
 @pytest.fixture
@@ -100,6 +103,16 @@ def file_identity_repo(engine: Engine) -> FileIdentityRepository:
 @pytest.fixture
 def track_repo(engine: Engine) -> TrackRepository:
     return TrackRepository(engine)
+
+
+@pytest.fixture
+def review_repo(engine: Engine) -> ReviewRepository:
+    return ReviewRepository(engine)
+
+
+@pytest.fixture
+def review_queue(review_repo: ReviewRepository, track_repo: TrackRepository) -> ReviewQueueService:
+    return ReviewQueueService(review_repo, track_repo, EventBus(), confidence_threshold=0.90)
 
 
 @pytest.fixture

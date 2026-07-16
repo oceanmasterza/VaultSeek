@@ -22,8 +22,8 @@ Phase 3   ██████████ Domain models + repositories
 Phase 4   ██████████ Job dispatcher + scanner/hash workers
 Phase 5   ██████████ Fingerprint worker + persistence
 Phase 6   ██████████ Metadata arbitrator + providers
-Phase 7   ░░░░░░░░░░ Review queue + confidence scoring (CURRENT)
-Phase 8   ░░░░░░░░░░ Rules engine
+Phase 7   ██████████ Review queue + confidence scoring
+Phase 8   ░░░░░░░░░░ Rules engine (CURRENT)
 Phase 9   ░░░░░░░░░░ Duplicate worker + quality scoring
 Phase 10  ░░░░░░░░░░ Organizer + staging zones + watch folder
 Phase 11  ░░░░░░░░░░ Artwork worker
@@ -438,7 +438,7 @@ Phase 16  ░░░░░░░░░░ Packaging + installer
       `metadata_confidence`
 - [x] `MetadataWorker` (`workers/io/`) — I/O Tier 2; persists track
       fields + confidence rows + optional `acoustid_*` on `file_identity`;
-      does **not** enqueue artwork/duplicates/rules yet (Phase 7+)
+      does **not** enqueue artwork/duplicates/rules yet (Phase 8+)
 - [x] `MetadataConfig` + schema v2→v3 (`provider_order`,
       `enabled_providers`, `confidence_threshold`, `acoustid_api_key`,
       `metadata_worker_threads`)
@@ -455,7 +455,7 @@ Phase 16  ░░░░░░░░░░ Packaging + installer
 4. **No downstream enqueue** of `fetch_artwork` / `detect_duplicates` /
    `evaluate_rules` until those workers exist.
 5. **`tracks.needs_review` + `overall_confidence` only** — `review_items`
-   creation is Phase 7.
+   creation delivered in Phase 7.
 6. **`overall_confidence = min(field confidences)`**.
 
 ### Acceptance Criteria
@@ -479,6 +479,26 @@ Phase 16  ░░░░░░░░░░ Packaging + installer
 - `ReviewQueueService`
 - Auto-create review items when confidence < threshold
 - Approve/reject/defer/edit workflow
+
+### Implementation notes (service layer)
+- `ReviewQueueService` — create / get_pending / get_by_type / approve /
+  reject / defer / approve_with_edits; idempotent upsert on
+  `(track_id, review_type)` for pending items
+- `MetadataWorker` creates a `review_items` row when
+  `ArbitrationResult.needs_review` (classification: weak artist → weak
+  album → provider conflict → catch-all unknown_artist)
+- Approve clears `tracks.needs_review`; does **not** move zones (Phase 10)
+- Reject / defer leave `needs_review`; deferred items leave the pending list
+- `ReviewItemAddedEvent` on `EventBus` for future Qt badge refresh
+- GUI review page is Phase 14; artwork / duplicates / rules enqueue still later
+
+### Acceptance Criteria
+- [x] Low-confidence identification creates a pending review item
+- [x] Approve / reject / defer / approve_with_edits work via service API
+- [x] Re-identify refreshes the same pending item (no duplicates)
+- [x] Container wires `ReviewQueueService` into `MetadataWorker`
+- [ ] CI green on GitHub Actions
+- [x] Git commit: `feat: Phase 7 ReviewQueueService + metadata review items`
 
 ---
 

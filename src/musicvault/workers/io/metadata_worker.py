@@ -2,9 +2,10 @@
 
 I/O-bound (Tier 2 — HTTP + Mutagen). Does **not** enqueue
 `fetch_artwork` / `detect_duplicates` / `evaluate_rules` yet — those
-workers arrive in later phases (same deferral pattern as Phase 4→5).
-Sets `tracks.needs_review` when overall confidence is below threshold;
-review_items creation is Phase 7.
+workers arrive in later phases. When overall confidence is below
+threshold, sets ``tracks.needs_review`` and creates a
+:class:`~musicvault.models.entities.review_item.ReviewItem` via
+:class:`~musicvault.services.review_queue_service.ReviewQueueService`.
 """
 
 from __future__ import annotations
@@ -23,6 +24,7 @@ from musicvault.models.value_objects.field_confidence import FieldConfidence
 from musicvault.models.value_objects.file_identity import FileIdentity
 from musicvault.services.job_queue_service import JobQueueService
 from musicvault.services.metadata_arbitrator import MetadataArbitrator
+from musicvault.services.review_queue_service import ReviewQueueService
 
 
 class MetadataWorker:
@@ -33,12 +35,14 @@ class MetadataWorker:
         metadata_confidence_repo: MetadataConfidenceRepository,
         arbitrator: MetadataArbitrator,
         job_queue: JobQueueService,
+        review_queue: ReviewQueueService,
     ) -> None:
         self._tracks = track_repo
         self._identities = file_identity_repo
         self._confidence = metadata_confidence_repo
         self._arbitrator = arbitrator
         self._job_queue = job_queue
+        self._reviews = review_queue
 
     def execute(self, job: Job) -> None:
         track_id = UUID(job.payload["track_id"])
@@ -69,6 +73,14 @@ class MetadataWorker:
                 self._identities.upsert(
                     replace(identity, acoustid_id=next_id, acoustid_score=next_score)
                 )
+
+        if result.needs_review:
+            self._reviews.create_from_arbitration(
+                library_id=job.library_id,
+                track_id=track_id,
+                result=result,
+                now=now,
+            )
 
         self._job_queue.mark_completed(job.id)
 

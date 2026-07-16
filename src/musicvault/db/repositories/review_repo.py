@@ -42,6 +42,57 @@ class ReviewRepository:
             rows = conn.execute(statement).all()
         return [_from_row(row) for row in rows]
 
+    def list_by_type(
+        self,
+        review_type: ReviewType,
+        *,
+        library_id: UUID,
+        status: ReviewStatus = ReviewStatus.PENDING,
+    ) -> list[ReviewItem]:
+        statement = (
+            select(review_items)
+            .where(review_items.c.library_id == uuid_to_blob(library_id))
+            .where(review_items.c.review_type == review_type.value)
+            .where(review_items.c.status == status.value)
+        )
+        with self._engine.connect() as conn:
+            rows = conn.execute(statement).all()
+        return [_from_row(row) for row in rows]
+
+    def find_pending(self, *, track_id: UUID, review_type: ReviewType) -> ReviewItem | None:
+        """Return the open pending item for ``(track_id, review_type)``, if any."""
+        statement = (
+            select(review_items)
+            .where(review_items.c.track_id == uuid_to_blob(track_id))
+            .where(review_items.c.review_type == review_type.value)
+            .where(review_items.c.status == ReviewStatus.PENDING.value)
+        )
+        with self._engine.connect() as conn:
+            row = conn.execute(statement).first()
+        return _from_row(row) if row is not None else None
+
+    def update_pending_content(
+        self,
+        review_id: UUID,
+        *,
+        title: str,
+        description: str | None,
+        confidence: float | None,
+        payload: dict[str, Any] | None,
+    ) -> None:
+        """Refresh display fields on an existing pending review item."""
+        with self._engine.begin() as conn:
+            conn.execute(
+                update(review_items)
+                .where(review_items.c.id == uuid_to_blob(review_id))
+                .values(
+                    title=title,
+                    description=description,
+                    confidence=confidence,
+                    payload=json.dumps(payload) if payload is not None else None,
+                )
+            )
+
     def resolve(
         self,
         review_id: UUID,
@@ -49,23 +100,28 @@ class ReviewRepository:
         *,
         resolved_by: str,
         resolved_at: datetime,
+        description: str | None = None,
     ) -> None:
         """Mark a review item as approved/rejected/deferred, recording who and when.
 
         ``resolved_at`` is a required parameter rather than an internal
         ``datetime.now()`` call so this method stays deterministic and
-        testable — the caller (a future service layer, or a test) decides
-        what "now" means.
+        testable — the caller (service layer or test) decides what "now"
+        means. Optional ``description`` updates the stored text (used when
+        recording a reject reason).
         """
+        values: dict[str, object] = {
+            "status": status.value,
+            "resolved_by": resolved_by,
+            "resolved_at": resolved_at.isoformat(),
+        }
+        if description is not None:
+            values["description"] = description
         with self._engine.begin() as conn:
             conn.execute(
                 update(review_items)
                 .where(review_items.c.id == uuid_to_blob(review_id))
-                .values(
-                    status=status.value,
-                    resolved_by=resolved_by,
-                    resolved_at=resolved_at.isoformat(),
-                )
+                .values(**values)
             )
 
 

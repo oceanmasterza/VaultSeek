@@ -26,6 +26,7 @@ from musicvault.plugins.manager import PluginManager
 from musicvault.services.job_dispatcher import JobDispatcher
 from musicvault.services.job_queue_service import JobQueueService
 from musicvault.services.metadata_arbitrator import MetadataArbitrator
+from musicvault.services.review_queue_service import ReviewQueueService
 from musicvault.workers.cpu.fingerprint_worker import FingerprintWorker
 from musicvault.workers.cpu.hash_worker import HashWorker
 from musicvault.workers.io.metadata_worker import MetadataWorker
@@ -129,6 +130,7 @@ def test_bootstrap_wires_the_phase_6_metadata_stack(
     assert isinstance(container.plugin_manager, PluginManager)
     assert isinstance(container.metadata_arbitrator, MetadataArbitrator)
     assert isinstance(container.metadata_worker, MetadataWorker)
+    assert isinstance(container.review_queue, ReviewQueueService)
     provider_ids = {p.provider_id for p in container.plugin_manager.get_metadata_providers()}
     assert provider_ids == {"acoustid", "musicbrainz", "local_tags", "filename_parser"}
     container.close()

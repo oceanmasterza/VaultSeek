@@ -87,3 +87,61 @@ def test_resolve_sets_status_resolved_by_and_resolved_at(engine: Engine, library
     assert loaded.status is ReviewStatus.APPROVED
     assert loaded.resolved_by == "user"
     assert loaded.resolved_at == _NOW
+
+
+def test_find_pending_and_list_by_type(engine: Engine, library_id: UUID, track_id: UUID) -> None:
+    repo = ReviewRepository(engine)
+    pending = _make_review_item(library_id, track_id=track_id, review_type=ReviewType.UNKNOWN_ALBUM)
+    other_type = _make_review_item(
+        library_id, track_id=track_id, review_type=ReviewType.UNKNOWN_ARTIST
+    )
+    approved = _make_review_item(
+        library_id,
+        track_id=track_id,
+        review_type=ReviewType.UNKNOWN_ALBUM,
+        status=ReviewStatus.APPROVED,
+    )
+    repo.create(pending)
+    repo.create(other_type)
+    repo.create(approved)
+
+    found = repo.find_pending(track_id=track_id, review_type=ReviewType.UNKNOWN_ALBUM)
+    assert found is not None
+    assert found.id == pending.id
+
+    by_type = repo.list_by_type(ReviewType.UNKNOWN_ALBUM, library_id=library_id)
+    assert {item.id for item in by_type} == {pending.id}
+
+
+def test_update_pending_content_and_resolve_with_description(
+    engine: Engine, library_id: UUID
+) -> None:
+    repo = ReviewRepository(engine)
+    item = _make_review_item(library_id, title="Old", description="before")
+    repo.create(item)
+
+    repo.update_pending_content(
+        item.id,
+        title="New",
+        description="after",
+        confidence=0.77,
+        payload={"k": 1},
+    )
+    refreshed = repo.get(item.id)
+    assert refreshed is not None
+    assert refreshed.title == "New"
+    assert refreshed.description == "after"
+    assert refreshed.confidence == 0.77
+    assert refreshed.payload == {"k": 1}
+
+    repo.resolve(
+        item.id,
+        ReviewStatus.REJECTED,
+        resolved_by="user",
+        resolved_at=_NOW,
+        description="Reject reason: nope",
+    )
+    resolved = repo.get(item.id)
+    assert resolved is not None
+    assert resolved.status is ReviewStatus.REJECTED
+    assert resolved.description == "Reject reason: nope"
