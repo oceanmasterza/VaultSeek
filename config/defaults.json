@@ -1,5 +1,5 @@
 {
-  "schema_version": 4,
+  "schema_version": 5,
   "log_level": "INFO",
   "theme": "dark",
   "pipeline": {
@@ -20,5 +20,10 @@
   },
   "watch": {
     "poll_interval_seconds": 30.0
+  },
+  "artwork": {
+    "fetch_enabled": true,
+    "min_width": 500,
+    "min_height": 500
   }
 }

@@ -1,14 +1,14 @@
 """SQLAlchemy Core table definitions for the MusicVault schema.
 
-This module defines the 15 tables that are fully specified in
-docs/architecture/03-database-schema.md. Five additional tables mentioned
-in that document (``artwork``, ``track_artwork``, ``album_artwork``,
-``plugin_state``, ``library_stats``) are intentionally **not** defined
-here: their column-level design was lost when the v1 schema document was
-superseded, and inventing columns without a real specification would risk
-a migration rewrite later. They will be added, properly designed, in the
-phases that actually need them (see the note in that document under
-"Artwork, Plugins, Statistics").
+This module defines the 15 tables that were fully specified in
+docs/architecture/03-database-schema.md, plus the three artwork tables
+(``artwork``, ``track_artwork``, ``album_artwork``) whose column-level
+design was lost when the v1 schema document was superseded and which
+Phase 11 re-designed from scratch (see
+:mod:`musicvault.models.entities.artwork` for the design rationale).
+Two more tables mentioned in that document (``plugin_state``,
+``library_stats``) remain intentionally undefined until the phases that
+actually need them.
 
 Conventions used throughout, matching the schema document exactly:
 
@@ -187,6 +187,46 @@ metadata_confidence = Table(
     Column("updated_at", Text, nullable=False),
     Index("idx_metadata_conf_track", "track_id"),
     Index("idx_metadata_confidence_track_field", "track_id", "field_name", unique=True),
+)
+
+# ---------------------------------------------------------------------------
+# Artwork (Phase 11 re-design — see musicvault.models.entities.artwork)
+# ---------------------------------------------------------------------------
+
+artwork = Table(
+    "artwork",
+    metadata,
+    Column("id", LargeBinary(16), primary_key=True),
+    Column("content_hash_sha256", Text, nullable=False, unique=True),
+    Column("source", Text, nullable=False),
+    Column("source_id", Text),
+    Column("mime_type", Text, nullable=False),
+    Column("width", Integer, nullable=False),
+    Column("height", Integer, nullable=False),
+    Column("file_size", Integer, nullable=False),
+    Column("file_path", Text, nullable=False),
+    Column("created_at", Text, nullable=False),
+    Index("idx_artwork_content_hash", "content_hash_sha256", unique=True),
+)
+
+track_artwork = Table(
+    "track_artwork",
+    metadata,
+    Column("track_id", LargeBinary(16), ForeignKey("tracks.id"), primary_key=True),
+    Column("artwork_id", LargeBinary(16), ForeignKey("artwork.id"), primary_key=True),
+    Column("role", Text, nullable=False, server_default=text("'front'")),
+    Column("is_primary", Boolean, nullable=False, server_default=false()),
+    Index("idx_track_artwork_artwork", "artwork_id"),
+)
+
+album_artwork = Table(
+    "album_artwork",
+    metadata,
+    Column("album_id", LargeBinary(16), ForeignKey("albums.id"), primary_key=True),
+    Column("artwork_id", LargeBinary(16), ForeignKey("artwork.id"), primary_key=True),
+    Column("role", Text, nullable=False, server_default=text("'front'")),
+    Column("is_primary", Boolean, nullable=False, server_default=false()),
+    Index("idx_album_artwork_artwork", "artwork_id"),
 )
 
 # ---------------------------------------------------------------------------

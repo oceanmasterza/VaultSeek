@@ -26,8 +26,8 @@ Phase 7   ██████████ Review queue + confidence scoring
 Phase 8   ██████████ Rules engine
 Phase 9   ██████████ Duplicate worker + quality scoring
 Phase 10  ██████████ Organizer + staging zones + watch folder
-Phase 11  ░░░░░░░░░░ Artwork worker (CURRENT)
-Phase 12  ░░░░░░░░░░ Rollback engine
+Phase 11  ██████████ Artwork worker
+Phase 12  ░░░░░░░░░░ Rollback engine (CURRENT)
 Phase 13  ░░░░░░░░░░ Reports
 Phase 14  ░░░░░░░░░░ GUI (all pages)
 Phase 15  ░░░░░░░░░░ Media server plugins
@@ -645,6 +645,46 @@ Phase 16  ░░░░░░░░░░ Packaging + installer
 - `ArtworkWorker`
 - Cover Art Archive plugin
 - Missing/low-res detection
+
+### Implementation notes
+- Artwork tables **re-designed from scratch** (the v1 column spec was lost —
+  see the documentation-gap note in 03-database-schema.md): `artwork` is one
+  row per unique image deduplicated by SHA-256, bytes stored on disk under
+  `cache/artwork/`, plus `track_artwork`/`album_artwork` link tables with
+  `role` + `is_primary`. Alembic migration `0003`; `ArtworkRepository` with
+  dedup upsert and link/primary lookups.
+- `ArtworkProvider` protocol (`models/interfaces/artwork.py`) — the documented
+  `ArtworkResult` shape verbatim; `ArtworkQuery` is an implementation fill-in
+  (the doc never specified the input) carrying file path + MB release /
+  release-group / recording ids.
+- **Cover Art Archive plugin** (priority 10): release id → `/release/{id}/front`;
+  release-group fallback; recording-id fallback resolves a release via the
+  MusicBrainz API first (matters because the pipeline persists
+  `tracks.mb_recording_id` long before album rows exist).
+- **Embedded art plugin** (priority 50): FLAC `pictures`, ID3 `APIC`, MP4
+  `covr`; prefers front covers (type 3); Pillow validates/measures all bytes.
+- `ArtworkWorker` + dispatcher `fetch_artwork` route (shared I/O pool):
+  providers asked in priority order, first result ≥ the configured minimum
+  resolution wins, else largest candidate is stored anyway and an
+  `artwork_low_res` review item parks; nothing found parks `artwork_missing`.
+  Sets `tracks.has_embedded_art` whenever the file's own tags held a usable
+  picture. Terminal — no downstream enqueue (04-service-layer.md).
+- `MetadataWorker` now enqueues `fetch_artwork` alongside `detect_duplicates`
+  (04-service-layer.md worker table); artwork never gates organizing.
+- Config schema v5: `artwork` section (`fetch_enabled`, `min_width`,
+  `min_height`); 500×500 default is an implementation fill-in — no pixel
+  threshold is documented anywhere.
+- Artwork *embedding into files* and Discogs artwork stay deferred (embedding
+  alters audio files → belongs with Phase 12 rollback safety).
+
+### Acceptance Criteria
+- [x] Artwork tables designed + migrated; images deduplicated by content hash
+- [x] Cover Art Archive plugin fetches by release / release-group / recording id
+- [x] Embedded art extracted from FLAC/ID3/MP4 tags
+- [x] Missing artwork parks `artwork_missing`; sub-threshold parks `artwork_low_res`
+- [x] `has_embedded_art` populated; track + album linked to their primary image
+- [x] CI green on GitHub Actions
+- [x] Git commit: `feat: Phase 11 ArtworkWorker + Cover Art Archive plugin`
 
 ---
 

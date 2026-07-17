@@ -17,13 +17,14 @@ from dataclasses import dataclass, field
 
 from sqlalchemy import Engine
 
-from musicvault.core.config import AppConfig, MetadataConfig
+from musicvault.core.config import AppConfig, ArtworkConfig, MetadataConfig
 from musicvault.core.event_bus import EventBus
 from musicvault.core.paths import AppPaths
 from musicvault.db.engine import create_sqlite_engine
 from musicvault.db.migrations.runner import run_migrations
 from musicvault.db.repositories.album_repo import AlbumRepository
 from musicvault.db.repositories.artist_repo import ArtistRepository
+from musicvault.db.repositories.artwork_repo import ArtworkRepository
 from musicvault.db.repositories.duplicate_repo import DuplicateRepository
 from musicvault.db.repositories.file_identity_repo import FileIdentityRepository
 from musicvault.db.repositories.job_repo import JobRepository
@@ -34,11 +35,14 @@ from musicvault.db.repositories.review_repo import ReviewRepository
 from musicvault.db.repositories.rule_repo import RuleRepository
 from musicvault.db.repositories.track_repo import TrackRepository
 from musicvault.db.writer import DatabaseWriter
+from musicvault.models.interfaces.artwork import ArtworkProvider
 from musicvault.models.interfaces.metadata import MetadataProvider
 from musicvault.models.services.duplicate_matcher import DuplicateMatcher
 from musicvault.models.services.organize_engine import OrganizeEngine
 from musicvault.models.services.quality_scorer import DEFAULT_WEIGHTS, QualityScorer
 from musicvault.plugins.builtin.acoustid import AcoustIdProvider
+from musicvault.plugins.builtin.cover_art_archive import CoverArtArchiveProvider
+from musicvault.plugins.builtin.embedded_art import EmbeddedArtProvider
 from musicvault.plugins.builtin.filename_parser import FilenameParserProvider
 from musicvault.plugins.builtin.local_tags import LocalTagsProvider
 from musicvault.plugins.builtin.musicbrainz import MusicBrainzProvider
@@ -51,6 +55,7 @@ from musicvault.services.rules_engine import RulesEngine
 from musicvault.services.watch_folder_service import WatchFolderService
 from musicvault.workers.cpu.fingerprint_worker import FingerprintWorker
 from musicvault.workers.cpu.hash_worker import HashWorker
+from musicvault.workers.io.artwork_worker import ArtworkWorker
 from musicvault.workers.io.duplicate_worker import DuplicateWorker
 from musicvault.workers.io.metadata_worker import MetadataWorker
 from musicvault.workers.io.organizer_worker import OrganizerWorker
@@ -71,6 +76,7 @@ class Container:
     duplicate_repo: DuplicateRepository
     library_repo: LibraryRepository
     operation_repo: OperationRepository
+    artwork_repo: ArtworkRepository
     file_identity_repo: FileIdentityRepository
     track_repo: TrackRepository
     album_repo: AlbumRepository
@@ -92,6 +98,7 @@ class Container:
     rule_worker: RuleWorker
     duplicate_worker: DuplicateWorker
     organizer_worker: OrganizerWorker
+    artwork_worker: ArtworkWorker
     dispatcher: JobDispatcher
     event_bus: EventBus = field(default_factory=EventBus)
 
@@ -126,6 +133,7 @@ class Container:
         duplicate_repo = DuplicateRepository(engine)
         library_repo = LibraryRepository(engine)
         operation_repo = OperationRepository(engine)
+        artwork_repo = ArtworkRepository(engine)
         artist_repo = ArtistRepository(engine)
         album_repo = AlbumRepository(engine)
         file_identity_repo = FileIdentityRepository(engine)
@@ -157,7 +165,10 @@ class Container:
             poll_interval_seconds=config.watch.poll_interval_seconds,
         )
 
-        plugin_manager = PluginManager(_build_metadata_providers(config.metadata))
+        plugin_manager = PluginManager(
+            _build_metadata_providers(config.metadata),
+            _build_artwork_providers(config.artwork),
+        )
         metadata_arbitrator = MetadataArbitrator(
             plugin_manager.get_metadata_providers(),
             confidence_threshold=config.metadata.confidence_threshold,
@@ -194,6 +205,17 @@ class Container:
             organize_engine,
             job_queue,
         )
+        artwork_worker = ArtworkWorker(
+            track_repo,
+            album_repo,
+            artwork_repo,
+            plugin_manager.get_artwork_providers(),
+            review_queue,
+            job_queue,
+            artwork_dir=paths.cache_dir / "artwork",
+            min_width=config.artwork.min_width,
+            min_height=config.artwork.min_height,
+        )
         dispatcher = JobDispatcher(
             job_queue,
             scanner_worker,
@@ -203,6 +225,7 @@ class Container:
             rule_worker,
             duplicate_worker,
             organizer_worker,
+            artwork_worker,
             scanner_threads=config.pipeline.scanner_worker_threads,
             hash_processes=config.pipeline.hash_worker_processes,
             metadata_threads=config.pipeline.metadata_worker_threads,
@@ -224,6 +247,7 @@ class Container:
             duplicate_repo=duplicate_repo,
             library_repo=library_repo,
             operation_repo=operation_repo,
+            artwork_repo=artwork_repo,
             file_identity_repo=file_identity_repo,
             track_repo=track_repo,
             album_repo=album_repo,
@@ -245,6 +269,7 @@ class Container:
             rule_worker=rule_worker,
             duplicate_worker=duplicate_worker,
             organizer_worker=organizer_worker,
+            artwork_worker=artwork_worker,
             dispatcher=dispatcher,
             event_bus=event_bus,
         )
@@ -279,4 +304,14 @@ def _build_metadata_providers(metadata: MetadataConfig) -> list[MetadataProvider
         providers.append(LocalTagsProvider())
     if "filename_parser" in enabled:
         providers.append(FilenameParserProvider())
+    return providers
+
+
+def _build_artwork_providers(artwork: ArtworkConfig) -> list[ArtworkProvider]:
+    """Construct built-in artwork providers. ``fetch_enabled`` gates only
+    the network provider — embedded extraction always runs."""
+    providers: list[ArtworkProvider] = []
+    if artwork.fetch_enabled:
+        providers.append(CoverArtArchiveProvider())
+    providers.append(EmbeddedArtProvider())
     return providers

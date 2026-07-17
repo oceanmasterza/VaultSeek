@@ -11,6 +11,7 @@ import pytest
 from musicvault.core.config import (
     CURRENT_SCHEMA_VERSION,
     AppConfig,
+    ArtworkConfig,
     MetadataConfig,
     PipelineConfig,
     WatchConfig,
@@ -189,6 +190,35 @@ def test_watch_config_round_trips_custom_poll_interval(tmp_path: Path) -> None:
     config = load_config(config_path)
 
     assert config.watch.poll_interval_seconds == 5.0
+
+
+def test_migrating_a_v4_config_adds_artwork_section(tmp_path: Path) -> None:
+    config_path = tmp_path / "config.json"
+    v4_document = default_config().to_dict()
+    v4_document["schema_version"] = 4
+    del v4_document["artwork"]
+    config_path.write_text(json.dumps(v4_document), encoding="utf-8")
+
+    config = load_config(config_path)
+
+    assert config.schema_version == CURRENT_SCHEMA_VERSION
+    assert config.artwork == ArtworkConfig()
+    persisted = json.loads(config_path.read_text(encoding="utf-8"))
+    assert persisted["artwork"] == asdict(ArtworkConfig())
+
+
+def test_artwork_config_round_trips_custom_settings(tmp_path: Path) -> None:
+    config_path = tmp_path / "config.json"
+    save_config(
+        AppConfig(artwork=ArtworkConfig(fetch_enabled=False, min_width=1000, min_height=1000)),
+        config_path,
+    )
+
+    config = load_config(config_path)
+
+    assert config.artwork.fetch_enabled is False
+    assert config.artwork.min_width == 1000
+    assert config.artwork.min_height == 1000
 
 
 def test_load_config_raises_when_no_migration_exists_for_an_old_version(tmp_path: Path) -> None:

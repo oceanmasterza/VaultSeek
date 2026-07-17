@@ -16,6 +16,7 @@ from sqlalchemy import Engine
 from musicvault.core.event_bus import EventBus
 from musicvault.db.repositories.album_repo import AlbumRepository
 from musicvault.db.repositories.artist_repo import ArtistRepository
+from musicvault.db.repositories.artwork_repo import ArtworkRepository
 from musicvault.db.repositories.duplicate_repo import DuplicateRepository
 from musicvault.db.repositories.file_identity_repo import FileIdentityRepository
 from musicvault.db.repositories.job_repo import JobRepository
@@ -38,6 +39,7 @@ from musicvault.services.review_queue_service import ReviewQueueService
 from musicvault.services.rules_engine import RulesEngine
 from musicvault.workers.cpu.fingerprint_worker import FingerprintWorker
 from musicvault.workers.cpu.hash_worker import HashWorker
+from musicvault.workers.io.artwork_worker import ArtworkWorker
 from musicvault.workers.io.duplicate_worker import DuplicateWorker
 from musicvault.workers.io.metadata_worker import MetadataWorker
 from musicvault.workers.io.organizer_worker import OrganizerWorker
@@ -81,6 +83,7 @@ def dispatcher(
     review_repo: ReviewRepository,
     rule_repo: RuleRepository,
     engine: Engine,
+    tmp_path: Path,
 ) -> Iterator[JobDispatcher]:
     scanner = ScannerWorker(track_repo, file_identity_repo, database_writer, job_queue)
     hasher = HashWorker(file_identity_repo, database_writer, job_queue)
@@ -122,6 +125,15 @@ def dispatcher(
         OrganizeEngine(),
         job_queue,
     )
+    artwork_worker = ArtworkWorker(
+        track_repo,
+        AlbumRepository(engine),
+        ArtworkRepository(engine),
+        [],
+        review_queue,
+        job_queue,
+        artwork_dir=tmp_path / "artwork_cache",
+    )
     disp = JobDispatcher(
         job_queue,
         scanner,
@@ -131,6 +143,7 @@ def dispatcher(
         rule_worker,
         duplicate_worker,
         organizer_worker,
+        artwork_worker,
         scanner_threads=1,
         hash_processes=1,
         metadata_threads=1,
@@ -464,6 +477,32 @@ def test_run_cycle_dispatches_an_organize_file_job(
     assert job.status is JobStatus.RETRY
     assert job.error_message is not None
     assert "not found" in job.error_message
+
+
+def test_run_cycle_dispatches_a_fetch_artwork_job(
+    dispatcher: JobDispatcher,
+    job_queue: JobQueueService,
+    job_repo: JobRepository,
+    review_queue: ReviewQueueService,
+    library_id: UUID,
+    track_id: UUID,
+) -> None:
+    """The artwork route is wired: with no providers registered, the
+    worker completes the job and parks an artwork_missing review item."""
+    job_id = job_queue.enqueue(
+        JobType.FETCH_ARTWORK,
+        library_id,
+        {"track_id": str(track_id)},
+        now=_NOW,
+    )
+
+    futures = dispatcher.run_cycle()
+    assert len(futures) == 1
+    futures[0].result(timeout=_POLL_TIMEOUT_SECONDS)
+
+    assert job_repo.get(job_id).status is JobStatus.COMPLETED  # type: ignore[union-attr]
+    pending = review_queue.get_pending(library_id)
+    assert [item.review_type.value for item in pending] == ["artwork_missing"]
 
 
 def test_run_cycle_dispatches_an_identify_metadata_job(

@@ -44,6 +44,9 @@ EXPECTED_TABLE_NAMES = {
     "change_history",
     "rollback_snapshots",
     "media_server_state",
+    "artwork",
+    "track_artwork",
+    "album_artwork",
 }
 
 
@@ -104,13 +107,13 @@ def _insert_track(eng: Engine, library_id: bytes) -> bytes:
     return track_id
 
 
-def test_create_all_produces_exactly_the_15_specified_tables(engine: Engine) -> None:
+def test_create_all_produces_exactly_the_specified_tables(engine: Engine) -> None:
     assert set(metadata.tables) == EXPECTED_TABLE_NAMES
-    assert len(metadata.tables) == 15
+    assert len(metadata.tables) == 18
 
 
 def test_deferred_undocumented_tables_are_not_created(engine: Engine) -> None:
-    deferred = {"artwork", "track_artwork", "album_artwork", "plugin_state", "library_stats"}
+    deferred = {"plugin_state", "library_stats"}
     assert deferred.isdisjoint(metadata.tables)
 
 

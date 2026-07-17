@@ -142,6 +142,13 @@ def test_execute_persists_arbitrated_fields_and_completes_job(
     ]
     assert len(duplicate_jobs) == 1
     assert duplicate_jobs[0].payload["track_id"] == str(track_id)
+    artwork_jobs = [
+        job
+        for job in job_repo.list_by_status(JobStatus.PENDING)
+        if job.job_type is JobType.FETCH_ARTWORK
+    ]
+    assert len(artwork_jobs) == 1
+    assert artwork_jobs[0].payload["track_id"] == str(track_id)
 
 
 def test_execute_marks_failed_when_track_missing(

@@ -31,6 +31,9 @@ EXPECTED_TABLE_NAMES = {
     "change_history",
     "rollback_snapshots",
     "media_server_state",
+    "artwork",
+    "track_artwork",
+    "album_artwork",
 }
 
 
@@ -53,7 +56,7 @@ def test_run_migrations_creates_the_database_file(tmp_path: Path) -> None:
     assert db_path.exists()
 
 
-def test_run_migrations_creates_all_15_specified_tables(tmp_path: Path) -> None:
+def test_run_migrations_creates_all_specified_tables(tmp_path: Path) -> None:
     db_path = tmp_path / "musicvault.db"
 
     run_migrations(db_path)
@@ -74,7 +77,7 @@ def test_run_migrations_records_alembic_version(tmp_path: Path) -> None:
     finally:
         engine.dispose()
 
-    assert version == "0002"
+    assert version == "0003"
 
 
 def test_downgrade_to_base_drops_all_specified_tables(tmp_path: Path) -> None:

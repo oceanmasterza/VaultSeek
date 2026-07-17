@@ -12,6 +12,7 @@ from musicvault.core.event_bus import EventBus
 from musicvault.core.paths import AppPaths
 from musicvault.db.repositories.album_repo import AlbumRepository
 from musicvault.db.repositories.artist_repo import ArtistRepository
+from musicvault.db.repositories.artwork_repo import ArtworkRepository
 from musicvault.db.repositories.duplicate_repo import DuplicateRepository
 from musicvault.db.repositories.file_identity_repo import FileIdentityRepository
 from musicvault.db.repositories.job_repo import JobRepository
@@ -36,6 +37,7 @@ from musicvault.services.rules_engine import RulesEngine
 from musicvault.services.watch_folder_service import WatchFolderService
 from musicvault.workers.cpu.fingerprint_worker import FingerprintWorker
 from musicvault.workers.cpu.hash_worker import HashWorker
+from musicvault.workers.io.artwork_worker import ArtworkWorker
 from musicvault.workers.io.duplicate_worker import DuplicateWorker
 from musicvault.workers.io.metadata_worker import MetadataWorker
 from musicvault.workers.io.organizer_worker import OrganizerWorker
@@ -92,6 +94,9 @@ def test_bootstrap_creates_the_database_file_with_all_tables(
         "tracks",
         "albums",
         "artists",
+        "artwork",
+        "track_artwork",
+        "album_artwork",
     }.issubset(tables)
     container.close()
 
@@ -169,6 +174,18 @@ def test_bootstrap_wires_the_phase_10_organizer_stack(
     assert isinstance(container.organize_engine, OrganizeEngine)
     assert isinstance(container.organizer_worker, OrganizerWorker)
     assert isinstance(container.watch_folder, WatchFolderService)
+    container.close()
+
+
+def test_bootstrap_wires_the_phase_11_artwork_stack(
+    app_paths: AppPaths, app_config: AppConfig
+) -> None:
+    container = Container.bootstrap(paths=app_paths, config=app_config)
+
+    assert isinstance(container.artwork_repo, ArtworkRepository)
+    assert isinstance(container.artwork_worker, ArtworkWorker)
+    artwork_ids = [p.provider_id for p in container.plugin_manager.get_artwork_providers()]
+    assert artwork_ids == ["cover_art_archive", "embedded_art"]
     container.close()
 
 

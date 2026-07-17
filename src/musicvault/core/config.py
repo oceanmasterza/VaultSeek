@@ -18,7 +18,23 @@ from typing import Any
 
 from musicvault.core.exceptions import ConfigError, ConfigMigrationError, ConfigVersionError
 
-CURRENT_SCHEMA_VERSION = 4
+CURRENT_SCHEMA_VERSION = 5
+
+
+@dataclass(frozen=True)
+class ArtworkConfig:
+    """Artwork fetching tunables (Phase 11).
+
+    No pixel threshold is documented anywhere in the architecture docs;
+    500x500 is this implementation's fill-in — comfortably above
+    thumbnail size, below the Cover Art Archive's typical 1200px
+    originals, and user-adjustable here. ``fetch_enabled`` gates the
+    *network* provider only; embedded art extraction always runs.
+    """
+
+    fetch_enabled: bool = True
+    min_width: int = 500
+    min_height: int = 500
 
 
 @dataclass(frozen=True)
@@ -85,6 +101,7 @@ class AppConfig:
     pipeline: PipelineConfig = field(default_factory=PipelineConfig)
     metadata: MetadataConfig = field(default_factory=MetadataConfig)
     watch: WatchConfig = field(default_factory=WatchConfig)
+    artwork: ArtworkConfig = field(default_factory=ArtworkConfig)
 
     def to_dict(self) -> dict[str, Any]:
         """Return a plain-dict representation suitable for JSON serialization."""
@@ -127,10 +144,18 @@ def _migrate_v3_to_v4(raw: dict[str, Any]) -> dict[str, Any]:
     return migrated
 
 
+def _migrate_v4_to_v5(raw: dict[str, Any]) -> dict[str, Any]:
+    migrated = dict(raw)
+    migrated["schema_version"] = 5
+    migrated["artwork"] = asdict(ArtworkConfig())
+    return migrated
+
+
 _MIGRATIONS: dict[int, Callable[[dict[str, Any]], dict[str, Any]]] = {
     1: _migrate_v1_to_v2,
     2: _migrate_v2_to_v3,
     3: _migrate_v3_to_v4,
+    4: _migrate_v4_to_v5,
 }
 
 
@@ -184,6 +209,13 @@ def _from_dict(raw: dict[str, Any]) -> AppConfig:
         watch_fields = set(WatchConfig.__dataclass_fields__)
         filtered["watch"] = WatchConfig(
             **{key: value for key, value in watch_raw.items() if key in watch_fields}
+        )
+
+    artwork_raw = filtered.get("artwork")
+    if isinstance(artwork_raw, dict):
+        artwork_fields = set(ArtworkConfig.__dataclass_fields__)
+        filtered["artwork"] = ArtworkConfig(
+            **{key: value for key, value in artwork_raw.items() if key in artwork_fields}
         )
 
     return AppConfig(**filtered)

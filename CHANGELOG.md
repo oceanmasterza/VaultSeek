@@ -9,6 +9,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Phase 11 artwork worker** — album covers enter the pipeline:
+  - Artwork tables re-designed from scratch (v1 column spec was lost):
+    `artwork` (one row per unique image, deduplicated by SHA-256, bytes
+    cached under `cache/artwork/`), `track_artwork` / `album_artwork`
+    link tables — Alembic migration `0003` + `ArtworkRepository`
+  - `ArtworkProvider` protocol with the documented `ArtworkResult` shape;
+    **Cover Art Archive plugin** (priority 10) fetching front covers by
+    MusicBrainz release, release-group, or recording id (recording ids
+    are resolved to a release via the MusicBrainz API first);
+    **embedded-art plugin** (priority 50) extracting FLAC `pictures`,
+    ID3 `APIC`, and MP4 `covr` images, preferring front covers
+  - `ArtworkWorker` + dispatcher `fetch_artwork` route — first
+    priority-ordered result meeting the minimum resolution wins; smaller
+    finds are still stored but park an `artwork_low_res` review item;
+    nothing found parks `artwork_missing`; `tracks.has_embedded_art` is
+    set whenever the file's own tags held a usable picture
+  - `MetadataWorker` now enqueues `fetch_artwork` alongside
+    `detect_duplicates` — artwork is a side branch that never gates
+    organizing
+  - Config schema v5: `artwork` section (`fetch_enabled`, `min_width`,
+    `min_height`; 500×500 default)
+  - 464 tests total (up from 429)
+
+### Added
+
 - **Phase 10 organizer + watch folder** — real file moves close the loop:
   - `OrganizeEngine` (pure domain service) — zone state machine
     (incoming → staging → library, library ↔ archive, plus

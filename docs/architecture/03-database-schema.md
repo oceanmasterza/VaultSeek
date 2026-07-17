@@ -384,12 +384,44 @@ Structure (once designed) will follow v2 conventions: all PKs/FKs are UUID v7 st
 as **BLOB(16)** (see [12-pipeline-engine-v3.md](12-pipeline-engine-v3.md#uuid-storage-v7-as-blob16)).
 
 Deferred tables (not yet created):
-- `artwork`, `track_artwork`, `album_artwork` — Phase 11
 - `plugin_state` — Phase 6/15
 - `library_stats` (materialized dashboard counters) — Phase 13
 
 Created in Phase 2:
 - `media_server_state` (connection config, last sync per server plugin)
+
+Designed and created in Phase 11 (migration `0003`):
+- `artwork`, `track_artwork`, `album_artwork` — see below
+
+### `artwork` (Phase 11 re-design)
+
+One row per **unique image**, deduplicated by content hash. Image bytes live on
+disk under the app cache directory (`cache/artwork/<hash[:2]>/<hash>.<ext>`),
+not as DB blobs, keeping the database small.
+
+| Column | Type | Constraints | Description |
+|--------|------|-------------|-------------|
+| `id` | BLOB(16) | PK | UUID v7 (binary) |
+| `content_hash_sha256` | TEXT | NOT NULL, UNIQUE | Dedup key |
+| `source` | TEXT | NOT NULL | Provider id (`cover_art_archive`, `embedded_art`) |
+| `source_id` | TEXT | NULL | e.g. the MusicBrainz release id fetched from |
+| `mime_type` | TEXT | NOT NULL | |
+| `width` | INTEGER | NOT NULL | Pixels |
+| `height` | INTEGER | NOT NULL | Pixels |
+| `file_size` | INTEGER | NOT NULL | Bytes |
+| `file_path` | TEXT | NOT NULL | Cache-directory location of the bytes |
+| `created_at` | TEXT | NOT NULL | |
+
+### `track_artwork` / `album_artwork` (Phase 11 re-design)
+
+Link tables. Composite PK on (`track_id`/`album_id`, `artwork_id`).
+
+| Column | Type | Constraints | Description |
+|--------|------|-------------|-------------|
+| `track_id` / `album_id` | BLOB(16) | PK, FK | |
+| `artwork_id` | BLOB(16) | PK, FK → artwork | |
+| `role` | TEXT | NOT NULL, DEFAULT `'front'` | Only `front` used today |
+| `is_primary` | BOOLEAN | NOT NULL, DEFAULT FALSE | |
 
 ### `media_server_state`
 

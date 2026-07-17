@@ -4,8 +4,10 @@ I/O-bound (Tier 2 — HTTP + Mutagen). When overall confidence is below
 threshold, sets ``tracks.needs_review`` and creates a review item via
 ReviewQueueService. Always enqueues ``detect_duplicates`` (Phase 9),
 which chains to ``evaluate_rules`` once grouping is done — so rules see
-the real ``has_lossless_duplicate`` flag. Artwork jobs remain a later
-phase.
+the real ``has_lossless_duplicate`` flag. Phase 11 adds a parallel
+``fetch_artwork`` enqueue (docs/architecture/04-service-layer.md worker
+table: MetadataWorker enqueues both) — artwork is a terminal side
+branch that never gates organizing.
 """
 
 from __future__ import annotations
@@ -84,6 +86,13 @@ class MetadataWorker:
 
         self._job_queue.enqueue(
             JobType.DETECT_DUPLICATES,
+            job.library_id,
+            {"track_id": str(track_id)},
+            parent_job_id=job.id,
+            now=now,
+        )
+        self._job_queue.enqueue(
+            JobType.FETCH_ARTWORK,
             job.library_id,
             {"track_id": str(track_id)},
             parent_job_id=job.id,
