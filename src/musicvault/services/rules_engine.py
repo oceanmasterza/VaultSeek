@@ -4,8 +4,10 @@ Wraps the Phase 3 condition AST
 (:func:`~musicvault.models.value_objects.rule_condition.parse_conditions`)
 with repository loading, default seeding, CRUD, and action application.
 ``has_lossless_duplicate`` is computed from Phase 9 duplicate groups by
-the caller (`RuleWorker`); ``move_to_zone`` creates a review item rather
-than moving files (Phase 10).
+the caller (`RuleWorker`). Since Phase 10, a non-approval
+``move_to_zone`` action enqueues a real `organize_file` job;
+`requires_approval` rules still park in the review queue, where
+approval executes the move.
 """
 
 from __future__ import annotations
@@ -23,15 +25,18 @@ from musicvault.db.repositories.rule_repo import RuleRepository
 from musicvault.db.repositories.track_repo import TrackRepository
 from musicvault.db.uuid_utils import generate_uuid7
 from musicvault.models.entities.artist import Artist
+from musicvault.models.entities.job import JobType
 from musicvault.models.entities.review_item import ReviewType
 from musicvault.models.entities.rule import Rule
-from musicvault.models.entities.track import Track
+from musicvault.models.entities.track import LibraryZone, Track
+from musicvault.models.services.organize_engine import OrganizeEngine
 from musicvault.models.value_objects.rule_action import RuleAction
 from musicvault.models.value_objects.rule_condition import parse_conditions
 from musicvault.services.default_rules import DEFAULT_RULE_SPECS
 from musicvault.services.dto.review_dto import ReviewItemCreate
 from musicvault.services.dto.rule_dto import RuleContext, RuleCreate, RuleMatch
 from musicvault.services.events import RulesMatchedEvent
+from musicvault.services.job_queue_service import JobQueueService
 from musicvault.services.review_queue_service import ReviewQueueService
 
 _SUPPORTED_ACTIONS = frozenset({"flag_review", "set_artist", "set_genre", "move_to_zone"})
@@ -45,12 +50,15 @@ class RulesEngine:
         artist_repository: ArtistRepository,
         review_queue: ReviewQueueService,
         event_bus: EventBus,
+        job_queue: JobQueueService | None = None,
     ) -> None:
         self._rules = rule_repository
         self._tracks = track_repository
         self._artists = artist_repository
         self._reviews = review_queue
         self._events = event_bus
+        self._job_queue = job_queue
+        self._organize = OrganizeEngine()
 
     def build_context(
         self,
@@ -249,10 +257,38 @@ class RulesEngine:
             self._tracks.upsert(updated)
             return updated
         if action.action_type == "move_to_zone":
-            # Zone moves are Phase 10 — park as a review item for now.
-            self._flag_move_intent(track, match, action, now=now)
+            self._move_to_zone(track, match, action, now=now)
             return track
         raise RuleError(f"Unsupported rule action: {action.action_type!r}")
+
+    def _move_to_zone(
+        self, track: Track, match: RuleMatch, action: RuleAction, *, now: datetime
+    ) -> None:
+        """Enqueue a real zone move (Phase 10), or park a review item when
+        no job queue is wired or the transition is illegal from the
+        track's current zone."""
+        zone = action.parameters.get("zone")
+        target: LibraryZone | None = None
+        if isinstance(zone, str):
+            try:
+                target = LibraryZone(zone)
+            except ValueError:
+                target = None
+        if target is None:
+            raise RuleError(f"move_to_zone requires a valid zone parameter, got {zone!r}")
+        if (
+            self._job_queue is None
+            or track.zone is target
+            or not self._organize.can_transition(track.zone, target)
+        ):
+            self._flag_move_intent(track, match, action, now=now)
+            return
+        self._job_queue.enqueue(
+            JobType.ORGANIZE_FILE,
+            track.library_id,
+            {"track_id": str(track.id), "target_zone": target.value},
+            now=now,
+        )
 
     def _flag_approval_required(self, track: Track, match: RuleMatch, *, now: datetime) -> None:
         self._reviews.create_item(
@@ -306,8 +342,8 @@ class RulesEngine:
                 title=f"Rule wants zone '{zone}': {match.rule_name}",
                 track_id=track.id,
                 description=(
-                    f"Rule '{match.rule_name}' requested move_to_zone={zone!r}; "
-                    "zone moves land in Phase 10"
+                    f"Rule '{match.rule_name}' requested move_to_zone={zone!r} "
+                    "but it could not be executed automatically"
                 ),
                 payload={
                     "rule_id": str(match.rule_id),

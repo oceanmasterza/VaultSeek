@@ -29,18 +29,21 @@ Collectors, audiophiles, and self-hosted media server operators using **Navidrom
 
 ## Status
 
-**Phase 9 — Duplicate Detection** (current)
+**Phase 10 — Organizer + Watch Folder** (current)
 
-Architecture is finalized (v3). The runnable scaffold, database layer, domain
-models, and job pipeline are in place. The processing pipeline runs
-`ScannerWorker` → `HashWorker` → `FingerprintWorker` → `MetadataWorker` →
-`DuplicateWorker` → `RuleWorker`. Uncertain metadata lands in the review
-queue; tracks sharing a content hash, Chromaprint fingerprint, or
-MusicBrainz recording ID are grouped with the best copy picked by quality
-score; automation rules (VA detection, low bitrate, archive-when-FLAC)
-evaluate last with the real duplicate flags. Unchanged files are skipped
-via size/mtime and content-hash checks. `python -m musicvault` bootstraps,
-recovers any orphaned jobs, and exits cleanly. See
+Architecture is finalized (v3). The full processing pipeline now ends in
+real file organization: `ScannerWorker` → `HashWorker` →
+`FingerprintWorker` → `MetadataWorker` → `DuplicateWorker` → `RuleWorker`
+→ `OrganizerWorker`. Processed incoming tracks move into an organized
+staging folder (`Artist/Year - Album/NN - Title.ext`); confident tracks
+(no review items, no open duplicates, confidence ≥ the library threshold)
+auto-approve straight into the library with zero clicks, while everything
+else waits in staging for approval. Approving a review item now executes
+the implied move — including parked archive-MP3 rule actions and duplicate
+resolution (keep best, archive the rest). Every move is logged to the
+operations/change-history audit trail for the Phase 12 rollback engine,
+and a polling watch-folder service keeps scanning `watch_enabled`
+libraries' incoming folders. See
 [Architecture Documentation](docs/architecture/README.md).
 
 ```powershell
@@ -49,7 +52,7 @@ cd musicvault
 python -m venv .venv
 .venv\Scripts\activate
 pip install -e ".[dev]"
-pytest              # 374 passed
+pytest              # 429 passed
 python -m musicvault  # MusicVault 0.1.0
 ```
 
@@ -113,8 +116,9 @@ python -m musicvault  # MusicVault 0.1.0
 | 6 | Metadata Arbitrator + Providers | Complete |
 | 7 | Review Queue | Complete |
 | 8 | Rules Engine | Complete |
-| **9** | **Duplicate Detection** | **Current** |
-| 10–16 | Organizer → Artwork → GUI → Plugins → Installer | Planned |
+| 9 | Duplicate Detection | Complete |
+| **10** | **Organizer + Watch Folder** | **Current** |
+| 11–16 | Artwork → Rollback → Reports → GUI → Plugins → Installer | Planned |
 
 ## License
 

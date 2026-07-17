@@ -18,7 +18,22 @@ from typing import Any
 
 from musicvault.core.exceptions import ConfigError, ConfigMigrationError, ConfigVersionError
 
-CURRENT_SCHEMA_VERSION = 3
+CURRENT_SCHEMA_VERSION = 4
+
+
+@dataclass(frozen=True)
+class WatchConfig:
+    """Watch-folder polling tunables (Phase 10).
+
+    Per-library enablement and the auto-approve threshold live on the
+    `libraries` row (`watch_enabled`, `auto_approve_threshold`); this
+    only holds the app-wide poll cadence. The poll interval doubles as
+    the write-debounce window from the risk register — a file still
+    being written changes size between polls and is picked up by a
+    later scan.
+    """
+
+    poll_interval_seconds: float = 30.0
 
 
 @dataclass(frozen=True)
@@ -69,6 +84,7 @@ class AppConfig:
     theme: str = "dark"
     pipeline: PipelineConfig = field(default_factory=PipelineConfig)
     metadata: MetadataConfig = field(default_factory=MetadataConfig)
+    watch: WatchConfig = field(default_factory=WatchConfig)
 
     def to_dict(self) -> dict[str, Any]:
         """Return a plain-dict representation suitable for JSON serialization."""
@@ -104,9 +120,17 @@ def _migrate_v2_to_v3(raw: dict[str, Any]) -> dict[str, Any]:
     return migrated
 
 
+def _migrate_v3_to_v4(raw: dict[str, Any]) -> dict[str, Any]:
+    migrated = dict(raw)
+    migrated["schema_version"] = 4
+    migrated["watch"] = asdict(WatchConfig())
+    return migrated
+
+
 _MIGRATIONS: dict[int, Callable[[dict[str, Any]], dict[str, Any]]] = {
     1: _migrate_v1_to_v2,
     2: _migrate_v2_to_v3,
+    3: _migrate_v3_to_v4,
 }
 
 
@@ -154,6 +178,13 @@ def _from_dict(raw: dict[str, Any]) -> AppConfig:
         if "enabled_providers" in coerced and isinstance(coerced["enabled_providers"], list):
             coerced["enabled_providers"] = tuple(coerced["enabled_providers"])
         filtered["metadata"] = MetadataConfig(**coerced)
+
+    watch_raw = filtered.get("watch")
+    if isinstance(watch_raw, dict):
+        watch_fields = set(WatchConfig.__dataclass_fields__)
+        filtered["watch"] = WatchConfig(
+            **{key: value for key, value in watch_raw.items() if key in watch_fields}
+        )
 
     return AppConfig(**filtered)
 

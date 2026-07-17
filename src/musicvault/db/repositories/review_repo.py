@@ -71,6 +71,17 @@ class ReviewRepository:
             row = conn.execute(statement).first()
         return _from_row(row) if row is not None else None
 
+    def list_pending_for_track(self, track_id: UUID) -> list[ReviewItem]:
+        """All pending items attached to this track (any review type)."""
+        statement = (
+            select(review_items)
+            .where(review_items.c.track_id == uuid_to_blob(track_id))
+            .where(review_items.c.status == ReviewStatus.PENDING.value)
+        )
+        with self._engine.connect() as conn:
+            rows = conn.execute(statement).all()
+        return [_from_row(row) for row in rows]
+
     def update_pending_content(
         self,
         review_id: UUID,

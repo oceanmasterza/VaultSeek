@@ -13,6 +13,7 @@ from musicvault.core.config import (
     AppConfig,
     MetadataConfig,
     PipelineConfig,
+    WatchConfig,
     default_config,
     load_config,
     save_config,
@@ -164,6 +165,30 @@ def test_migrating_a_v2_config_adds_metadata_section(tmp_path: Path) -> None:
     assert config.pipeline.db_writer_batch_size == 1000
     assert config.pipeline.metadata_worker_threads == 1
     assert config.metadata == MetadataConfig()
+
+
+def test_migrating_a_v3_config_adds_watch_section(tmp_path: Path) -> None:
+    config_path = tmp_path / "config.json"
+    v3_document = default_config().to_dict()
+    v3_document["schema_version"] = 3
+    del v3_document["watch"]
+    config_path.write_text(json.dumps(v3_document), encoding="utf-8")
+
+    config = load_config(config_path)
+
+    assert config.schema_version == CURRENT_SCHEMA_VERSION
+    assert config.watch == WatchConfig()
+    persisted = json.loads(config_path.read_text(encoding="utf-8"))
+    assert persisted["watch"] == asdict(WatchConfig())
+
+
+def test_watch_config_round_trips_custom_poll_interval(tmp_path: Path) -> None:
+    config_path = tmp_path / "config.json"
+    save_config(AppConfig(watch=WatchConfig(poll_interval_seconds=5.0)), config_path)
+
+    config = load_config(config_path)
+
+    assert config.watch.poll_interval_seconds == 5.0
 
 
 def test_load_config_raises_when_no_migration_exists_for_an_old_version(tmp_path: Path) -> None:

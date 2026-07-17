@@ -14,16 +14,21 @@ import pytest
 from sqlalchemy import Engine
 
 from musicvault.core.event_bus import EventBus
+from musicvault.db.repositories.album_repo import AlbumRepository
 from musicvault.db.repositories.artist_repo import ArtistRepository
 from musicvault.db.repositories.duplicate_repo import DuplicateRepository
 from musicvault.db.repositories.file_identity_repo import FileIdentityRepository
 from musicvault.db.repositories.job_repo import JobRepository
+from musicvault.db.repositories.library_repo import LibraryRepository
 from musicvault.db.repositories.metadata_confidence_repo import MetadataConfidenceRepository
+from musicvault.db.repositories.operation_repo import OperationRepository
+from musicvault.db.repositories.review_repo import ReviewRepository
 from musicvault.db.repositories.rule_repo import RuleRepository
 from musicvault.db.repositories.track_repo import TrackRepository
 from musicvault.db.writer import DatabaseWriter
 from musicvault.models.entities.job import JobStatus, JobType
 from musicvault.models.services.duplicate_matcher import DuplicateMatcher
+from musicvault.models.services.organize_engine import OrganizeEngine
 from musicvault.models.services.quality_scorer import DEFAULT_WEIGHTS, QualityScorer
 from musicvault.plugins.builtin.filename_parser import FilenameParserProvider
 from musicvault.services.job_dispatcher import JobDispatcher
@@ -35,6 +40,7 @@ from musicvault.workers.cpu.fingerprint_worker import FingerprintWorker
 from musicvault.workers.cpu.hash_worker import HashWorker
 from musicvault.workers.io.duplicate_worker import DuplicateWorker
 from musicvault.workers.io.metadata_worker import MetadataWorker
+from musicvault.workers.io.organizer_worker import OrganizerWorker
 from musicvault.workers.io.rule_worker import RuleWorker
 from musicvault.workers.io.scanner_worker import ScannerWorker
 
@@ -72,6 +78,7 @@ def dispatcher(
     file_identity_repo: FileIdentityRepository,
     database_writer: DatabaseWriter,
     review_queue: ReviewQueueService,
+    review_repo: ReviewRepository,
     rule_repo: RuleRepository,
     engine: Engine,
 ) -> Iterator[JobDispatcher]:
@@ -104,6 +111,17 @@ def dispatcher(
         review_queue,
         job_queue,
     )
+    organizer_worker = OrganizerWorker(
+        track_repo,
+        LibraryRepository(engine),
+        ArtistRepository(engine),
+        AlbumRepository(engine),
+        review_repo,
+        duplicate_repo,
+        OperationRepository(engine),
+        OrganizeEngine(),
+        job_queue,
+    )
     disp = JobDispatcher(
         job_queue,
         scanner,
@@ -112,6 +130,7 @@ def dispatcher(
         metadata,
         rule_worker,
         duplicate_worker,
+        organizer_worker,
         scanner_threads=1,
         hash_processes=1,
         metadata_threads=1,
@@ -417,6 +436,34 @@ def test_poll_loop_survives_a_run_cycle_exception_and_keeps_polling(
     finally:
         dispatcher.stop()
     assert call_count["n"] >= 2
+
+
+def test_run_cycle_dispatches_an_organize_file_job(
+    dispatcher: JobDispatcher,
+    job_queue: JobQueueService,
+    job_repo: JobRepository,
+    library_id: UUID,
+) -> None:
+    """The organize route is wired: a job for a missing track is claimed,
+    executed, and failed by the OrganizerWorker (not left pending)."""
+    from musicvault.db.uuid_utils import generate_uuid7
+
+    job_id = job_queue.enqueue(
+        JobType.ORGANIZE_FILE,
+        library_id,
+        {"track_id": str(generate_uuid7()), "target_zone": "staging"},
+        now=_NOW,
+    )
+
+    futures = dispatcher.run_cycle()
+    assert len(futures) == 1
+    futures[0].result(timeout=_POLL_TIMEOUT_SECONDS)
+
+    job = job_repo.get(job_id)
+    assert job is not None
+    assert job.status is JobStatus.RETRY
+    assert job.error_message is not None
+    assert "not found" in job.error_message
 
 
 def test_run_cycle_dispatches_an_identify_metadata_job(

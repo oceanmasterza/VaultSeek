@@ -11,13 +11,16 @@ from sqlalchemy import Engine
 from musicvault.core.event_bus import EventBus
 from musicvault.core.exceptions import RuleError
 from musicvault.db.repositories.artist_repo import ArtistRepository
+from musicvault.db.repositories.job_repo import JobRepository
 from musicvault.db.repositories.review_repo import ReviewRepository
 from musicvault.db.repositories.rule_repo import RuleRepository
 from musicvault.db.repositories.track_repo import TrackRepository
+from musicvault.models.entities.job import JobStatus, JobType
 from musicvault.models.entities.review_item import ReviewStatus, ReviewType
 from musicvault.models.entities.track import LibraryZone, Track
 from musicvault.services.dto.rule_dto import RuleCreate
 from musicvault.services.events import RulesMatchedEvent
+from musicvault.services.job_queue_service import JobQueueService
 from musicvault.services.review_queue_service import ReviewQueueService
 from musicvault.services.rules_engine import RulesEngine
 
@@ -172,3 +175,114 @@ def test_create_rule_rejects_unknown_action(rules_engine: RulesEngine, library_i
             ),
             now=_NOW,
         )
+
+
+# ---------------------------------------------------------------------------
+# Phase 10: move_to_zone actions become real organize_file jobs
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture
+def wired_rules_engine(
+    review_repo: ReviewRepository,
+    rule_repo: RuleRepository,
+    track_repo: TrackRepository,
+    artist_repo: ArtistRepository,
+    event_bus: EventBus,
+    job_queue: JobQueueService,
+) -> RulesEngine:
+    review_queue = ReviewQueueService(review_repo, track_repo, event_bus)
+    return RulesEngine(rule_repo, track_repo, artist_repo, review_queue, event_bus, job_queue)
+
+
+def _move_rule(rules_engine: RulesEngine, library_id: UUID, zone: str) -> None:
+    rules_engine.create_rule(
+        RuleCreate(
+            library_id=library_id,
+            name=f"Move to {zone}",
+            conditions={"field": "codec", "operator": "eq", "value": "mp3"},
+            actions=[{"action_type": "move_to_zone", "parameters": {"zone": zone}}],
+        ),
+        now=_NOW,
+    )
+
+
+def test_non_approval_move_to_zone_enqueues_an_organize_job(
+    wired_rules_engine: RulesEngine,
+    track_repo: TrackRepository,
+    job_repo: JobRepository,
+    library_id: UUID,
+    track_id: UUID,
+) -> None:
+    _move_rule(wired_rules_engine, library_id, "archive")
+    track = _make_track(library_id, track_id, codec="mp3", file_name="x.mp3")
+    track_repo.upsert(track)
+
+    matches = wired_rules_engine.evaluate(track, wired_rules_engine.build_context(track))
+    wired_rules_engine.apply_matches(track, matches, now=_NOW)
+
+    organize = [
+        job
+        for job in job_repo.list_by_status(JobStatus.PENDING, library_id=library_id)
+        if job.job_type is JobType.ORGANIZE_FILE
+    ]
+    assert len(organize) == 1
+    assert organize[0].payload == {"track_id": str(track_id), "target_zone": "archive"}
+
+
+def test_illegal_move_to_zone_parks_a_review_item_instead(
+    wired_rules_engine: RulesEngine,
+    track_repo: TrackRepository,
+    review_repo: ReviewRepository,
+    job_repo: JobRepository,
+    library_id: UUID,
+    track_id: UUID,
+) -> None:
+    _move_rule(wired_rules_engine, library_id, "library")  # incoming -> library is illegal
+    track = _make_track(library_id, track_id, codec="mp3", file_name="x.mp3")
+    track_repo.upsert(track)
+
+    matches = wired_rules_engine.evaluate(track, wired_rules_engine.build_context(track))
+    wired_rules_engine.apply_matches(track, matches, now=_NOW)
+
+    organize = [
+        job
+        for job in job_repo.list_by_status(JobStatus.PENDING, library_id=library_id)
+        if job.job_type is JobType.ORGANIZE_FILE
+    ]
+    assert organize == []
+    pending = review_repo.list_by_status(ReviewStatus.PENDING, library_id=library_id)
+    assert any(item.review_type is ReviewType.RULE_ACTION for item in pending)
+
+
+def test_unwired_engine_still_parks_move_intent(
+    rules_engine: RulesEngine,
+    track_repo: TrackRepository,
+    review_repo: ReviewRepository,
+    library_id: UUID,
+    track_id: UUID,
+) -> None:
+    _move_rule(rules_engine, library_id, "archive")
+    track = _make_track(library_id, track_id, codec="mp3", file_name="x.mp3")
+    track_repo.upsert(track)
+
+    matches = rules_engine.evaluate(track, rules_engine.build_context(track))
+    rules_engine.apply_matches(track, matches, now=_NOW)
+
+    pending = review_repo.list_by_status(ReviewStatus.PENDING, library_id=library_id)
+    assert any("Rule wants zone 'archive'" in item.title for item in pending)
+
+
+def test_move_to_zone_with_invalid_zone_raises(
+    wired_rules_engine: RulesEngine,
+    track_repo: TrackRepository,
+    library_id: UUID,
+    track_id: UUID,
+) -> None:
+    _move_rule(wired_rules_engine, library_id, "vault-of-secrets")
+    track = _make_track(library_id, track_id, codec="mp3", file_name="x.mp3")
+    track_repo.upsert(track)
+
+    matches = wired_rules_engine.evaluate(track, wired_rules_engine.build_context(track))
+    with pytest.raises(RuleError, match="valid zone"):
+        wired_rules_engine.apply_matches(track, matches, now=_NOW)

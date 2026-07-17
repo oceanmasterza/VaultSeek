@@ -112,6 +112,21 @@ class DuplicateRepository:
                 )
             )
 
+    def has_open_group(self, track_id: UUID) -> bool:
+        """True if this track belongs to any *open* duplicate group."""
+        statement = (
+            select(duplicate_members.c.group_id)
+            .join(
+                duplicate_groups,
+                duplicate_groups.c.id == duplicate_members.c.group_id,
+            )
+            .where(duplicate_members.c.track_id == uuid_to_blob(track_id))
+            .where(duplicate_groups.c.status == GroupStatus.OPEN.value)
+            .limit(1)
+        )
+        with self._engine.connect() as conn:
+            return conn.execute(statement).first() is not None
+
     def has_lossless_duplicate(self, track_id: UUID) -> bool:
         """True if this track shares an *open* group with a lossless other member."""
         other = duplicate_members.alias("other")

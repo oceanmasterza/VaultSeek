@@ -27,13 +27,16 @@ from musicvault.db.repositories.artist_repo import ArtistRepository
 from musicvault.db.repositories.duplicate_repo import DuplicateRepository
 from musicvault.db.repositories.file_identity_repo import FileIdentityRepository
 from musicvault.db.repositories.job_repo import JobRepository
+from musicvault.db.repositories.library_repo import LibraryRepository
 from musicvault.db.repositories.metadata_confidence_repo import MetadataConfidenceRepository
+from musicvault.db.repositories.operation_repo import OperationRepository
 from musicvault.db.repositories.review_repo import ReviewRepository
 from musicvault.db.repositories.rule_repo import RuleRepository
 from musicvault.db.repositories.track_repo import TrackRepository
 from musicvault.db.writer import DatabaseWriter
 from musicvault.models.interfaces.metadata import MetadataProvider
 from musicvault.models.services.duplicate_matcher import DuplicateMatcher
+from musicvault.models.services.organize_engine import OrganizeEngine
 from musicvault.models.services.quality_scorer import DEFAULT_WEIGHTS, QualityScorer
 from musicvault.plugins.builtin.acoustid import AcoustIdProvider
 from musicvault.plugins.builtin.filename_parser import FilenameParserProvider
@@ -45,10 +48,12 @@ from musicvault.services.job_queue_service import JobQueueService
 from musicvault.services.metadata_arbitrator import MetadataArbitrator
 from musicvault.services.review_queue_service import ReviewQueueService
 from musicvault.services.rules_engine import RulesEngine
+from musicvault.services.watch_folder_service import WatchFolderService
 from musicvault.workers.cpu.fingerprint_worker import FingerprintWorker
 from musicvault.workers.cpu.hash_worker import HashWorker
 from musicvault.workers.io.duplicate_worker import DuplicateWorker
 from musicvault.workers.io.metadata_worker import MetadataWorker
+from musicvault.workers.io.organizer_worker import OrganizerWorker
 from musicvault.workers.io.rule_worker import RuleWorker
 from musicvault.workers.io.scanner_worker import ScannerWorker
 
@@ -64,6 +69,8 @@ class Container:
     review_repo: ReviewRepository
     rule_repo: RuleRepository
     duplicate_repo: DuplicateRepository
+    library_repo: LibraryRepository
+    operation_repo: OperationRepository
     file_identity_repo: FileIdentityRepository
     track_repo: TrackRepository
     album_repo: AlbumRepository
@@ -74,6 +81,8 @@ class Container:
     review_queue: ReviewQueueService
     rules_engine: RulesEngine
     duplicate_matcher: DuplicateMatcher
+    organize_engine: OrganizeEngine
+    watch_folder: WatchFolderService
     plugin_manager: PluginManager
     metadata_arbitrator: MetadataArbitrator
     scanner_worker: ScannerWorker
@@ -82,6 +91,7 @@ class Container:
     metadata_worker: MetadataWorker
     rule_worker: RuleWorker
     duplicate_worker: DuplicateWorker
+    organizer_worker: OrganizerWorker
     dispatcher: JobDispatcher
     event_bus: EventBus = field(default_factory=EventBus)
 
@@ -114,7 +124,10 @@ class Container:
         review_repo = ReviewRepository(engine)
         rule_repo = RuleRepository(engine)
         duplicate_repo = DuplicateRepository(engine)
+        library_repo = LibraryRepository(engine)
+        operation_repo = OperationRepository(engine)
         artist_repo = ArtistRepository(engine)
+        album_repo = AlbumRepository(engine)
         file_identity_repo = FileIdentityRepository(engine)
         metadata_confidence_repo = MetadataConfidenceRepository(engine)
         event_bus = EventBus()
@@ -130,9 +143,19 @@ class Container:
             track_repo,
             event_bus,
             confidence_threshold=config.metadata.confidence_threshold,
+            job_queue=job_queue,
+            duplicate_repository=duplicate_repo,
         )
-        rules_engine = RulesEngine(rule_repo, track_repo, artist_repo, review_queue, event_bus)
+        rules_engine = RulesEngine(
+            rule_repo, track_repo, artist_repo, review_queue, event_bus, job_queue
+        )
         duplicate_matcher = DuplicateMatcher(QualityScorer(DEFAULT_WEIGHTS))
+        organize_engine = OrganizeEngine()
+        watch_folder = WatchFolderService(
+            library_repo,
+            job_queue,
+            poll_interval_seconds=config.watch.poll_interval_seconds,
+        )
 
         plugin_manager = PluginManager(_build_metadata_providers(config.metadata))
         metadata_arbitrator = MetadataArbitrator(
@@ -160,6 +183,17 @@ class Container:
             review_queue,
             job_queue,
         )
+        organizer_worker = OrganizerWorker(
+            track_repo,
+            library_repo,
+            artist_repo,
+            album_repo,
+            review_repo,
+            duplicate_repo,
+            operation_repo,
+            organize_engine,
+            job_queue,
+        )
         dispatcher = JobDispatcher(
             job_queue,
             scanner_worker,
@@ -168,6 +202,7 @@ class Container:
             metadata_worker,
             rule_worker,
             duplicate_worker,
+            organizer_worker,
             scanner_threads=config.pipeline.scanner_worker_threads,
             hash_processes=config.pipeline.hash_worker_processes,
             metadata_threads=config.pipeline.metadata_worker_threads,
@@ -177,6 +212,7 @@ class Container:
         database_writer.start()
         dispatcher.recover()
         dispatcher.start()
+        watch_folder.start()
 
         return cls(
             paths=paths,
@@ -186,9 +222,11 @@ class Container:
             review_repo=review_repo,
             rule_repo=rule_repo,
             duplicate_repo=duplicate_repo,
+            library_repo=library_repo,
+            operation_repo=operation_repo,
             file_identity_repo=file_identity_repo,
             track_repo=track_repo,
-            album_repo=AlbumRepository(engine),
+            album_repo=album_repo,
             artist_repo=artist_repo,
             metadata_confidence_repo=metadata_confidence_repo,
             database_writer=database_writer,
@@ -196,6 +234,8 @@ class Container:
             review_queue=review_queue,
             rules_engine=rules_engine,
             duplicate_matcher=duplicate_matcher,
+            organize_engine=organize_engine,
+            watch_folder=watch_folder,
             plugin_manager=plugin_manager,
             metadata_arbitrator=metadata_arbitrator,
             scanner_worker=scanner_worker,
@@ -204,6 +244,7 @@ class Container:
             metadata_worker=metadata_worker,
             rule_worker=rule_worker,
             duplicate_worker=duplicate_worker,
+            organizer_worker=organizer_worker,
             dispatcher=dispatcher,
             event_bus=event_bus,
         )
@@ -211,13 +252,15 @@ class Container:
     def close(self) -> None:
         """Release resources held by this container.
 
-        Stops the dispatcher (waiting for any in-flight scan/hash/metadata
-        work to finish) and the database writer thread (flushing anything
-        still buffered) before disposing the database engine's connection
-        pool. Call this during application shutdown; tests should call it
-        (or use the ``container`` fixture, which does) to avoid leaking
-        SQLite connections and background threads across test cases.
+        Stops the watch-folder poller, the dispatcher (waiting for any
+        in-flight work to finish), and the database writer thread
+        (flushing anything still buffered) before disposing the database
+        engine's connection pool. Call this during application shutdown;
+        tests should call it (or use the ``container`` fixture, which
+        does) to avoid leaking SQLite connections and background threads
+        across test cases.
         """
+        self.watch_folder.stop()
         self.dispatcher.stop()
         self.database_writer.stop()
         self.engine.dispose()

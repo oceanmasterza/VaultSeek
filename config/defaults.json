@@ -1,5 +1,5 @@
 {
-  "schema_version": 3,
+  "schema_version": 4,
   "log_level": "INFO",
   "theme": "dark",
   "pipeline": {
@@ -17,5 +17,8 @@
     "provider_order": ["acoustid", "musicbrainz", "local_tags", "filename_parser"],
     "enabled_providers": ["acoustid", "musicbrainz", "local_tags", "filename_parser"],
     "acoustid_api_key": ""
+  },
+  "watch": {
+    "poll_interval_seconds": 30.0
   }
 }

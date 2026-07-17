@@ -17,6 +17,7 @@ from sqlalchemy import Engine, create_engine, event, insert
 
 from musicvault.core.config import PipelineConfig
 from musicvault.core.event_bus import EventBus
+from musicvault.db.repositories.duplicate_repo import DuplicateRepository
 from musicvault.db.repositories.file_identity_repo import FileIdentityRepository
 from musicvault.db.repositories.job_repo import JobRepository
 from musicvault.db.repositories.review_repo import ReviewRepository
@@ -92,6 +93,11 @@ def review_repo(engine: Engine) -> ReviewRepository:
 @pytest.fixture
 def rule_repo(engine: Engine) -> RuleRepository:
     return RuleRepository(engine)
+
+
+@pytest.fixture
+def duplicate_repo(engine: Engine) -> DuplicateRepository:
+    return DuplicateRepository(engine)
 
 
 @pytest.fixture

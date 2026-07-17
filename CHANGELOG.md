@@ -9,6 +9,36 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Phase 10 organizer + watch folder** — real file moves close the loop:
+  - `OrganizeEngine` (pure domain service) — zone state machine
+    (incoming → staging → library, library ↔ archive, plus
+    incoming/staging → archive so the archive-MP3 rule stays actionable)
+    and destination templating `{Artist}/{Year} - {Album}/{NN} - {Title}{ext}`
+    with Windows-safe sanitization
+  - `Library` entity + `LibraryRepository`; `Operation`/`ChangeRecord`
+    entities + `OperationRepository` — every move writes an
+    `operations` + `change_history` audit pair for the Phase 12 rollback
+    engine
+  - `OrganizerWorker` + dispatcher `organize_file` route — safe move
+    (never overwrites, ` (1)` suffix on collision), updates track
+    zone/path, auto-approves staging → library when confidence ≥ the
+    library threshold with no pending reviews and no open duplicate group
+  - `RuleWorker` enqueues `organize_file` → staging for incoming tracks
+    (pipeline: scan → hash → fingerprint → identify → duplicates → rules
+    → organize)
+  - Approval executes moves: `ReviewQueueService.approve` /
+    `approve_with_edits` enqueue parked `move_to_zone` rule actions,
+    resolve `possible_duplicate` groups as `kept_best` (archiving
+    non-best members), and promote approved staging tracks to the library
+  - Non-approval `move_to_zone` rule actions enqueue real organize jobs
+    (illegal transitions still park a review item)
+  - `WatchFolderService` — polling daemon enqueueing priority-50
+    `scan_directory` jobs for `watch_enabled` libraries; config schema v4
+    adds `watch.poll_interval_seconds` (default 30 s)
+  - 429 tests total (up from 374)
+
+### Added
+
 - **Phase 9 duplicate detection** — exact-key duplicate grouping with
   quality ranking:
   - `DuplicateMatcher` (pure domain service) — builds groups from matched

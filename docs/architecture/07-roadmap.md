@@ -25,8 +25,8 @@ Phase 6   ██████████ Metadata arbitrator + providers
 Phase 7   ██████████ Review queue + confidence scoring
 Phase 8   ██████████ Rules engine
 Phase 9   ██████████ Duplicate worker + quality scoring
-Phase 10  ░░░░░░░░░░ Organizer + staging zones + watch folder (CURRENT)
-Phase 11  ░░░░░░░░░░ Artwork worker
+Phase 10  ██████████ Organizer + staging zones + watch folder
+Phase 11  ░░░░░░░░░░ Artwork worker (CURRENT)
 Phase 12  ░░░░░░░░░░ Rollback engine
 Phase 13  ░░░░░░░░░░ Reports
 Phase 14  ░░░░░░░░░░ GUI (all pages)
@@ -586,6 +586,54 @@ Phase 16  ░░░░░░░░░░ Packaging + installer
 - `OrganizerWorker`, `WatchFolderService`
 - Zone state machine (incoming → staging → library)
 - Auto-approve when confidence ≥ threshold
+
+### Implementation notes (service layer)
+- `Library` entity + `LibraryRepository` (first production consumers of the
+  `libraries` table): zone roots, `watch_enabled`, `auto_approve_threshold`
+- `OrganizeEngine` (`models/services/`, pure) — zone state machine per the
+  10-revision-v2 diagram **plus** incoming/staging → archive as a documented
+  extension (the shipped archive-MP3 rule fires on tracks not yet in the
+  library); destination template (fill-in, no documented syntax):
+  `{Artist}/{Year} - {Album}/{NN} - {Title}{ext}` with Windows-safe
+  sanitization and graceful degradation; moves to *incoming* keep a flat
+  filename
+- `OrganizerWorker` + dispatcher route for `organize_file` (shared I/O
+  pool) — safe move (never overwrites; ` (1)` suffix on collision), updates
+  `tracks.zone`/`file_path`/`file_name`, writes one `operations` +
+  `change_history` row pair per move for the Phase 12 rollback engine
+  (snapshots stay Phase 12); no `sync_media_server` enqueue until Phase 15
+- Pipeline completion: `RuleWorker` (last analysis stage) enqueues
+  `organize_file` → *staging* for incoming tracks; after that move,
+  `OrganizerWorker` auto-approves to *library* when `overall_confidence ≥`
+  the library threshold, `needs_review` is clear, no pending review items,
+  and no open duplicate group
+- Approval executes moves: `ReviewQueueService.approve`/`approve_with_edits`
+  now enqueue parked `move_to_zone` rule actions, resolve
+  `possible_duplicate` groups as `kept_best` (archiving non-best members
+  where legal), and promote approved staging tracks to the library
+- Non-approval `move_to_zone` rule actions enqueue real `organize_file`
+  jobs (illegal transitions still park a review item)
+- `WatchFolderService` — **polling** daemon (config v4
+  `watch.poll_interval_seconds`, default 30 s) instead of
+  ReadDirectoryChangesW: enqueues priority-50 `scan_directory` jobs for
+  `watch_enabled` libraries, skipping libraries with an active scan; the
+  scanner's unchanged-file skip + poll cadence covers the risk-register
+  debounce; native events can swap in behind the same API later
+- `Operation`/`ChangeRecord` entities + `OperationRepository`
+  (`operation_type`/`status`/`change_type` vocabularies are implementation
+  fill-ins); rollback/restore, dry-run, `OperationOrchestrator` are Phase 12
+- Staging/Duplicate GUI tabs are Phase 14
+
+### Acceptance Criteria
+- [x] Zone state machine enforces legal transitions; illegal moves fail the job
+- [x] Organizer moves files into organized folders, never overwriting
+- [x] Every move logged to `operations` + `change_history` (old/new path + zone)
+- [x] Incoming tracks land in staging after rules; confident tracks
+      auto-approve to library with zero clicks
+- [x] Approving review items executes the implied zone moves
+- [x] Watch-enabled libraries get periodic priority scans of their incoming folder
+- [x] CI green on GitHub Actions
+- [x] Git commit: `feat: Phase 10 OrganizerWorker + WatchFolderService`
 
 ---
 

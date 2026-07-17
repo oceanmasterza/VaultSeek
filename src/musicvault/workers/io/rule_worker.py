@@ -3,9 +3,13 @@
 I/O / DB-bound (Tier 2). Seeds default rules on first evaluation for a
 library, builds :class:`~musicvault.services.dto.rule_dto.RuleContext`
 (including the real ``has_lossless_duplicate`` flag from Phase 9
-duplicate groups), evaluates enabled rules, and applies safe actions
-(flag review, set artist/genre). Zone moves are parked as review items
-until Phase 10.
+duplicate groups), evaluates enabled rules, and applies actions. As the
+pipeline's last analysis stage, it then enqueues the Phase 10 organize
+step: tracks still in *incoming* move to *staging* ("processed but not
+approved" — docs/architecture/10-revision-v2.md watch-folder flow);
+auto-approve from staging to library is decided by
+:class:`~musicvault.workers.io.organizer_worker.OrganizerWorker` after
+that move completes.
 """
 
 from __future__ import annotations
@@ -15,7 +19,8 @@ from uuid import UUID
 
 from musicvault.db.repositories.duplicate_repo import DuplicateRepository
 from musicvault.db.repositories.track_repo import TrackRepository
-from musicvault.models.entities.job import Job
+from musicvault.models.entities.job import Job, JobType
+from musicvault.models.entities.track import LibraryZone
 from musicvault.services.job_queue_service import JobQueueService
 from musicvault.services.rules_engine import RulesEngine
 
@@ -47,5 +52,13 @@ class RuleWorker:
             has_lossless_duplicate=self._duplicates.has_lossless_duplicate(track_id),
         )
         matches = self._rules.evaluate(track, context)
-        self._rules.apply_matches(track, matches, now=now)
+        current = self._rules.apply_matches(track, matches, now=now)
+        if current.zone is LibraryZone.INCOMING:
+            self._job_queue.enqueue(
+                JobType.ORGANIZE_FILE,
+                job.library_id,
+                {"track_id": str(track_id), "target_zone": LibraryZone.STAGING.value},
+                parent_job_id=job.id,
+                now=now,
+            )
         self._job_queue.mark_completed(job.id)

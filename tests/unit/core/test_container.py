@@ -15,7 +15,9 @@ from musicvault.db.repositories.artist_repo import ArtistRepository
 from musicvault.db.repositories.duplicate_repo import DuplicateRepository
 from musicvault.db.repositories.file_identity_repo import FileIdentityRepository
 from musicvault.db.repositories.job_repo import JobRepository
+from musicvault.db.repositories.library_repo import LibraryRepository
 from musicvault.db.repositories.metadata_confidence_repo import MetadataConfidenceRepository
+from musicvault.db.repositories.operation_repo import OperationRepository
 from musicvault.db.repositories.review_repo import ReviewRepository
 from musicvault.db.repositories.rule_repo import RuleRepository
 from musicvault.db.repositories.track_repo import TrackRepository
@@ -24,16 +26,19 @@ from musicvault.db.uuid_utils import generate_uuid7, uuid_to_blob
 from musicvault.db.writer import DatabaseWriter
 from musicvault.models.entities.job import Job, JobStatus, JobType
 from musicvault.models.services.duplicate_matcher import DuplicateMatcher
+from musicvault.models.services.organize_engine import OrganizeEngine
 from musicvault.plugins.manager import PluginManager
 from musicvault.services.job_dispatcher import JobDispatcher
 from musicvault.services.job_queue_service import JobQueueService
 from musicvault.services.metadata_arbitrator import MetadataArbitrator
 from musicvault.services.review_queue_service import ReviewQueueService
 from musicvault.services.rules_engine import RulesEngine
+from musicvault.services.watch_folder_service import WatchFolderService
 from musicvault.workers.cpu.fingerprint_worker import FingerprintWorker
 from musicvault.workers.cpu.hash_worker import HashWorker
 from musicvault.workers.io.duplicate_worker import DuplicateWorker
 from musicvault.workers.io.metadata_worker import MetadataWorker
+from musicvault.workers.io.organizer_worker import OrganizerWorker
 from musicvault.workers.io.rule_worker import RuleWorker
 from musicvault.workers.io.scanner_worker import ScannerWorker
 
@@ -151,6 +156,19 @@ def test_bootstrap_wires_the_phase_9_duplicate_stack(
     assert isinstance(container.duplicate_repo, DuplicateRepository)
     assert isinstance(container.duplicate_matcher, DuplicateMatcher)
     assert isinstance(container.duplicate_worker, DuplicateWorker)
+    container.close()
+
+
+def test_bootstrap_wires_the_phase_10_organizer_stack(
+    app_paths: AppPaths, app_config: AppConfig
+) -> None:
+    container = Container.bootstrap(paths=app_paths, config=app_config)
+
+    assert isinstance(container.library_repo, LibraryRepository)
+    assert isinstance(container.operation_repo, OperationRepository)
+    assert isinstance(container.organize_engine, OrganizeEngine)
+    assert isinstance(container.organizer_worker, OrganizerWorker)
+    assert isinstance(container.watch_folder, WatchFolderService)
     container.close()
 
 

@@ -9,8 +9,18 @@ import pytest
 
 from musicvault.core.event_bus import EventBus
 from musicvault.core.exceptions import ReviewError
+from musicvault.db.repositories.duplicate_repo import DuplicateRepository
+from musicvault.db.repositories.job_repo import JobRepository
 from musicvault.db.repositories.review_repo import ReviewRepository
 from musicvault.db.repositories.track_repo import TrackRepository
+from musicvault.models.entities.duplicate_group import (
+    DuplicateGroup,
+    DuplicateMember,
+    GroupResolution,
+    GroupStatus,
+    MatchType,
+)
+from musicvault.models.entities.job import JobStatus, JobType
 from musicvault.models.entities.review_item import ReviewStatus, ReviewType
 from musicvault.models.entities.track import LibraryZone, Track
 from musicvault.models.interfaces.metadata import (
@@ -21,6 +31,7 @@ from musicvault.models.interfaces.metadata import (
 from musicvault.models.value_objects.field_confidence import FieldConfidence
 from musicvault.services.dto.review_dto import ReviewItemCreate
 from musicvault.services.events import ReviewItemAddedEvent
+from musicvault.services.job_queue_service import JobQueueService
 from musicvault.services.review_queue_service import ReviewQueueService, classify_review_type
 
 _NOW = datetime(2026, 7, 16, tzinfo=UTC)
@@ -309,3 +320,248 @@ def test_classify_review_type_prefers_album_then_conflict() -> None:
         ],
     )
     assert classify_review_type(conflict, 0.90) is ReviewType.METADATA_CONFLICT
+
+
+# ---------------------------------------------------------------------------
+# Phase 10: approval triggers zone moves (wired review queue)
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture
+def wired_review_queue(
+    review_repo: ReviewRepository,
+    track_repo: TrackRepository,
+    event_bus: EventBus,
+    job_queue: JobQueueService,
+    duplicate_repo: DuplicateRepository,
+) -> ReviewQueueService:
+    return ReviewQueueService(
+        review_repo,
+        track_repo,
+        event_bus,
+        confidence_threshold=0.90,
+        job_queue=job_queue,
+        duplicate_repository=duplicate_repo,
+    )
+
+
+def _pending_organize_jobs(job_repo: JobRepository) -> list[dict[str, object]]:
+    return [
+        job.payload
+        for job in job_repo.list_by_status(JobStatus.PENDING)
+        if job.job_type is JobType.ORGANIZE_FILE
+    ]
+
+
+def test_approve_rule_action_executes_parked_move_from_actions_list(
+    wired_review_queue: ReviewQueueService,
+    track_repo: TrackRepository,
+    job_repo: JobRepository,
+    library_id: UUID,
+    track_id: UUID,
+) -> None:
+    """The shipped archive-MP3 rule parks its actions list behind approval;
+    approving must enqueue the archive move."""
+    track_repo.upsert(_make_track(library_id, track_id, zone=LibraryZone.STAGING))
+    review_id = wired_review_queue.create_item(
+        ReviewItemCreate(
+            library_id=library_id,
+            review_type=ReviewType.RULE_ACTION,
+            title="Rule requires approval: Archive MP3 when FLAC exists",
+            track_id=track_id,
+            payload={
+                "rule_id": "irrelevant",
+                "rule_name": "Archive MP3 when FLAC exists",
+                "actions": [{"action_type": "move_to_zone", "parameters": {"zone": "archive"}}],
+            },
+        ),
+        now=_NOW,
+    )
+
+    wired_review_queue.approve(review_id, now=_NOW)
+
+    assert _pending_organize_jobs(job_repo) == [
+        {"track_id": str(track_id), "target_zone": "archive"}
+    ]
+
+
+def test_approve_rule_action_executes_parked_move_from_flat_payload(
+    wired_review_queue: ReviewQueueService,
+    track_repo: TrackRepository,
+    job_repo: JobRepository,
+    library_id: UUID,
+    track_id: UUID,
+) -> None:
+    track_repo.upsert(_make_track(library_id, track_id, zone=LibraryZone.INCOMING))
+    review_id = wired_review_queue.create_item(
+        ReviewItemCreate(
+            library_id=library_id,
+            review_type=ReviewType.RULE_ACTION,
+            title="Rule wants zone 'staging'",
+            track_id=track_id,
+            payload={"rule_id": "x", "action_type": "move_to_zone", "zone": "staging"},
+        ),
+        now=_NOW,
+    )
+
+    wired_review_queue.approve(review_id, now=_NOW)
+
+    assert _pending_organize_jobs(job_repo) == [
+        {"track_id": str(track_id), "target_zone": "staging"}
+    ]
+
+
+def test_approve_rule_action_skips_illegal_parked_move(
+    wired_review_queue: ReviewQueueService,
+    track_repo: TrackRepository,
+    job_repo: JobRepository,
+    library_id: UUID,
+    track_id: UUID,
+) -> None:
+    track_repo.upsert(_make_track(library_id, track_id, zone=LibraryZone.INCOMING))
+    review_id = wired_review_queue.create_item(
+        ReviewItemCreate(
+            library_id=library_id,
+            review_type=ReviewType.RULE_ACTION,
+            title="Rule wants zone 'library'",
+            track_id=track_id,
+            payload={"rule_id": "x", "action_type": "move_to_zone", "zone": "library"},
+        ),
+        now=_NOW,
+    )
+
+    wired_review_queue.approve(review_id, now=_NOW)
+
+    assert _pending_organize_jobs(job_repo) == []
+
+
+def test_approve_metadata_item_promotes_staging_track_to_library(
+    wired_review_queue: ReviewQueueService,
+    track_repo: TrackRepository,
+    job_repo: JobRepository,
+    library_id: UUID,
+    track_id: UUID,
+) -> None:
+    track_repo.upsert(_make_track(library_id, track_id, zone=LibraryZone.STAGING))
+    review_id = wired_review_queue.create_item(
+        ReviewItemCreate(
+            library_id=library_id,
+            review_type=ReviewType.UNKNOWN_ARTIST,
+            title="Who is this",
+            track_id=track_id,
+        ),
+        now=_NOW,
+    )
+
+    wired_review_queue.approve(review_id, now=_NOW)
+
+    assert _pending_organize_jobs(job_repo) == [
+        {"track_id": str(track_id), "target_zone": "library"}
+    ]
+
+
+def test_approve_metadata_item_leaves_incoming_track_to_the_pipeline(
+    wired_review_queue: ReviewQueueService,
+    track_repo: TrackRepository,
+    job_repo: JobRepository,
+    library_id: UUID,
+    track_id: UUID,
+) -> None:
+    track_repo.upsert(_make_track(library_id, track_id, zone=LibraryZone.INCOMING))
+    review_id = wired_review_queue.create_item(
+        ReviewItemCreate(
+            library_id=library_id,
+            review_type=ReviewType.UNKNOWN_ARTIST,
+            title="Who is this",
+            track_id=track_id,
+        ),
+        now=_NOW,
+    )
+
+    wired_review_queue.approve(review_id, now=_NOW)
+
+    assert _pending_organize_jobs(job_repo) == []
+
+
+def test_approve_with_edits_also_runs_post_approve_moves(
+    wired_review_queue: ReviewQueueService,
+    track_repo: TrackRepository,
+    job_repo: JobRepository,
+    library_id: UUID,
+    track_id: UUID,
+) -> None:
+    track_repo.upsert(_make_track(library_id, track_id, zone=LibraryZone.STAGING))
+    review_id = wired_review_queue.create_item(
+        ReviewItemCreate(
+            library_id=library_id,
+            review_type=ReviewType.UNKNOWN_ALBUM,
+            title="Album?",
+            track_id=track_id,
+        ),
+        now=_NOW,
+    )
+
+    wired_review_queue.approve_with_edits(review_id, {"title": "Fixed"}, now=_NOW)
+
+    assert _pending_organize_jobs(job_repo) == [
+        {"track_id": str(track_id), "target_zone": "library"}
+    ]
+
+
+def test_approve_possible_duplicate_resolves_group_and_archives_non_best(
+    wired_review_queue: ReviewQueueService,
+    track_repo: TrackRepository,
+    duplicate_repo: DuplicateRepository,
+    job_repo: JobRepository,
+    library_id: UUID,
+    track_id: UUID,
+) -> None:
+    best = _make_track(library_id, track_id, zone=LibraryZone.LIBRARY, needs_review=False)
+    track_repo.upsert(best)
+    loser_id = UUID("01800000-0000-7000-8000-00000000beef")
+    track_repo.upsert(
+        _make_track(
+            library_id,
+            loser_id,
+            zone=LibraryZone.LIBRARY,
+            needs_review=False,
+            file_path="C:/library/loser.mp3",
+            file_name="loser.mp3",
+        )
+    )
+    group = DuplicateGroup(
+        id=UUID("01800000-0000-7000-8000-0000000000aa"),
+        library_id=library_id,
+        match_type=MatchType.FINGERPRINT,
+        match_confidence=0.95,
+        track_count=2,
+        detected_at=_NOW,
+        best_track_id=track_id,
+    )
+    duplicate_repo.save_group(
+        group,
+        [
+            DuplicateMember(group.id, track_id, quality_score=90, zone="library", is_best=True),
+            DuplicateMember(group.id, loser_id, quality_score=40, zone="library"),
+        ],
+    )
+    review_id = wired_review_queue.create_item(
+        ReviewItemCreate(
+            library_id=library_id,
+            review_type=ReviewType.POSSIBLE_DUPLICATE,
+            title="Possible duplicate",
+            track_id=track_id,
+            duplicate_group_id=group.id,
+        ),
+        now=_NOW,
+    )
+
+    wired_review_queue.approve(review_id, now=_NOW)
+
+    resolved = duplicate_repo.get_group(group.id)
+    assert resolved is not None
+    assert resolved.status is GroupStatus.RESOLVED
+    assert resolved.resolution is GroupResolution.KEPT_BEST
+    assert _pending_organize_jobs(job_repo) == [
+        {"track_id": str(loser_id), "target_zone": "archive"}
+    ]

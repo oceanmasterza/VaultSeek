@@ -4,8 +4,22 @@ Auto-created by :class:`~musicvault.workers.io.metadata_worker.MetadataWorker`
 when arbitration sets ``needs_review``. Approve / reject / defer / edit
 are called by the Review UI (Phase 14) or tests today.
 
-Approve clears ``tracks.needs_review`` but does **not** move zones —
-staging → library is Phase 10 (:class:`~musicvault.models.services.organize_engine.OrganizeEngine`).
+Since Phase 10, approval also triggers zone moves (via `organize_file`
+jobs) when ``job_queue`` is wired:
+
+- approving a ``rule_action`` item executes its parked ``move_to_zone``
+  actions (other parked action types stay manual until a richer
+  re-apply flow exists);
+- approving a ``possible_duplicate`` item resolves the duplicate group
+  as ``kept_best`` and archives the non-best members whose zone allows
+  it;
+- approving any other track-linked item promotes a *staging* track to
+  the library (tracks still in incoming are promoted by the pipeline's
+  own organize step first).
+
+When ``job_queue`` is not provided (lightweight test setups), approval
+only resolves the item and clears ``needs_review`` — the Phase 7
+behavior.
 """
 
 from __future__ import annotations
@@ -19,13 +33,19 @@ from uuid import UUID
 
 from musicvault.core.event_bus import EventBus
 from musicvault.core.exceptions import ReviewError
+from musicvault.db.repositories.duplicate_repo import DuplicateRepository
 from musicvault.db.repositories.review_repo import ReviewRepository
 from musicvault.db.repositories.track_repo import TrackRepository
 from musicvault.db.uuid_utils import generate_uuid7
+from musicvault.models.entities.duplicate_group import GroupResolution, GroupStatus
+from musicvault.models.entities.job import JobType
 from musicvault.models.entities.review_item import ReviewItem, ReviewStatus, ReviewType
+from musicvault.models.entities.track import LibraryZone
 from musicvault.models.interfaces.metadata import ArbitrationResult
+from musicvault.models.services.organize_engine import OrganizeEngine
 from musicvault.services.dto.review_dto import ReviewItemCreate
 from musicvault.services.events import ReviewItemAddedEvent
+from musicvault.services.job_queue_service import JobQueueService
 
 _PROVIDER_CONFLICT_GAP = 0.10
 _EDITABLE_TRACK_FIELDS = frozenset(
@@ -54,11 +74,16 @@ class ReviewQueueService:
         event_bus: EventBus,
         *,
         confidence_threshold: float = 0.90,
+        job_queue: JobQueueService | None = None,
+        duplicate_repository: DuplicateRepository | None = None,
     ) -> None:
         self._reviews = review_repository
         self._tracks = track_repository
         self._events = event_bus
         self._threshold = confidence_threshold
+        self._job_queue = job_queue
+        self._duplicates = duplicate_repository
+        self._organize = OrganizeEngine()
 
     def create_item(self, item: ReviewItemCreate, *, now: datetime | None = None) -> UUID:
         """Insert a pending review item, or refresh an existing pending one
@@ -146,16 +171,15 @@ class ReviewQueueService:
     def approve(
         self, item_id: UUID, *, resolved_by: str = "user", now: datetime | None = None
     ) -> None:
-        """Accept the arbitrated metadata and clear ``needs_review``.
-
-        Does not change library zones (Phase 10).
-        """
+        """Accept the item, clear ``needs_review``, and trigger any zone
+        moves the approval implies (see the module docstring)."""
         item = self._require_pending(item_id)
         resolved_at = _resolve_now(now)
         self._reviews.resolve(
             item_id, ReviewStatus.APPROVED, resolved_by=resolved_by, resolved_at=resolved_at
         )
         self._clear_needs_review(item.track_id, resolved_at)
+        self._run_post_approve(item, resolved_at)
 
     def reject(
         self,
@@ -219,6 +243,71 @@ class ReviewQueueService:
         self._tracks.upsert(replace(track, **updates))  # type: ignore[arg-type]
         self._reviews.resolve(
             item_id, ReviewStatus.APPROVED, resolved_by=resolved_by, resolved_at=resolved_at
+        )
+        self._run_post_approve(item, resolved_at)
+
+    def _run_post_approve(self, item: ReviewItem, now: datetime) -> None:
+        """Enqueue the zone moves this approval implies (no-op without a job queue)."""
+        if self._job_queue is None:
+            return
+        if item.review_type is ReviewType.RULE_ACTION:
+            self._execute_parked_moves(item, now)
+            return
+        if item.review_type is ReviewType.POSSIBLE_DUPLICATE:
+            self._resolve_duplicate_group(item, now)
+            return
+        self._promote_staging_track(item, now)
+
+    def _execute_parked_moves(self, item: ReviewItem, now: datetime) -> None:
+        for zone in _parked_move_zones(item.payload or {}):
+            self._enqueue_move_if_legal(item.library_id, item.track_id, zone, now)
+
+    def _resolve_duplicate_group(self, item: ReviewItem, now: datetime) -> None:
+        """Keep the best copy; archive the other members where legal."""
+        if self._duplicates is None or item.duplicate_group_id is None:
+            return
+        group_id = item.duplicate_group_id
+        self._duplicates.set_status(
+            group_id, GroupStatus.RESOLVED, resolution=GroupResolution.KEPT_BEST
+        )
+        for member in self._duplicates.get_members(group_id):
+            if member.is_best:
+                continue
+            self._enqueue_move_if_legal(item.library_id, member.track_id, LibraryZone.ARCHIVE, now)
+
+    def _promote_staging_track(self, item: ReviewItem, now: datetime) -> None:
+        """Approved metadata on a staging track promotes it to the library.
+
+        Tracks still in incoming are left alone — the pipeline's own
+        organize step moves them to staging first, and auto-approve or a
+        later approval promotes them from there.
+        """
+        if item.track_id is None:
+            return
+        track = self._tracks.get_by_id(item.track_id)
+        if track is None or track.zone is not LibraryZone.STAGING:
+            return
+        self._enqueue_move_if_legal(item.library_id, item.track_id, LibraryZone.LIBRARY, now)
+
+    def _enqueue_move_if_legal(
+        self,
+        library_id: UUID,
+        track_id: UUID | None,
+        target: LibraryZone,
+        now: datetime,
+    ) -> None:
+        if self._job_queue is None or track_id is None:
+            return
+        track = self._tracks.get_by_id(track_id)
+        if track is None or track.zone is target:
+            return
+        if not self._organize.can_transition(track.zone, target):
+            return
+        self._job_queue.enqueue(
+            JobType.ORGANIZE_FILE,
+            library_id,
+            {"track_id": str(track_id), "target_zone": target.value},
+            now=now,
         )
 
     def _require_pending(self, item_id: UUID) -> ReviewItem:
@@ -300,6 +389,35 @@ def _payload_from_result(result: ArbitrationResult) -> dict[str, Any]:
             for name, field in result.fields.items()
         },
     }
+
+
+def _parked_move_zones(payload: dict[str, Any]) -> list[LibraryZone]:
+    """Extract ``move_to_zone`` targets from a `rule_action` item payload.
+
+    Handles both payload shapes the rules engine produces: a single
+    parked action (``{"action_type": "move_to_zone", "zone": ...}``) and
+    a `requires_approval` rule's full action list
+    (``{"actions": [{"action_type": ..., "parameters": {...}}, ...]}``).
+    Unknown zone strings are skipped.
+    """
+    raw_zones: list[object] = []
+    if payload.get("action_type") == "move_to_zone":
+        raw_zones.append(payload.get("zone"))
+    actions = payload.get("actions")
+    if isinstance(actions, list):
+        for action in actions:
+            if isinstance(action, dict) and action.get("action_type") == "move_to_zone":
+                parameters = action.get("parameters")
+                if isinstance(parameters, dict):
+                    raw_zones.append(parameters.get("zone"))
+    zones: list[LibraryZone] = []
+    for raw in raw_zones:
+        if isinstance(raw, str):
+            try:
+                zones.append(LibraryZone(raw))
+            except ValueError:
+                continue
+    return zones
 
 
 def _resolve_now(now: datetime | None) -> datetime:
