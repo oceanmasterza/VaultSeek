@@ -3,9 +3,11 @@
 
 Build from repo root::
 
+    python packaging/fetch_vendor.py
     pyinstaller packaging/musicvault.spec --noconfirm
 
-Output: ``dist/MusicVault/`` (MusicVault.exe + dependencies).
+Output: ``dist/MusicVault/`` (MusicVault.exe + Python deps + vendor
+binaries such as ``fpcalc.exe``).
 """
 
 from pathlib import Path
@@ -15,6 +17,7 @@ from PyInstaller.utils.hooks import collect_all
 block_cipher = None
 ROOT = Path(SPECPATH).resolve().parent  # noqa: F821
 SRC = ROOT / "src"
+VENDOR = ROOT / "packaging" / "vendor"
 
 datas = []
 binaries = []
@@ -24,6 +27,14 @@ hiddenimports = [
     "musicvault.gui.app",
     "musicvault.gui.main_window",
 ]
+
+# Pinned native helpers (see packaging/vendor_manifest.json).
+_fpcalc = VENDOR / "fpcalc.exe"
+if not _fpcalc.is_file():
+    raise SystemExit(
+        f"Missing {_fpcalc}. Run: python packaging/fetch_vendor.py"
+    )
+binaries.append((str(_fpcalc), "."))
 
 pyside_datas, pyside_binaries, pyside_hidden = collect_all("PySide6")
 datas += pyside_datas

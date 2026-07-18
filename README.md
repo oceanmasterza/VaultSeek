@@ -36,7 +36,9 @@ scan → hash → fingerprint → identify → rules → duplicates → organize
 artwork / media-server sync, with review, rollback, and reports. Phase 14
 ships the Qt GUI shell and core pages; Phase 15 adds Navidrome / Jellyfin /
 Plex / Subsonic rescan plugins; Phase 16 adds PyInstaller + Inno Setup
-packaging. See [Architecture Documentation](docs/architecture/README.md).
+packaging with **bundled Chromaprint (`fpcalc`)** so installs are offline-
+complete. See [Architecture Documentation](docs/architecture/README.md)
+and [packaging/README.md](packaging/README.md).
 
 ```powershell
 git clone https://github.com/oceanmasterza/MusicVault.git

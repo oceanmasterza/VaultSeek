@@ -17,6 +17,7 @@ from musicvault import __version__
 from musicvault.core.config import load_config
 from musicvault.core.container import Container
 from musicvault.core.logging import configure_logging
+from musicvault.core.native_bins import configure_native_bin_path
 from musicvault.core.paths import AppPaths, get_app_paths
 
 
@@ -31,6 +32,8 @@ def bootstrap(*, base_dir_override: Path | None = None, console_logging: bool = 
             rotating log files. Test fixtures disable this to keep output
             quiet.
     """
+    configure_native_bin_path()
+
     paths: AppPaths = get_app_paths(base_override=base_dir_override)
     paths.ensure_created()
 

@@ -71,5 +71,9 @@ Desktop.ini
 *.key
 credentials.json
 
-# User config (runtime, not defaults)
-config/user.json
+# Local tooling / smoke artifacts
+tools/*.exe
+tools/fpcalc*
+packaging/vendor/
+samples/
+scripts/__pycache__/

@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- **Self-contained Windows packaging** — pinned vendor binaries
+  (`packaging/vendor_manifest.json` + `fetch_vendor.py`) ship
+  **fpcalc** inside the PyInstaller onedir / Inno Setup installer;
+  runtime discovers it via `native_bins.configure_native_bin_path`.
+  Versioned GitHub release URLs + SHA-256 so dependency links stay
+  immutable.
+
 ### Fixed
 
 - **Audit hardening (correctness + performance)**:

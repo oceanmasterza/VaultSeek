@@ -1,0 +1,21 @@
+{
+  "schema_version": 1,
+  "description": "Pinned third-party native binaries shipped with MusicVault. URLs are versioned GitHub release assets (immutable). Always verify sha256 before use.",
+  "binaries": [
+    {
+      "id": "fpcalc",
+      "name": "Chromaprint fpcalc (Windows x86_64)",
+      "version": "1.6.0",
+      "license": "LGPL-2.1 (Chromaprint + FFmpeg)",
+      "homepage": "https://acoustid.org/chromaprint",
+      "url": "https://github.com/acoustid/chromaprint/releases/download/v1.6.0/chromaprint-fpcalc-1.6.0-windows-x86_64.zip",
+      "sha256": "30179d3d0dc4cc92f1a0995c1a2e523fb4867724c2ee6a6ceae474f8e4d6937a",
+      "archive": "zip",
+      "extract_member": "chromaprint-fpcalc-1.6.0-windows-x86_64/fpcalc.exe",
+      "install_as": "fpcalc.exe",
+      "exe_sha256": "b5545bdf655b50e368a1844a4c13baf444e405ea5d5662396ff0292eaf9bf9e9",
+      "required": true,
+      "purpose": "Chromaprint fingerprints for the fingerprint_file worker"
+    }
+  ]
+}
