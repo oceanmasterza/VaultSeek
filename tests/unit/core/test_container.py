@@ -213,6 +213,21 @@ def test_bootstrap_wires_the_phase_13_report_stack(
     container.close()
 
 
+def test_bootstrap_wires_the_phase_15_media_server_stack(
+    app_paths: AppPaths, app_config: AppConfig
+) -> None:
+    from musicvault.db.repositories.media_server_repo import MediaServerStateRepository
+    from musicvault.workers.io.media_server_worker import MediaServerWorker
+
+    container = Container.bootstrap(paths=app_paths, config=app_config)
+
+    assert isinstance(container.media_server_repo, MediaServerStateRepository)
+    assert isinstance(container.media_server_worker, MediaServerWorker)
+    ids = [p.plugin_id for p in container.plugin_manager.get_media_servers()]
+    assert ids == ["navidrome", "jellyfin", "plex", "subsonic"]
+    container.close()
+
+
 def test_bootstrap_recovers_orphaned_jobs_on_startup(
     app_paths: AppPaths, app_config: AppConfig
 ) -> None:

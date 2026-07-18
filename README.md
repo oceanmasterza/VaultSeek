@@ -29,24 +29,24 @@ Collectors, audiophiles, and self-hosted media server operators using **Navidrom
 
 ## Status
 
-**Phase 13 — Reports** (current)
+**Phase 16 — Packaging** (complete through 1.0.0)
 
-Architecture is finalized (v3). The processing pipeline is complete
-through organize, artwork, and rollback. Phase 13 adds **library
-summary reports**: on-demand aggregates (tracks by zone, review backlog,
-duplicates, quality buckets, artwork coverage) exported as JSON, CSV, or
-HTML to `%APPDATA%/MusicVault/reports/` (or a caller-supplied path) via
-`ReportService` / `generate_report` jobs. Excel and PDF stay deferred.
-See [Architecture Documentation](docs/architecture/README.md).
+Architecture is finalized (v3). The full pipeline runs end-to-end:
+scan → hash → fingerprint → identify → rules → duplicates → organize →
+artwork / media-server sync, with review, rollback, and reports. Phase 14
+ships the Qt GUI shell and core pages; Phase 15 adds Navidrome / Jellyfin /
+Plex / Subsonic rescan plugins; Phase 16 adds PyInstaller + Inno Setup
+packaging. See [Architecture Documentation](docs/architecture/README.md).
 
 ```powershell
-git clone https://github.com/musicvault/musicvault.git
-cd musicvault
+git clone https://github.com/oceanmasterza/MusicVault.git
+cd MusicVault
 python -m venv .venv
 .venv\Scripts\activate
 pip install -e ".[dev]"
-pytest              # 487 passed
-python -m musicvault  # MusicVault 0.1.0
+pytest              # full suite
+python -m musicvault  # launches GUI
+# CI / automation: python -m musicvault --headless
 ```
 
 ## Tech Stack

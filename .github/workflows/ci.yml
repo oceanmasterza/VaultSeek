@@ -62,6 +62,9 @@ jobs:
         run: pip install -e ".[dev]"
 
       - name: Run tests with coverage
+        env:
+          QT_QPA_PLATFORM: offscreen
+          MUSICVAULT_HEADLESS: "1"
         run: pytest --cov=musicvault --cov-report=term-missing --cov-report=xml
 
       - name: Upload coverage artifact

@@ -1,1 +1,5 @@
-"""QtEventBridge: marshals EventBus domain events onto the Qt main thread."""
+"""Qt event bridge — domain events → Qt signals."""
+
+from musicvault.gui.bridge.qt_event_bridge import QtEventBridge
+
+__all__ = ["QtEventBridge"]

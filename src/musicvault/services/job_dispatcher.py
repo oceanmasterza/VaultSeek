@@ -7,11 +7,10 @@ Phase 4 wired `scan_directory` (I/O — `ThreadPoolExecutor`) and
 `identify_metadata` on a dedicated I/O thread pool (HTTP + Mutagen —
 docs/architecture/08-performance.md, "Three-Tier Worker Model").
 Phase 8 adds `evaluate_rules`, Phase 9 `detect_duplicates`,
-Phase 10 `organize_file`, Phase 11 `fetch_artwork`, and Phase 13
-`generate_report` on that same I/O metadata pool (DB reads, light
-in-memory work, HTTP, file moves, report writes). Later phases add one
-route per new worker as it's built rather than pre-registering pools for
-workers that don't exist yet.
+Phase 10 `organize_file`, Phase 11 `fetch_artwork`, Phase 13
+`generate_report`, and Phase 15 `sync_media_server` on that same I/O
+metadata pool. Later phases add one route per new worker as it's built
+rather than pre-registering pools for workers that don't exist yet.
 """
 
 from __future__ import annotations
@@ -28,6 +27,7 @@ from musicvault.workers.cpu.fingerprint_worker import FingerprintWorker, compute
 from musicvault.workers.cpu.hash_worker import HashWorker, compute_hash
 from musicvault.workers.io.artwork_worker import ArtworkWorker
 from musicvault.workers.io.duplicate_worker import DuplicateWorker
+from musicvault.workers.io.media_server_worker import MediaServerWorker
 from musicvault.workers.io.metadata_worker import MetadataWorker
 from musicvault.workers.io.organizer_worker import OrganizerWorker
 from musicvault.workers.io.report_worker import ReportWorker
@@ -48,6 +48,7 @@ class JobDispatcher:
         organizer_worker: OrganizerWorker,
         artwork_worker: ArtworkWorker,
         report_worker: ReportWorker,
+        media_server_worker: MediaServerWorker,
         *,
         scanner_threads: int = 1,
         hash_processes: int | None = None,
@@ -65,6 +66,7 @@ class JobDispatcher:
         self._organizer_worker = organizer_worker
         self._artwork_worker = artwork_worker
         self._report_worker = report_worker
+        self._media_server_worker = media_server_worker
         self._claim_batch_size = claim_batch_size
         self._poll_interval_seconds = poll_interval_seconds
         self._scan_pool = ThreadPoolExecutor(
@@ -128,6 +130,9 @@ class JobDispatcher:
         report_jobs = list(
             self._job_queue.claim_pending(JobType.GENERATE_REPORT, self._claim_batch_size)
         )
+        sync_jobs = list(
+            self._job_queue.claim_pending(JobType.SYNC_MEDIA_SERVER, self._claim_batch_size)
+        )
 
         futures: list[Future[Any]] = []
         for job in scan_jobs:
@@ -155,6 +160,8 @@ class JobDispatcher:
             futures.append(self._metadata_pool.submit(self._run_artwork, job))
         for job in report_jobs:
             futures.append(self._metadata_pool.submit(self._run_report, job))
+        for job in sync_jobs:
+            futures.append(self._metadata_pool.submit(self._run_media_server, job))
         return futures
 
     def start(self) -> None:
@@ -238,6 +245,14 @@ class JobDispatcher:
             self._report_worker.execute(job)
         except Exception as exc:
             logger.exception("ReportWorker crashed on job {}", job.id)
+            self._job_queue.mark_failed(job.id, str(exc))
+
+    def _run_media_server(self, job: Job) -> None:
+        """Runs on a `_metadata_pool` thread (HTTP to media servers)."""
+        try:
+            self._media_server_worker.execute(job)
+        except Exception as exc:
+            logger.exception("MediaServerWorker crashed on job {}", job.id)
             self._job_queue.mark_failed(job.id, str(exc))
 
     def _make_hash_callback(self, job: Job) -> Any:

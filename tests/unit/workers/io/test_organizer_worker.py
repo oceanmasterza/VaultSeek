@@ -238,6 +238,28 @@ def test_execute_auto_approves_confident_track_into_library(
     }
 
 
+def test_execute_enqueues_media_server_sync_when_entering_library(
+    worker: OrganizerWorker,
+    track_repo: TrackRepository,
+    job_queue: JobQueueService,
+    job_repo: JobRepository,
+    zone_library: Library,
+) -> None:
+    source = _write_source(zone_library, "ready.flac", LibraryZone.STAGING)
+    track = _make_track(zone_library, source, zone=LibraryZone.STAGING, title="Ready")
+    track_repo.upsert(track)
+
+    _run(worker, job_queue, job_repo, zone_library, track.id, "library")
+
+    sync_jobs = [
+        job
+        for job in job_repo.list_by_status(JobStatus.PENDING)
+        if job.job_type is JobType.SYNC_MEDIA_SERVER
+    ]
+    assert len(sync_jobs) == 1
+    assert sync_jobs[0].library_id == zone_library.id
+
+
 def test_execute_does_not_auto_approve_below_threshold_or_with_pending_review(
     worker: OrganizerWorker,
     track_repo: TrackRepository,

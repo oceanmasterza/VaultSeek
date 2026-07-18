@@ -2,11 +2,9 @@ name: Release
 
 # Builds the packaged Windows executable on tagged releases.
 #
-# NOTE: packaging/musicvault.spec is created in Phase 16 (see
-# docs/architecture/07-roadmap.md). Until then, pushing a version tag
-# will fail at the "Build executable" step by design — there is nothing
-# to package yet. The workflow exists now so CI gates every future commit
-# without needing a second setup pass later.
+# packaging/musicvault.spec ships with Phase 16. On ``v*.*.*`` tags this
+# workflow runs the full test suite, then PyInstaller onedir build, and
+# uploads ``dist/MusicVault/`` as a release artifact.
 
 on:
   push:
@@ -29,6 +27,9 @@ jobs:
         run: pip install -e ".[dev,build]"
 
       - name: Run full test suite
+        env:
+          QT_QPA_PLATFORM: offscreen
+          MUSICVAULT_HEADLESS: "1"
         run: pytest
 
       - name: Build executable

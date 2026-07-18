@@ -21,6 +21,7 @@ from musicvault.db.repositories.duplicate_repo import DuplicateRepository
 from musicvault.db.repositories.file_identity_repo import FileIdentityRepository
 from musicvault.db.repositories.job_repo import JobRepository
 from musicvault.db.repositories.library_repo import LibraryRepository
+from musicvault.db.repositories.media_server_repo import MediaServerStateRepository
 from musicvault.db.repositories.metadata_confidence_repo import MetadataConfidenceRepository
 from musicvault.db.repositories.operation_repo import OperationRepository
 from musicvault.db.repositories.review_repo import ReviewRepository
@@ -43,6 +44,7 @@ from musicvault.workers.cpu.fingerprint_worker import FingerprintWorker
 from musicvault.workers.cpu.hash_worker import HashWorker
 from musicvault.workers.io.artwork_worker import ArtworkWorker
 from musicvault.workers.io.duplicate_worker import DuplicateWorker
+from musicvault.workers.io.media_server_worker import MediaServerWorker
 from musicvault.workers.io.metadata_worker import MetadataWorker
 from musicvault.workers.io.organizer_worker import OrganizerWorker
 from musicvault.workers.io.report_worker import ReportWorker
@@ -146,6 +148,12 @@ def dispatcher(
         job_queue=job_queue,
     )
     report_worker = ReportWorker(report_service, job_queue)
+    media_server_worker = MediaServerWorker(
+        MediaServerStateRepository(engine),
+        track_repo,
+        [],
+        job_queue,
+    )
     disp = JobDispatcher(
         job_queue,
         scanner,
@@ -157,6 +165,7 @@ def dispatcher(
         organizer_worker,
         artwork_worker,
         report_worker,
+        media_server_worker,
         scanner_threads=1,
         hash_processes=1,
         metadata_threads=1,
@@ -553,6 +562,22 @@ def test_run_cycle_dispatches_a_generate_report_job(
 
     assert job_repo.get(job_id).status is JobStatus.COMPLETED  # type: ignore[union-attr]
     assert out.is_file()
+
+
+def test_run_cycle_dispatches_a_sync_media_server_job(
+    dispatcher: JobDispatcher,
+    job_queue: JobQueueService,
+    job_repo: JobRepository,
+    library_id: UUID,
+) -> None:
+    """No servers configured — worker completes the sync job cleanly."""
+    job_id = job_queue.enqueue(JobType.SYNC_MEDIA_SERVER, library_id, {}, now=_NOW)
+
+    futures = dispatcher.run_cycle()
+    assert len(futures) == 1
+    futures[0].result(timeout=_POLL_TIMEOUT_SECONDS)
+
+    assert job_repo.get(job_id).status is JobStatus.COMPLETED  # type: ignore[union-attr]
 
 
 def test_run_cycle_dispatches_an_identify_metadata_job(

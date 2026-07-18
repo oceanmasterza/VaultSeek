@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "musicvault"
-version = "0.1.0"
+version = "1.0.0"
 description = "Lightroom for Music — professional music library management for Navidrome, Jellyfin, Plex, and self-hosted media servers."
 readme = "README.md"
 license = { text = "MIT" }
@@ -12,7 +12,7 @@ requires-python = ">=3.14"
 authors = [{ name = "MusicVault Contributors" }]
 keywords = ["music", "library", "navidrome", "jellyfin", "plex", "metadata", "musicbrainz"]
 classifiers = [
-    "Development Status :: 2 - Pre-Alpha",
+    "Development Status :: 5 - Production/Stable",
     "Intended Audience :: End Users/Desktop",
     "License :: OSI Approved :: MIT License",
     "Operating System :: Microsoft :: Windows",
@@ -92,6 +92,7 @@ ignore_missing_imports = true
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+qt_api = "pyside6"
 markers = [
     "performance: performance benchmarks (excluded from CI by default)",
 ]
@@ -122,6 +123,7 @@ forbidden_modules = [
     "musicvault.db",
     "musicvault.workers",
 ]
+allow_indirect_imports = true
 
 [[tool.importlinter.contracts]]
 name = "DB layer stays below services and workers"

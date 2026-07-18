@@ -9,6 +9,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Phases 14–16 — GUI, media servers, packaging** (1.0.0-capable):
+  - **Phase 14 GUI** — PySide6 main window (sidebar, library selector,
+    status bar), Library / Review / Jobs / Duplicates / Rules / Settings
+    pages, dark theme, `QtEventBridge`, headless escape for CI
+  - **Phase 15 media servers** — `MediaServerPlugin` + Navidrome /
+    Jellyfin / Plex / Subsonic; `MediaServerWorker` +
+    `sync_media_server` route; organizer enqueues sync on library entry
+  - **Phase 16 packaging** — `packaging/musicvault.spec` (PyInstaller
+    onedir), Inno Setup `installer.iss`, packaging README
+
+### Added
+
 - **Phase 13 reports** — library summary exports:
   - `ReportService` builds on-demand aggregates (zone counts, lossless /
     lossy, needs-review, embedded art, pending reviews by type, open

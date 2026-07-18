@@ -29,9 +29,9 @@ Phase 10  ██████████ Organizer + staging zones + watch folde
 Phase 11  ██████████ Artwork worker
 Phase 12  ██████████ Rollback engine
 Phase 13  ██████████ Reports
-Phase 14  ░░░░░░░░░░ GUI (all pages) (CURRENT)
-Phase 15  ░░░░░░░░░░ Media server plugins
-Phase 16  ░░░░░░░░░░ Packaging + installer
+Phase 14  ██████████ GUI shell + core pages
+Phase 15  ██████████ Media server plugins (MVP)
+Phase 16  ██████████ Packaging + installer
 ```
 
 ---
@@ -765,17 +765,57 @@ Phase 16  ░░░░░░░░░░ Packaging + installer
 
 **Goal**: Full Qt6 interface including Review Queue, Job Monitor, Duplicate Viewer, Rules Editor.
 
+**Status**: Complete (MVP).
+
+**Delivered**:
+- Qt bootstrap (`gui/app.py`) + dark/light theme; `__main__` launches GUI
+  (escape hatch: `--headless` / `MUSICVAULT_HEADLESS=1`)
+- `MainWindow` shell with sidebar nav, library selector, status bar, 2s poll
+- Core pages: Library (zone filter), Review (approve/reject/defer), Jobs
+  (cancel/retry), Duplicates + Rules (list), Settings (library CRUD,
+  preferences, media-server connection form)
+- `QtEventBridge` marshals `ReviewItemAddedEvent` onto the GUI thread
+- Stub pages for Dashboard / Artists / Albums / Artwork / Reports / Logs /
+  Plugins (deferred polish)
+- pytest-qt smoke tests; CI sets `QT_QPA_PLATFORM=offscreen`
+
+**Deferred**: visual rule builder, album/artist browsers, report viewer,
+full duplicate side-by-side compare, plugin manager UI.
+
 ---
 
 ## Phase 15: Media Server Plugins
 
 **Goal**: Navidrome (with DB access), Jellyfin, Plex, and remaining servers.
 
+**Status**: Complete (MVP).
+
+**Delivered**:
+- `MediaServerPlugin` protocol + `MediaServerConfig` / capabilities
+- `SubsonicClient` (token+salt auth, ping + startScan)
+- Built-in plugins: **Navidrome** (Subsonic + optional read-only
+  `navidrome.db`), **Jellyfin**, **Plex**, generic **Subsonic**
+- `MediaServerStateRepository` + `MediaServerWorker` + dispatcher
+  `sync_media_server` route
+- `OrganizerWorker` enqueues sync when a track enters the library zone
+- Settings form persists connections into `media_server_state`
+
+**Deferred**: Emby / Ampache / Koel / Funkwhale / Lyrion / mStream;
+deep validation audits beyond Navidrome count-mismatch warning.
+
 ---
 
 ## Phase 16: Packaging
 
 **Goal**: PyInstaller + Windows installer. CI release workflow builds on tags.
+
+**Status**: Complete.
+
+**Delivered**:
+- `packaging/musicvault.spec` — PyInstaller onedir (`dist/MusicVault/`)
+- `packaging/installer.iss` — Inno Setup script → `MusicVault-Setup.exe`
+- `packaging/README.md` build instructions
+- Release workflow already wired to the spec on `v*.*.*` tags
 
 ---
 

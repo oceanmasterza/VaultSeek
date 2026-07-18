@@ -29,6 +29,7 @@ from musicvault.db.repositories.duplicate_repo import DuplicateRepository
 from musicvault.db.repositories.file_identity_repo import FileIdentityRepository
 from musicvault.db.repositories.job_repo import JobRepository
 from musicvault.db.repositories.library_repo import LibraryRepository
+from musicvault.db.repositories.media_server_repo import MediaServerStateRepository
 from musicvault.db.repositories.metadata_confidence_repo import MetadataConfidenceRepository
 from musicvault.db.repositories.operation_repo import OperationRepository
 from musicvault.db.repositories.review_repo import ReviewRepository
@@ -36,6 +37,7 @@ from musicvault.db.repositories.rule_repo import RuleRepository
 from musicvault.db.repositories.track_repo import TrackRepository
 from musicvault.db.writer import DatabaseWriter
 from musicvault.models.interfaces.artwork import ArtworkProvider
+from musicvault.models.interfaces.media_server import MediaServerPlugin
 from musicvault.models.interfaces.metadata import MetadataProvider
 from musicvault.models.services.duplicate_matcher import DuplicateMatcher
 from musicvault.models.services.organize_engine import OrganizeEngine
@@ -44,8 +46,12 @@ from musicvault.plugins.builtin.acoustid import AcoustIdProvider
 from musicvault.plugins.builtin.cover_art_archive import CoverArtArchiveProvider
 from musicvault.plugins.builtin.embedded_art import EmbeddedArtProvider
 from musicvault.plugins.builtin.filename_parser import FilenameParserProvider
+from musicvault.plugins.builtin.jellyfin import JellyfinPlugin
 from musicvault.plugins.builtin.local_tags import LocalTagsProvider
 from musicvault.plugins.builtin.musicbrainz import MusicBrainzProvider
+from musicvault.plugins.builtin.navidrome import NavidromePlugin
+from musicvault.plugins.builtin.plex import PlexPlugin
+from musicvault.plugins.builtin.subsonic import SubsonicPlugin
 from musicvault.plugins.manager import PluginManager
 from musicvault.services.job_dispatcher import JobDispatcher
 from musicvault.services.job_queue_service import JobQueueService
@@ -59,6 +65,7 @@ from musicvault.workers.cpu.fingerprint_worker import FingerprintWorker
 from musicvault.workers.cpu.hash_worker import HashWorker
 from musicvault.workers.io.artwork_worker import ArtworkWorker
 from musicvault.workers.io.duplicate_worker import DuplicateWorker
+from musicvault.workers.io.media_server_worker import MediaServerWorker
 from musicvault.workers.io.metadata_worker import MetadataWorker
 from musicvault.workers.io.organizer_worker import OrganizerWorker
 from musicvault.workers.io.report_worker import ReportWorker
@@ -78,6 +85,7 @@ class Container:
     rule_repo: RuleRepository
     duplicate_repo: DuplicateRepository
     library_repo: LibraryRepository
+    media_server_repo: MediaServerStateRepository
     operation_repo: OperationRepository
     artwork_repo: ArtworkRepository
     file_identity_repo: FileIdentityRepository
@@ -105,6 +113,7 @@ class Container:
     organizer_worker: OrganizerWorker
     artwork_worker: ArtworkWorker
     report_worker: ReportWorker
+    media_server_worker: MediaServerWorker
     dispatcher: JobDispatcher
     event_bus: EventBus = field(default_factory=EventBus)
 
@@ -138,6 +147,7 @@ class Container:
         rule_repo = RuleRepository(engine)
         duplicate_repo = DuplicateRepository(engine)
         library_repo = LibraryRepository(engine)
+        media_server_repo = MediaServerStateRepository(engine)
         operation_repo = OperationRepository(engine)
         artwork_repo = ArtworkRepository(engine)
         artist_repo = ArtistRepository(engine)
@@ -191,6 +201,7 @@ class Container:
         plugin_manager = PluginManager(
             _build_metadata_providers(config.metadata),
             _build_artwork_providers(config.artwork),
+            _build_media_server_plugins(),
         )
         metadata_arbitrator = MetadataArbitrator(
             plugin_manager.get_metadata_providers(),
@@ -240,6 +251,12 @@ class Container:
             min_height=config.artwork.min_height,
         )
         report_worker = ReportWorker(report_service, job_queue)
+        media_server_worker = MediaServerWorker(
+            media_server_repo,
+            track_repo,
+            plugin_manager.get_media_servers(),
+            job_queue,
+        )
         dispatcher = JobDispatcher(
             job_queue,
             scanner_worker,
@@ -251,6 +268,7 @@ class Container:
             organizer_worker,
             artwork_worker,
             report_worker,
+            media_server_worker,
             scanner_threads=config.pipeline.scanner_worker_threads,
             hash_processes=config.pipeline.hash_worker_processes,
             metadata_threads=config.pipeline.metadata_worker_threads,
@@ -271,6 +289,7 @@ class Container:
             rule_repo=rule_repo,
             duplicate_repo=duplicate_repo,
             library_repo=library_repo,
+            media_server_repo=media_server_repo,
             operation_repo=operation_repo,
             artwork_repo=artwork_repo,
             file_identity_repo=file_identity_repo,
@@ -298,6 +317,7 @@ class Container:
             organizer_worker=organizer_worker,
             artwork_worker=artwork_worker,
             report_worker=report_worker,
+            media_server_worker=media_server_worker,
             dispatcher=dispatcher,
             event_bus=event_bus,
         )
@@ -343,3 +363,13 @@ def _build_artwork_providers(artwork: ArtworkConfig) -> list[ArtworkProvider]:
         providers.append(CoverArtArchiveProvider())
     providers.append(EmbeddedArtProvider())
     return providers
+
+
+def _build_media_server_plugins() -> list[MediaServerPlugin]:
+    """Construct built-in media-server plugins (explicit wiring)."""
+    return [
+        NavidromePlugin(),
+        JellyfinPlugin(),
+        PlexPlugin(),
+        SubsonicPlugin(),
+    ]

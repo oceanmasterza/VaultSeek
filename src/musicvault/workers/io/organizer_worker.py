@@ -19,8 +19,9 @@ flow): after completing a move *into staging*, if the track's
 `overall_confidence` meets the library's `auto_approve_threshold`, it
 has no pending review items, and it belongs to no open duplicate group,
 a follow-up `organize_file` job to `library` is enqueued — completing
-the zero-click incoming → staging → library flow. `sync_media_server`
-enqueue stays Phase 15.
+the zero-click incoming → staging → library flow. Moves that land in
+the canonical ``library`` zone enqueue ``sync_media_server`` so
+configured media servers (Navidrome / Jellyfin / Plex / …) can rescan.
 """
 
 from __future__ import annotations
@@ -127,6 +128,14 @@ class OrganizerWorker:
                 JobType.ORGANIZE_FILE,
                 job.library_id,
                 {"track_id": str(track_id), "target_zone": LibraryZone.LIBRARY.value},
+                parent_job_id=job.id,
+                now=now,
+            )
+        if target is LibraryZone.LIBRARY:
+            self._job_queue.enqueue(
+                JobType.SYNC_MEDIA_SERVER,
+                job.library_id,
+                {},
                 parent_job_id=job.id,
                 now=now,
             )
