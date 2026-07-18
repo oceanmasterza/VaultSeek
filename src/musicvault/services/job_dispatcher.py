@@ -15,6 +15,7 @@ rather than pre-registering pools for workers that don't exist yet.
 
 from __future__ import annotations
 
+import os
 import threading
 from concurrent.futures import Future, ProcessPoolExecutor, ThreadPoolExecutor
 from typing import Any
@@ -33,6 +34,22 @@ from musicvault.workers.io.organizer_worker import OrganizerWorker
 from musicvault.workers.io.report_worker import ReportWorker
 from musicvault.workers.io.rule_worker import RuleWorker
 from musicvault.workers.io.scanner_worker import ScannerWorker
+
+# I/O (metadata) pool job types — claimed under a shared backpressure budget.
+_META_JOB_TYPES: tuple[JobType, ...] = (
+    JobType.IDENTIFY_METADATA,
+    JobType.EVALUATE_RULES,
+    JobType.DETECT_DUPLICATES,
+    JobType.ORGANIZE_FILE,
+    JobType.FETCH_ARTWORK,
+    JobType.GENERATE_REPORT,
+    JobType.SYNC_MEDIA_SERVER,
+)
+
+_CPU_JOB_TYPES: tuple[JobType, ...] = (
+    JobType.HASH_FILE,
+    JobType.FINGERPRINT_FILE,
+)
 
 
 class JobDispatcher:
@@ -69,8 +86,14 @@ class JobDispatcher:
         self._media_server_worker = media_server_worker
         self._claim_batch_size = claim_batch_size
         self._poll_interval_seconds = poll_interval_seconds
+        self._scan_max = max(1, scanner_threads)
+        self._meta_max = max(1, metadata_threads)
+        # ProcessPoolExecutor(None) uses min(32, cpu_count+4); mirror that for budgeting.
+        self._cpu_max = (
+            hash_processes if hash_processes is not None else min(32, (os.cpu_count() or 1) + 4)
+        )
         self._scan_pool = ThreadPoolExecutor(
-            max_workers=scanner_threads, thread_name_prefix="musicvault-scan"
+            max_workers=self._scan_max, thread_name_prefix="musicvault-scan"
         )
         # Shared CPU ProcessPool for hash_file and fingerprint_file —
         # both are Tier 1 CPU-bound work (08-performance.md).
@@ -79,10 +102,14 @@ class JobDispatcher:
         # (Tier 2). Kept separate from scan so slow HTTP cannot starve
         # directory walks.
         self._metadata_pool = ThreadPoolExecutor(
-            max_workers=metadata_threads, thread_name_prefix="musicvault-meta"
+            max_workers=self._meta_max, thread_name_prefix="musicvault-meta"
         )
         self._shutdown = threading.Event()
         self._thread: threading.Thread | None = None
+        self._inflight_lock = threading.Lock()
+        self._scan_inflight = 0
+        self._cpu_inflight = 0
+        self._meta_inflight = 0
 
     def recover(self) -> int:
         """Reset any jobs left `running` by a previous crash. Call once,
@@ -91,6 +118,9 @@ class JobDispatcher:
 
     def run_cycle(self) -> list[Future[Any]]:
         """Claim and dispatch one round of ready work.
+
+        Claims are limited by free pool slots so jobs are not marked
+        ``running`` faster than workers can execute them.
 
         Returns the futures submitted this cycle — mainly so tests can
         wait on them deterministically instead of polling on a timer.
@@ -101,68 +131,115 @@ class JobDispatcher:
         """
         self._job_queue.promote_due_retries()
 
-        # Claim every route first, then dispatch. Workers that complete
-        # synchronously (or via done-callbacks) may enqueue the next
-        # pipeline stage; claiming up front keeps those new jobs for the
-        # following cycle instead of nesting work inside this one.
-        scan_jobs = list(
-            self._job_queue.claim_pending(JobType.SCAN_DIRECTORY, self._claim_batch_size)
-        )
-        hash_jobs = list(self._job_queue.claim_pending(JobType.HASH_FILE, self._claim_batch_size))
-        fingerprint_jobs = list(
-            self._job_queue.claim_pending(JobType.FINGERPRINT_FILE, self._claim_batch_size)
-        )
-        metadata_jobs = list(
-            self._job_queue.claim_pending(JobType.IDENTIFY_METADATA, self._claim_batch_size)
-        )
-        rule_jobs = list(
-            self._job_queue.claim_pending(JobType.EVALUATE_RULES, self._claim_batch_size)
-        )
-        duplicate_jobs = list(
-            self._job_queue.claim_pending(JobType.DETECT_DUPLICATES, self._claim_batch_size)
-        )
-        organize_jobs = list(
-            self._job_queue.claim_pending(JobType.ORGANIZE_FILE, self._claim_batch_size)
-        )
-        artwork_jobs = list(
-            self._job_queue.claim_pending(JobType.FETCH_ARTWORK, self._claim_batch_size)
-        )
-        report_jobs = list(
-            self._job_queue.claim_pending(JobType.GENERATE_REPORT, self._claim_batch_size)
-        )
-        sync_jobs = list(
-            self._job_queue.claim_pending(JobType.SYNC_MEDIA_SERVER, self._claim_batch_size)
-        )
+        scan_jobs = self._claim_up_to("scan", JobType.SCAN_DIRECTORY)
+        cpu_jobs = self._claim_shared("cpu", _CPU_JOB_TYPES)
+        hash_jobs = cpu_jobs[JobType.HASH_FILE]
+        fingerprint_jobs = cpu_jobs[JobType.FINGERPRINT_FILE]
+        meta_jobs = self._claim_shared("meta", _META_JOB_TYPES)
 
         futures: list[Future[Any]] = []
         for job in scan_jobs:
-            futures.append(self._scan_pool.submit(self._run_scan, job))
+            futures.append(self._submit_scan(job))
         for job in hash_jobs:
-            future = self._cpu_pool.submit(compute_hash, job.payload)
-            future.add_done_callback(self._make_hash_callback(job))
-            futures.append(future)
+            futures.append(self._submit_cpu(job, compute_hash, self._make_hash_callback(job)))
         for job in fingerprint_jobs:
             if self._fingerprint_worker.already_fingerprinted(job):
                 self._fingerprint_worker.complete_without_recompute(job)
                 continue
-            future = self._cpu_pool.submit(compute_fingerprint, job.payload)
-            future.add_done_callback(self._make_fingerprint_callback(job))
-            futures.append(future)
-        for job in metadata_jobs:
-            futures.append(self._metadata_pool.submit(self._run_metadata, job))
-        for job in rule_jobs:
-            futures.append(self._metadata_pool.submit(self._run_rules, job))
-        for job in duplicate_jobs:
-            futures.append(self._metadata_pool.submit(self._run_duplicates, job))
-        for job in organize_jobs:
-            futures.append(self._metadata_pool.submit(self._run_organize, job))
-        for job in artwork_jobs:
-            futures.append(self._metadata_pool.submit(self._run_artwork, job))
-        for job in report_jobs:
-            futures.append(self._metadata_pool.submit(self._run_report, job))
-        for job in sync_jobs:
-            futures.append(self._metadata_pool.submit(self._run_media_server, job))
+            futures.append(
+                self._submit_cpu(job, compute_fingerprint, self._make_fingerprint_callback(job))
+            )
+
+        runners = {
+            JobType.IDENTIFY_METADATA: self._run_metadata,
+            JobType.EVALUATE_RULES: self._run_rules,
+            JobType.DETECT_DUPLICATES: self._run_duplicates,
+            JobType.ORGANIZE_FILE: self._run_organize,
+            JobType.FETCH_ARTWORK: self._run_artwork,
+            JobType.GENERATE_REPORT: self._run_report,
+            JobType.SYNC_MEDIA_SERVER: self._run_media_server,
+        }
+        for job_type, jobs in meta_jobs.items():
+            runner = runners[job_type]
+            for job in jobs:
+                futures.append(self._submit_meta(runner, job))
         return futures
+
+    def _free_slots(self, pool: str) -> int:
+        with self._inflight_lock:
+            if pool == "scan":
+                return max(0, self._scan_max - self._scan_inflight)
+            if pool == "cpu":
+                return max(0, self._cpu_max - self._cpu_inflight)
+            return max(0, self._meta_max - self._meta_inflight)
+
+    def _claim_up_to(self, pool: str, job_type: JobType) -> list[Job]:
+        free = self._free_slots(pool)
+        if free <= 0:
+            return []
+        return list(self._job_queue.claim_pending(job_type, min(self._claim_batch_size, free)))
+
+    def _claim_shared(self, pool: str, job_types: tuple[JobType, ...]) -> dict[JobType, list[Job]]:
+        """Claim across multiple job types under one pool capacity budget."""
+        free = self._free_slots(pool)
+        claimed: dict[JobType, list[Job]] = {}
+        for job_type in job_types:
+            if free <= 0:
+                claimed[job_type] = []
+                continue
+            jobs = list(self._job_queue.claim_pending(job_type, min(self._claim_batch_size, free)))
+            free -= len(jobs)
+            claimed[job_type] = jobs
+        return claimed
+
+    def _bump_inflight(self, pool: str, delta: int) -> None:
+        with self._inflight_lock:
+            if pool == "scan":
+                self._scan_inflight += delta
+            elif pool == "cpu":
+                self._cpu_inflight += delta
+            else:
+                self._meta_inflight += delta
+
+    def _submit_scan(self, job: Job) -> Future[Any]:
+        self._bump_inflight("scan", 1)
+
+        def _run() -> None:
+            try:
+                self._run_scan(job)
+            finally:
+                self._bump_inflight("scan", -1)
+
+        return self._scan_pool.submit(_run)
+
+    def _submit_meta(self, runner: Any, job: Job) -> Future[Any]:
+        self._bump_inflight("meta", 1)
+
+        def _run() -> None:
+            try:
+                runner(job)
+            finally:
+                self._bump_inflight("meta", -1)
+
+        return self._metadata_pool.submit(_run)
+
+    def _submit_cpu(
+        self,
+        job: Job,
+        compute: Any,
+        callback: Any,
+    ) -> Future[Any]:
+        self._bump_inflight("cpu", 1)
+        future = self._cpu_pool.submit(compute, job.payload)
+
+        def _on_done(done: Future[dict[str, Any]]) -> None:
+            try:
+                callback(done)
+            finally:
+                self._bump_inflight("cpu", -1)
+
+        future.add_done_callback(_on_done)
+        return future
 
     def start(self) -> None:
         """Start polling in a background thread. Safe to call once per instance."""

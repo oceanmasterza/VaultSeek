@@ -80,7 +80,7 @@ class ReviewPage(QWidget):
     def pending_count(self) -> int:
         if self._library_id is None:
             return 0
-        return len(self._container.review_queue.get_pending(self._library_id))
+        return self._container.review_queue.count_pending(self._library_id)
 
     def _selected_ids(self) -> list[UUID]:
         rows = {index.row() for index in self._table.selectedIndexes()}

@@ -132,14 +132,31 @@ class OrganizerWorker:
                 now=now,
             )
         if target is LibraryZone.LIBRARY:
-            self._job_queue.enqueue(
-                JobType.SYNC_MEDIA_SERVER,
-                job.library_id,
-                {},
-                parent_job_id=job.id,
-                now=now,
-            )
+            self._enqueue_media_sync_if_idle(job.library_id, parent_job_id=job.id, now=now)
         self._job_queue.mark_completed(job.id)
+
+    def _enqueue_media_sync_if_idle(
+        self,
+        library_id: UUID,
+        *,
+        parent_job_id: UUID,
+        now: datetime,
+    ) -> None:
+        """Enqueue at most one in-flight ``sync_media_server`` per library.
+
+        Same coalesce pattern as watch-folder scans — bulk library imports
+        must not stampede media servers.
+        """
+        stats = self._job_queue.get_stats(library_id, now=now)
+        if stats.by_type.get(JobType.SYNC_MEDIA_SERVER.value, 0) > 0:
+            return
+        self._job_queue.enqueue(
+            JobType.SYNC_MEDIA_SERVER,
+            library_id,
+            {},
+            parent_job_id=parent_job_id,
+            now=now,
+        )
 
     def _compute_destination(self, library: Library, target: LibraryZone, track: Track) -> Path:
         artist_name: str | None = None

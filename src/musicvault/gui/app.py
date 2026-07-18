@@ -15,23 +15,18 @@ def run_gui(container: Container) -> int:
     """Show the MusicVault main window and run the Qt event loop.
 
     Owns the process lifetime for the GUI path: closes ``container`` when
-    the window exits (or if startup fails after the container was passed
-    in). Returns a process exit code.
+    the window exits. Always runs ``QApplication.exec()`` so an already-
+    existing application instance (tests) does not dispose the container
+    while the window is still live. Returns a process exit code.
     """
     existing = QApplication.instance()
-    created_app = False
-    if isinstance(existing, QApplication):
-        app = existing
-    else:
-        app = QApplication(sys.argv)
-        created_app = True
+    app = existing if isinstance(existing, QApplication) else QApplication(sys.argv)
 
     apply_theme(app, container.config.theme)
     window = MainWindow(container)
     window.show()
 
     try:
-        code = app.exec() if created_app else 0
+        return int(app.exec())
     finally:
         container.close()
-    return int(code)

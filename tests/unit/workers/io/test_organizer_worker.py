@@ -260,6 +260,39 @@ def test_execute_enqueues_media_server_sync_when_entering_library(
     assert sync_jobs[0].library_id == zone_library.id
 
 
+def test_execute_coalesces_media_server_sync_when_one_already_pending(
+    worker: OrganizerWorker,
+    track_repo: TrackRepository,
+    job_queue: JobQueueService,
+    job_repo: JobRepository,
+    zone_library: Library,
+) -> None:
+    first = _make_track(
+        zone_library,
+        _write_source(zone_library, "a.flac", LibraryZone.STAGING),
+        zone=LibraryZone.STAGING,
+        title="A",
+    )
+    second = _make_track(
+        zone_library,
+        _write_source(zone_library, "b.flac", LibraryZone.STAGING),
+        zone=LibraryZone.STAGING,
+        title="B",
+    )
+    track_repo.upsert(first)
+    track_repo.upsert(second)
+
+    _run(worker, job_queue, job_repo, zone_library, first.id, "library")
+    _run(worker, job_queue, job_repo, zone_library, second.id, "library")
+
+    sync_jobs = [
+        job
+        for job in job_repo.list_by_status(JobStatus.PENDING)
+        if job.job_type is JobType.SYNC_MEDIA_SERVER
+    ]
+    assert len(sync_jobs) == 1
+
+
 def test_execute_does_not_auto_approve_below_threshold_or_with_pending_review(
     worker: OrganizerWorker,
     track_repo: TrackRepository,

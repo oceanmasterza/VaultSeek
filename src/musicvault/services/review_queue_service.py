@@ -165,20 +165,24 @@ class ReviewQueueService:
         """Return pending items for a library (deferred items are excluded)."""
         return self._reviews.list_by_status(ReviewStatus.PENDING, library_id=library_id)
 
+    def count_pending(self, library_id: UUID) -> int:
+        """Cheap pending count for GUI badges / status bar."""
+        return self._reviews.count_pending(library_id)
+
     def get_by_type(self, library_id: UUID, review_type: ReviewType) -> Sequence[ReviewItem]:
         return self._reviews.list_by_type(review_type, library_id=library_id)
 
     def approve(
         self, item_id: UUID, *, resolved_by: str = "user", now: datetime | None = None
     ) -> None:
-        """Accept the item, clear ``needs_review``, and trigger any zone
-        moves the approval implies (see the module docstring)."""
+        """Accept the item; clear ``needs_review`` / promote only when no
+        other pending items remain for the track."""
         item = self._require_pending(item_id)
         resolved_at = _resolve_now(now)
         self._reviews.resolve(
             item_id, ReviewStatus.APPROVED, resolved_by=resolved_by, resolved_at=resolved_at
         )
-        self._clear_needs_review(item.track_id, resolved_at)
+        self._maybe_clear_needs_review(item.track_id, resolved_at)
         self._run_post_approve(item, resolved_at)
 
     def reject(
@@ -235,11 +239,16 @@ class ReviewQueueService:
 
         resolved_at = _resolve_now(now)
         updates: dict[str, object] = {
-            "needs_review": False,
             "updated_at": resolved_at,
         }
         for key, value in edits.items():
             updates[key] = value
+        # needs_review cleared only when this was the last pending item
+        remaining_after = [
+            r for r in self._reviews.list_pending_for_track(item.track_id) if r.id != item_id
+        ]
+        if not remaining_after:
+            updates["needs_review"] = False
         self._tracks.upsert(replace(track, **updates))  # type: ignore[arg-type]
         self._reviews.resolve(
             item_id, ReviewStatus.APPROVED, resolved_by=resolved_by, resolved_at=resolved_at
@@ -281,8 +290,13 @@ class ReviewQueueService:
         Tracks still in incoming are left alone — the pipeline's own
         organize step moves them to staging first, and auto-approve or a
         later approval promotes them from there.
+
+        Promotion waits until *all* pending review items for the track
+        are resolved (mirrors organizer auto-approve).
         """
         if item.track_id is None:
+            return
+        if self._reviews.list_pending_for_track(item.track_id):
             return
         track = self._tracks.get_by_id(item.track_id)
         if track is None or track.zone is not LibraryZone.STAGING:
@@ -317,6 +331,14 @@ class ReviewQueueService:
         if item.status is not ReviewStatus.PENDING:
             raise ReviewError(f"Review item {item_id} is {item.status.value}, expected pending")
         return item
+
+    def _maybe_clear_needs_review(self, track_id: UUID | None, now: datetime) -> None:
+        """Clear the track flag only when no pending review items remain."""
+        if track_id is None:
+            return
+        if self._reviews.list_pending_for_track(track_id):
+            return
+        self._clear_needs_review(track_id, now)
 
     def _clear_needs_review(self, track_id: UUID | None, now: datetime) -> None:
         if track_id is None:

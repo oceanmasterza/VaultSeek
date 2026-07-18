@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- **Audit hardening (correctness + performance)**:
+  - Review approve no longer clears `needs_review` or promotes a staging
+    track while other pending items remain for that track
+  - `sync_media_server` is coalesced to one pending/running job per
+    library (no stampede on bulk library imports)
+  - Job dispatcher claims only up to free pool slots (stops marking
+    dozens of jobs `running` on a 1-thread meta pool)
+  - GUI status poll uses `COUNT` for review badges and no longer
+    rebuilds Review/Jobs tables every 2s (preserves selection)
+  - Settings loads media-server rows per library/plugin and preserves
+    `last_sync_*` on save; preferences update live `container.config`
+  - Jobs monitor caps pending/retry/failed lists; `run_gui` always
+    runs the Qt event loop before closing the container
+
 ### Added
 
 - **Phases 14–16 — GUI, media servers, packaging** (1.0.0-capable):

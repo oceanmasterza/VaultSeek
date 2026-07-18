@@ -53,10 +53,19 @@ class JobRepository:
             ).first()
         return _from_row(row) if row is not None else None
 
-    def list_by_status(self, status: JobStatus, *, library_id: UUID | None = None) -> list[Job]:
+    def list_by_status(
+        self,
+        status: JobStatus,
+        *,
+        library_id: UUID | None = None,
+        limit: int | None = None,
+    ) -> list[Job]:
         statement = select(jobs_table).where(jobs_table.c.status == status.value)
         if library_id is not None:
             statement = statement.where(jobs_table.c.library_id == uuid_to_blob(library_id))
+        statement = statement.order_by(jobs_table.c.created_at.desc())
+        if limit is not None:
+            statement = statement.limit(limit)
 
         with self._engine.connect() as conn:
             rows = conn.execute(statement).all()

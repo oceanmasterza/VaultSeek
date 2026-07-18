@@ -146,6 +146,47 @@ def test_approve_clears_needs_review(
     assert updated.zone is LibraryZone.INCOMING
 
 
+def test_approve_keeps_needs_review_when_other_items_pending(
+    wired_review_queue: ReviewQueueService,
+    track_repo: TrackRepository,
+    job_repo: JobRepository,
+    library_id: UUID,
+    track_id: UUID,
+) -> None:
+    """Approving one of several pending items must not clear the flag or
+    promote the track while siblings remain open."""
+    track_repo.upsert(
+        _make_track(library_id, track_id, zone=LibraryZone.STAGING, needs_review=True)
+    )
+    artist_id = wired_review_queue.create_item(
+        ReviewItemCreate(
+            library_id=library_id,
+            review_type=ReviewType.UNKNOWN_ARTIST,
+            title="Artist?",
+            track_id=track_id,
+        ),
+        now=_NOW,
+    )
+    wired_review_queue.create_item(
+        ReviewItemCreate(
+            library_id=library_id,
+            review_type=ReviewType.UNKNOWN_ALBUM,
+            title="Album?",
+            track_id=track_id,
+        ),
+        now=_NOW,
+    )
+
+    wired_review_queue.approve(artist_id, now=_NOW)
+
+    updated = track_repo.get_by_id(track_id)
+    assert updated is not None
+    assert updated.needs_review is True
+    assert updated.zone is LibraryZone.STAGING
+    assert wired_review_queue.count_pending(library_id) == 1
+    assert _pending_organize_jobs(job_repo) == []
+
+
 def test_reject_with_reason_leaves_needs_review(
     review_queue: ReviewQueueService,
     track_repo: TrackRepository,

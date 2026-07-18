@@ -113,6 +113,7 @@ class SettingsPage(QWidget):
         self._ms_status = QLabel("")
         media_form.addRow(self._ms_status)
         layout.addWidget(media)
+        self._ms_plugin.currentTextChanged.connect(self._load_media_server_form)
 
         layout.addStretch(1)
 
@@ -127,10 +128,12 @@ class SettingsPage(QWidget):
 
         if self._editing_id is None:
             self._clear_library_form()
+            self._clear_media_server_form()
             return
         library = self._container.library_repo.get(self._editing_id)
         if library is None:
             self._clear_library_form()
+            self._clear_media_server_form()
             return
         self._name.setText(library.name)
         self._incoming.setText(library.incoming_path)
@@ -139,6 +142,7 @@ class SettingsPage(QWidget):
         self._archive.setText(library.archive_path)
         self._watch.setChecked(library.watch_enabled)
         self._threshold.setValue(library.auto_approve_threshold)
+        self._load_media_server_form()
 
     def _clear_library_form(self) -> None:
         self._name.clear()
@@ -148,6 +152,33 @@ class SettingsPage(QWidget):
         self._archive.clear()
         self._watch.setChecked(False)
         self._threshold.setValue(0.90)
+
+    def _clear_media_server_form(self) -> None:
+        self._ms_url.clear()
+        self._ms_username.clear()
+        self._ms_password.clear()
+        self._ms_token.clear()
+        self._ms_db_path.clear()
+        self._ms_status.setText("")
+
+    def _load_media_server_form(self, _plugin: str = "") -> None:
+        self._clear_media_server_form()
+        if self._editing_id is None:
+            return
+        plugin_id = self._ms_plugin.currentText()
+        for row in self._container.media_server_repo.list_by_library(self._editing_id):
+            if row.plugin_id != plugin_id:
+                continue
+            self._ms_url.setText(row.server_url or "")
+            cfg = row.config or {}
+            self._ms_username.setText(str(cfg.get("username", "")))
+            self._ms_password.setText(str(cfg.get("password", "")))
+            self._ms_token.setText(str(cfg.get("token", "")))
+            self._ms_db_path.setText(row.db_path or "")
+            status = row.last_sync_status or "never"
+            when = row.last_sync_at.isoformat(timespec="seconds") if row.last_sync_at else "—"
+            self._ms_status.setText(f"Last sync: {status} ({when})")
+            return
 
     def _new_library(self) -> None:
         self._editing_id = None
@@ -200,6 +231,7 @@ class SettingsPage(QWidget):
             theme=self._theme.currentText(),
         )
         save_config(updated, self._container.paths.config_file)
+        self._container.config = updated
         self.preferences_saved.emit(updated.theme)
 
     def _save_media_server(self) -> None:
@@ -222,7 +254,8 @@ class SettingsPage(QWidget):
             for row in self._container.media_server_repo.list_by_library(self._editing_id)
             if row.plugin_id == plugin_id
         ]
-        state_id = existing[0].id if existing else uuid7()
+        prior = existing[0] if existing else None
+        state_id = prior.id if prior is not None else uuid7()
         self._container.media_server_repo.upsert(
             MediaServerState(
                 id=state_id,
@@ -231,7 +264,9 @@ class SettingsPage(QWidget):
                 server_url=url,
                 db_path=db_path,
                 config=config,
+                last_sync_at=prior.last_sync_at if prior is not None else None,
+                last_sync_status=prior.last_sync_status if prior is not None else None,
             )
         )
-        self._ms_status.setText(f"Saved {plugin_id} connection.")
+        self._load_media_server_form()
         QMessageBox.information(self, "Settings", f"Media server “{plugin_id}” saved.")

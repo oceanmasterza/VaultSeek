@@ -94,6 +94,17 @@ class ReviewRepository:
             rows = conn.execute(statement).all()
         return {str(review_type): int(count) for review_type, count in rows}
 
+    def count_pending(self, library_id: UUID) -> int:
+        """Total pending review items for a library (badge / status bar)."""
+        statement = (
+            select(func.count())
+            .select_from(review_items)
+            .where(review_items.c.library_id == uuid_to_blob(library_id))
+            .where(review_items.c.status == ReviewStatus.PENDING.value)
+        )
+        with self._engine.connect() as conn:
+            return int(conn.execute(statement).scalar_one())
+
     def update_pending_content(
         self,
         review_id: UUID,

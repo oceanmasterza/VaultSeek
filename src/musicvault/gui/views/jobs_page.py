@@ -73,14 +73,15 @@ class JobsPage(QWidget):
         )
 
         rows: list[tuple[UUID, str, str, str, str, str]] = []
-        for job_status in (
-            JobStatus.RUNNING,
-            JobStatus.PENDING,
-            JobStatus.RETRY,
-            JobStatus.FAILED,
+        # Active work first (unbounded small), then a capped failed sample.
+        for job_status, row_limit in (
+            (JobStatus.RUNNING, None),
+            (JobStatus.PENDING, 100),
+            (JobStatus.RETRY, 100),
+            (JobStatus.FAILED, 100),
         ):
             for job in self._container.job_repo.list_by_status(
-                job_status, library_id=self._library_id
+                job_status, library_id=self._library_id, limit=row_limit
             ):
                 rows.append(
                     (

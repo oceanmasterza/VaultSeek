@@ -127,7 +127,7 @@ class MainWindow(QMainWindow):
             self._nav_keys.append(key)
             self._stack.addWidget(page)
 
-        self._nav.currentRowChanged.connect(self._stack.setCurrentIndex)
+        self._nav.currentRowChanged.connect(self._on_nav_changed)
         self._nav.setCurrentRow(1)
 
         status = QStatusBar()
@@ -164,6 +164,23 @@ class MainWindow(QMainWindow):
                     break
         self._library_combo.setCurrentIndex(index)
         self._set_library(self._library_combo.currentData())
+
+    def _on_nav_changed(self, index: int) -> None:
+        self._stack.setCurrentIndex(index)
+        if index < 0 or index >= len(self._nav_keys):
+            return
+        key = self._nav_keys[index]
+        if key == "review":
+            self._review_page.refresh()
+            self._update_review_badge()
+        elif key == "jobs":
+            self._jobs_page.refresh()
+        elif key == "library":
+            self._library_page.refresh()
+        elif key == "duplicates":
+            self._duplicates_page.refresh()
+        elif key == "rules":
+            self._rules_page.refresh()
 
     def _on_library_changed(self, _index: int) -> None:
         self._set_library(self._library_combo.currentData())
@@ -212,18 +229,14 @@ class MainWindow(QMainWindow):
             self._status_label.setText("No library — create one in Settings")
             return
         stats = self._container.job_queue.get_stats(self._library_id)
-        review = self._review_page.pending_count()
+        review = self._container.review_queue.count_pending(self._library_id)
         self._status_label.setText(
             f"Jobs: {stats.running} running · {stats.pending} pending · "
             f"{stats.failed} failed · Review: {review}"
         )
-        # Refresh visible operational pages lightly
-        current = self._nav_keys[self._nav.currentRow()] if self._nav.currentRow() >= 0 else ""
-        if current == "jobs":
-            self._jobs_page.refresh()
-        elif current == "review":
-            self._review_page.refresh()
-            self._update_review_badge()
+        self._update_review_badge()
+        # Full table rebuilds are event/page-driven — not on every poll —
+        # so selection and scroll position stay stable while the user works.
 
     def closeEvent(self, event: QCloseEvent) -> None:  # noqa: N802 - Qt naming
         self._timer.stop()
