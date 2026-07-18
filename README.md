@@ -45,7 +45,7 @@ cd musicvault
 python -m venv .venv
 .venv\Scripts\activate
 pip install -e ".[dev]"
-pytest              # 477 passed
+pytest              # 487 passed
 python -m musicvault  # MusicVault 0.1.0
 ```
 
