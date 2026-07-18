@@ -182,6 +182,11 @@ def test_execute_moves_file_updates_track_and_logs_operation(
     assert operation.operation_type is OperationType.FILE_MOVE
     assert operation.status is OperationStatus.COMPLETED
     assert operation.affected_count == 1
+    assert operation.snapshot_id is not None
+    snapshot = operation_repo.get_snapshot(operation.snapshot_id)
+    assert snapshot is not None
+    assert snapshot.operation_id == operation.id
+    assert snapshot.restored_at is None
 
 
 def test_execute_suffixes_on_filename_collision(

@@ -9,6 +9,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Phase 12 rollback engine** — file moves are reversible:
+  - `RollbackSnapshot` entity + `OperationRepository` snapshot APIs
+    (`record_with_snapshot`, status/restore updates, `list_recent`);
+    snapshot payload is gzip-compressed JSON in the existing
+    `rollback_snapshots` table
+  - `OrganizerWorker` now writes operation + change_history + snapshot
+    on every move
+  - `OperationOrchestrator` — `preview` / `execute` (enqueue
+    `organize_file`) / `rollback` for completed `file_move` ops;
+    restores path + zone, skips the forward zone machine for undos,
+    suffixes on restore collisions; zone-aware history via
+    `list_recent` + `history_for_track`
+  - Metadata tag-rewrite rollback deferred (no tag-write path yet)
+  - 477 tests total (up from 464)
+
+### Added
+
 - **Phase 11 artwork worker** — album covers enter the pipeline:
   - Artwork tables re-designed from scratch (v1 column spec was lost):
     `artwork` (one row per unique image, deduplicated by SHA-256, bytes

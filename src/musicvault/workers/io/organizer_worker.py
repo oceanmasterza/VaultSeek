@@ -4,7 +4,9 @@ I/O-bound (Tier 2 — filesystem + DB). Validates the zone transition
 against :class:`~musicvault.models.services.organize_engine.OrganizeEngine`'s
 state machine, moves the file into the target zone's organized folder
 structure, updates the track row, and writes an `operations` +
-`change_history` audit pair for the Phase 12 rollback engine.
+`change_history` + `rollback_snapshots` audit triple so
+:class:`~musicvault.services.operation_orchestrator.OperationOrchestrator`
+can reverse the move.
 
 Safe-move policy (no algorithm is documented — this is the
 implementation's fill-in): destinations are never overwritten. On a
@@ -33,7 +35,11 @@ from musicvault.db.repositories.album_repo import AlbumRepository
 from musicvault.db.repositories.artist_repo import ArtistRepository
 from musicvault.db.repositories.duplicate_repo import DuplicateRepository
 from musicvault.db.repositories.library_repo import LibraryRepository
-from musicvault.db.repositories.operation_repo import OperationRepository
+from musicvault.db.repositories.operation_repo import (
+    OperationRepository,
+    build_move_snapshot_payload,
+    encode_snapshot_data,
+)
 from musicvault.db.repositories.review_repo import ReviewRepository
 from musicvault.db.repositories.track_repo import TrackRepository
 from musicvault.db.uuid_utils import generate_uuid7
@@ -45,6 +51,7 @@ from musicvault.models.entities.operation import (
     Operation,
     OperationStatus,
     OperationType,
+    RollbackSnapshot,
 )
 from musicvault.models.entities.track import LibraryZone, Track
 from musicvault.models.services.organize_engine import OrganizeEngine
@@ -150,33 +157,39 @@ class OrganizerWorker:
         )
 
     def _record_move(self, before: Track, after: Track, now: datetime) -> None:
+        """Write operation + change_history + rollback snapshot (Phase 12)."""
         operation_id = generate_uuid7()
-        self._operations.record(
-            Operation(
-                id=operation_id,
-                operation_type=OperationType.FILE_MOVE,
-                status=OperationStatus.COMPLETED,
-                started_at=now,
-                completed_at=now,
-                affected_count=1,
-                description=(
-                    f"Moved '{before.file_name}' from {before.zone.value} to {after.zone.value}"
-                ),
-            ),
-            [
-                ChangeRecord(
-                    id=generate_uuid7(),
-                    operation_id=operation_id,
-                    change_type=ChangeType.MOVE,
-                    timestamp=now,
-                    track_id=after.id,
-                    old_file_path=before.file_path,
-                    new_file_path=after.file_path,
-                    old_zone=before.zone.value,
-                    new_zone=after.zone.value,
-                )
-            ],
+        snapshot_id = generate_uuid7()
+        change = ChangeRecord(
+            id=generate_uuid7(),
+            operation_id=operation_id,
+            change_type=ChangeType.MOVE,
+            timestamp=now,
+            track_id=after.id,
+            old_file_path=before.file_path,
+            new_file_path=after.file_path,
+            old_zone=before.zone.value,
+            new_zone=after.zone.value,
         )
+        operation = Operation(
+            id=operation_id,
+            operation_type=OperationType.FILE_MOVE,
+            status=OperationStatus.COMPLETED,
+            started_at=now,
+            completed_at=now,
+            affected_count=1,
+            description=(
+                f"Moved '{before.file_name}' from {before.zone.value} to {after.zone.value}"
+            ),
+            snapshot_id=snapshot_id,
+        )
+        snapshot = RollbackSnapshot(
+            id=snapshot_id,
+            operation_id=operation_id,
+            snapshot_data=encode_snapshot_data(build_move_snapshot_payload([change])),
+            created_at=now,
+        )
+        self._operations.record_with_snapshot(operation, [change], snapshot)
 
     def _should_auto_approve(self, track: Track, library: Library) -> bool:
         if track.needs_review:

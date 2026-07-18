@@ -50,6 +50,7 @@ from musicvault.plugins.manager import PluginManager
 from musicvault.services.job_dispatcher import JobDispatcher
 from musicvault.services.job_queue_service import JobQueueService
 from musicvault.services.metadata_arbitrator import MetadataArbitrator
+from musicvault.services.operation_orchestrator import OperationOrchestrator
 from musicvault.services.review_queue_service import ReviewQueueService
 from musicvault.services.rules_engine import RulesEngine
 from musicvault.services.watch_folder_service import WatchFolderService
@@ -88,6 +89,7 @@ class Container:
     rules_engine: RulesEngine
     duplicate_matcher: DuplicateMatcher
     organize_engine: OrganizeEngine
+    operation_orchestrator: OperationOrchestrator
     watch_folder: WatchFolderService
     plugin_manager: PluginManager
     metadata_arbitrator: MetadataArbitrator
@@ -159,6 +161,15 @@ class Container:
         )
         duplicate_matcher = DuplicateMatcher(QualityScorer(DEFAULT_WEIGHTS))
         organize_engine = OrganizeEngine()
+        operation_orchestrator = OperationOrchestrator(
+            operation_repo,
+            track_repo,
+            library_repo,
+            artist_repo,
+            album_repo,
+            organize_engine,
+            job_queue=job_queue,
+        )
         watch_folder = WatchFolderService(
             library_repo,
             job_queue,
@@ -259,6 +270,7 @@ class Container:
             rules_engine=rules_engine,
             duplicate_matcher=duplicate_matcher,
             organize_engine=organize_engine,
+            operation_orchestrator=operation_orchestrator,
             watch_folder=watch_folder,
             plugin_manager=plugin_manager,
             metadata_arbitrator=metadata_arbitrator,

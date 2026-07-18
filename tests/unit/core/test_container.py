@@ -32,6 +32,7 @@ from musicvault.plugins.manager import PluginManager
 from musicvault.services.job_dispatcher import JobDispatcher
 from musicvault.services.job_queue_service import JobQueueService
 from musicvault.services.metadata_arbitrator import MetadataArbitrator
+from musicvault.services.operation_orchestrator import OperationOrchestrator
 from musicvault.services.review_queue_service import ReviewQueueService
 from musicvault.services.rules_engine import RulesEngine
 from musicvault.services.watch_folder_service import WatchFolderService
@@ -186,6 +187,16 @@ def test_bootstrap_wires_the_phase_11_artwork_stack(
     assert isinstance(container.artwork_worker, ArtworkWorker)
     artwork_ids = [p.provider_id for p in container.plugin_manager.get_artwork_providers()]
     assert artwork_ids == ["cover_art_archive", "embedded_art"]
+    container.close()
+
+
+def test_bootstrap_wires_the_phase_12_rollback_stack(
+    app_paths: AppPaths, app_config: AppConfig
+) -> None:
+    container = Container.bootstrap(paths=app_paths, config=app_config)
+
+    assert isinstance(container.operation_orchestrator, OperationOrchestrator)
+    assert container.operation_orchestrator.list_recent(limit=1) == []
     container.close()
 
 

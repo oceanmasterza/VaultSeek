@@ -29,19 +29,17 @@ Collectors, audiophiles, and self-hosted media server operators using **Navidrom
 
 ## Status
 
-**Phase 11 — Artwork Worker** (current)
+**Phase 12 — Rollback Engine** (current)
 
 Architecture is finalized (v3). The processing pipeline covers scanning,
 hashing, fingerprinting, metadata identification, duplicate detection,
-rules, physical file organization (staging → library with zero-click
-auto-approve), a polling watch folder — and now **album artwork**: after
-identification, an `ArtworkWorker` fetches front covers from the Cover
-Art Archive (by MusicBrainz release, release-group, or recording id) and
-falls back to art embedded in the file's own tags (FLAC/ID3/MP4). Images
-are deduplicated by content hash, cached on disk, and linked to tracks
-and albums; missing or low-resolution covers (below a configurable
-500×500 default) park `artwork_missing` / `artwork_low_res` review
-items. See [Architecture Documentation](docs/architecture/README.md).
+rules, physical file organization, watch folders, album artwork — and
+now **reversible operations**: every file move writes a compressed
+rollback snapshot alongside the operations/change-history audit trail.
+`OperationOrchestrator.rollback` restores a track's previous path and
+zone (with safe collision handling); `preview` / dry-run describe a
+move without touching the filesystem. See
+[Architecture Documentation](docs/architecture/README.md).
 
 ```powershell
 git clone https://github.com/musicvault/musicvault.git
@@ -49,7 +47,7 @@ cd musicvault
 python -m venv .venv
 .venv\Scripts\activate
 pip install -e ".[dev]"
-pytest              # 464 passed
+pytest              # 477 passed
 python -m musicvault  # MusicVault 0.1.0
 ```
 
@@ -115,8 +113,9 @@ python -m musicvault  # MusicVault 0.1.0
 | 8 | Rules Engine | Complete |
 | 9 | Duplicate Detection | Complete |
 | 10 | Organizer + Watch Folder | Complete |
-| **11** | **Artwork Worker** | **Current** |
-| 12–16 | Rollback → Reports → GUI → Plugins → Installer | Planned |
+| 11 | Artwork Worker | Complete |
+| **12** | **Rollback Engine** | **Current** |
+| 13–16 | Reports → GUI → Plugins → Installer | Planned |
 
 ## License
 

@@ -1,14 +1,16 @@
-"""Operation / ChangeRecord entities — audit trail for mutating operations.
+"""Operation / ChangeRecord / RollbackSnapshot entities — audit + restore.
 
-Mirror the `operations` and `change_history` tables (see
-docs/architecture/03-database-schema.md, "Operations & Rollback").
-Phase 10 only *writes* these rows (one operation + change per file
-move) so the Phase 12 rollback engine has something to roll back;
-snapshots (`rollback_snapshots`) and restore stay Phase 12.
+Mirror the `operations`, `change_history`, and `rollback_snapshots`
+tables (see docs/architecture/03-database-schema.md, "Operations &
+Rollback"). Phase 10 wrote operations without snapshots; Phase 12
+attaches a compressed JSON snapshot to every new mutating operation and
+can reverse completed ``file_move`` operations via
+:class:`~musicvault.services.operation_orchestrator.OperationOrchestrator`.
 
 The schema doc leaves `operation_type` / `status` / `change_type`
 vocabularies unspecified — the enums below are this implementation's
-fill-in, extendable when Phase 12 adds tag edits and rollbacks.
+fill-in. Only ``FILE_MOVE`` / ``MOVE`` are reversible today; metadata
+tag rewrites stay deferred until a tag-write path exists.
 """
 
 from __future__ import annotations
@@ -65,3 +67,19 @@ class ChangeRecord:
     new_file_path: str | None = None
     old_zone: str | None = None
     new_zone: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
+class RollbackSnapshot:
+    """Compressed pre-mutation state for one operation (`rollback_snapshots`).
+
+    ``snapshot_data`` is the *decompressed* JSON document (gzip is applied
+    at the repository boundary). Schema version 1 stores the list of
+    change payloads the orchestrator needs to reverse a ``file_move``.
+    """
+
+    id: UUID
+    operation_id: UUID
+    snapshot_data: bytes
+    created_at: datetime
+    restored_at: datetime | None = None

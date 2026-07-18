@@ -27,8 +27,8 @@ Phase 8   ██████████ Rules engine
 Phase 9   ██████████ Duplicate worker + quality scoring
 Phase 10  ██████████ Organizer + staging zones + watch folder
 Phase 11  ██████████ Artwork worker
-Phase 12  ░░░░░░░░░░ Rollback engine (CURRENT)
-Phase 13  ░░░░░░░░░░ Reports
+Phase 12  ██████████ Rollback engine
+Phase 13  ░░░░░░░░░░ Reports (CURRENT)
 Phase 14  ░░░░░░░░░░ GUI (all pages)
 Phase 15  ░░░░░░░░░░ Media server plugins
 Phase 16  ░░░░░░░░░░ Packaging + installer
@@ -695,6 +695,38 @@ Phase 16  ░░░░░░░░░░ Packaging + installer
 ### Key Deliverables
 - `OperationOrchestrator` with rollback
 - Zone-aware change history
+
+### Implementation notes
+- `RollbackSnapshot` entity + `OperationRepository` snapshot APIs
+  (`record_with_snapshot`, `get_snapshot`, `set_status`,
+  `mark_snapshot_restored`, `list_recent`). Snapshot payload is
+  gzip-compressed JSON in the existing `rollback_snapshots.snapshot_data`
+  BLOB (schema already migrated in Phase 2); `AppPaths.rollback_dir`
+  remains reserved for future file-level backups (tag embeds).
+- `OrganizerWorker` now writes the full audit triple
+  (operation + change_history + snapshot) on every file move — Phase 10
+  moves that lack a snapshot remain rollbackable via change_history alone.
+- `OperationOrchestrator` (`preview` / `execute` / `rollback`):
+  - **preview** — destination + zone transition without touching disk
+  - **execute** — dry-run → preview; otherwise enqueues `organize_file`
+    (physical move + snapshot still happen in the worker)
+  - **rollback** — reverses completed `file_move` ops (path + zone),
+    skipping the forward zone machine so undos like library → staging
+    are legal; collision on the restore path gets a ` (1)` suffix;
+    marks operation `rolled_back` and sets `restored_at`
+- Zone-aware history: `list_recent` + `history_for_track`
+- Metadata tag rewrite / artwork embedding rollback deferred (no
+  tag-write path yet). Docs' `RollbackService` name is folded into
+  the orchestrator (single facade).
+
+### Acceptance Criteria
+- [x] Every new file move writes a rollback snapshot linked to the operation
+- [x] `rollback(operation_id)` restores path + zone for completed moves
+- [x] Already-rolled-back / non-completed / unknown ops raise `RollbackError`
+- [x] Preview / dry-run describe moves without mutating the filesystem
+- [x] Zone-aware change history queryable per track and as a recent list
+- [x] CI green on GitHub Actions
+- [x] Git commit: `feat: Phase 12 OperationOrchestrator + file-move rollback`
 
 ---
 
