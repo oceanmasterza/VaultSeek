@@ -47,12 +47,13 @@ VaultSeek-specific foundation:
 - **Missing Media Analyzer** — MusicBrainz tracklist gap detection + job creation
 - **Provider Framework** — config-driven providers, `ProviderManager`, stub + Nicotine+ skeleton
 - **SearchDispatcher / ScoringEngine / DownloadManager** — acquisition pipeline skeletons
+- **VerificationEngine / ImportPipeline** — mandatory verify→import wiring stubs
 - Planning docs, ADRs, architectural update (`ARCHITECTURAL_UPDATE_001`)
 
 ### In development
 
 - Live Nicotine+ search and download (RPC)
-- Verification Pipeline before import
+- Real fingerprint / duplicate verification (stubs in place)
 - Public acquisition UI (wishlist, job progress, recommendations)
 
 ### Planned
@@ -151,7 +152,7 @@ Full reference: [docs/TECH_STACK.md](docs/TECH_STACK.md).
 | | |
 |---|---|
 | **Maturity** | Early active development (post-fork, acquisition foundation) |
-| **Phase** | Phases 3–8 skeletons complete; Phase 9 Verification next |
+| **Phase** | Phases 9–10 skeletons complete; live Nicotine+ next |
 | **Tests** | 574 unit/integration tests passing |
 | **Roadmap** | [docs/ROADMAP.md](docs/ROADMAP.md) (public) · [docs/DEVELOPMENT_ROADMAP.md](docs/DEVELOPMENT_ROADMAP.md) (internal / AI) · [Project board](https://github.com/users/oceanmasterza/projects/1) |
 

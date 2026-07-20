@@ -66,6 +66,7 @@ from vaultseek.plugins.manager import PluginManager
 from vaultseek.services.acquisition_bootstrap import connect_acquisition_providers
 from vaultseek.services.acquisition_engine import AcquisitionEngine
 from vaultseek.services.download_manager import DownloadManager
+from vaultseek.services.import_pipeline import ImportPipeline
 from vaultseek.services.folder_trust import FolderTrustService
 from vaultseek.services.job_dispatcher import JobDispatcher
 from vaultseek.services.job_queue_service import JobQueueService
@@ -78,6 +79,7 @@ from vaultseek.services.review_queue_service import ReviewQueueService
 from vaultseek.services.rules_engine import RulesEngine
 from vaultseek.services.scoring_engine import ScoringEngine
 from vaultseek.services.search_dispatcher import SearchDispatcher
+from vaultseek.services.verification_engine import VerificationEngine
 from vaultseek.services.watch_folder_service import WatchFolderService
 from vaultseek.workers.cpu.fingerprint_worker import FingerprintWorker
 from vaultseek.workers.cpu.hash_worker import HashWorker
@@ -127,6 +129,8 @@ class Container:
     search_dispatcher: SearchDispatcher
     scoring_engine: ScoringEngine
     download_manager: DownloadManager
+    verification_engine: VerificationEngine
+    import_pipeline: ImportPipeline
     missing_media_analyzer: MissingMediaAnalyzer | None
     metadata_arbitrator: MetadataArbitrator
     scanner_worker: ScannerWorker
@@ -241,6 +245,8 @@ class Container:
         )
         scoring_engine = ScoringEngine()
         download_manager = DownloadManager(provider_manager, acquisition_engine)
+        verification_engine = VerificationEngine(acquisition_engine)
+        import_pipeline = ImportPipeline(acquisition_engine)
         metadata_arbitrator = MetadataArbitrator(
             plugin_manager.get_metadata_providers(),
             confidence_threshold=config.metadata.confidence_threshold,
@@ -400,6 +406,8 @@ class Container:
             search_dispatcher=search_dispatcher,
             scoring_engine=scoring_engine,
             download_manager=download_manager,
+            verification_engine=verification_engine,
+            import_pipeline=import_pipeline,
             missing_media_analyzer=missing_media_analyzer,
             metadata_arbitrator=metadata_arbitrator,
             scanner_worker=scanner_worker,

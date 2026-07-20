@@ -63,8 +63,8 @@ Nicotine+ is the **first** provider, not the architecture.
 | Search Dispatcher | ✅ skeleton |
 | Scoring Engine | ✅ skeleton |
 | Download Manager | ✅ skeleton |
-| Verification Engine | Planned |
-| Import Pipeline | Planned (reuse MusicVault organize) |
+| Verification Engine | ✅ skeleton |
+| Import Pipeline | ✅ skeleton (wiring stubs) |
 
 User-facing: wishlist, confidence %, auto-acquire above threshold (e.g. 90%) — planned.
 

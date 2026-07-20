@@ -6,7 +6,7 @@ Version: 1.1
 
 Status: Active development
 
-Overall Progress: 28%
+Overall Progress: 32%
 
 ---
 
@@ -32,7 +32,7 @@ Project State
 
 Current Phase
 
-Phase 9 — Verification Engine (skeletons for Phases 3–8 complete)
+Phase 9–10 skeletons complete — next: live Nicotine+ I/O
 
 Current Sprint
 
@@ -40,8 +40,8 @@ Sprint 3
 
 Current Goal
 
-VerificationEngine + ImportPipeline skeletons and wiring. Next: real Nicotine+
-search/download I/O; persist download handles; end-to-end verify→import.
+Phases 9–10 skeletons wired. Next: live Nicotine+ search/download RPC;
+fingerprint/duplicate verification; real ImportPipeline organize hand-off.
 ---
 
 # Vision Statement
@@ -406,17 +406,14 @@ Verification Engine
 
 Status
 
-⬜ Not Started
+🟡 Skeleton complete
 
 Tasks
 
-Fingerprint
-
-Metadata validation
-
-Duplicate detection
-
-Release verification
+Fingerprint — deferred (stub note)
+Metadata validation — path/filename hints ✅
+Duplicate detection — stub ✅
+Release verification — mb_release_id presence ✅
 
 Deliverable
 
@@ -430,19 +427,15 @@ Import Pipeline
 
 Status
 
-⬜ Not Started
+🟡 Skeleton complete (wiring stubs)
 
 Tasks
 
-Artwork
-
-Organisation
-
-Metadata
-
-Library updates
-
-Media server refresh
+Artwork — stub ✅
+Organisation — stub ✅
+Metadata — stub ✅
+Library updates — stub ✅
+Media server refresh — stub ✅
 
 Deliverable
 
@@ -785,6 +778,28 @@ Recommended refactors (non-user-visible)
 Next session goal
 
 Verification + import pipeline integration; real Nicotine+ search/download.
+
+
+---
+
+## 2026-07-20 — Phases 9–10: Verification + Import skeletons
+
+Summary
+
+- `VerificationEngine` + `VerificationResult` (path checks, metadata hints, stubs).
+- `ImportPipeline` + `ImportResult` with mandatory `run_after_verification` gate.
+- Wired in `Container`; unit tests for pass/fail/complete paths.
+
+Recommended refactors (non-user-visible)
+
+- Persist `local_paths` on `AcquisitionJob.extra` when downloads complete.
+- Replace fingerprint/duplicate stubs with FingerprintWorker + DuplicateMatcher.
+- Hand off ImportPipeline to OrganizerWorker / ArtworkWorker / MediaServerWorker.
+
+Next session goal
+
+Live Nicotine+ search/download; harden verification with real fingerprints.
+
 
 ---
 
