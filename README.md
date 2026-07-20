@@ -10,7 +10,7 @@
 > **MusicVault** — Organise what you have.  
 > **VaultSeek** — Find what you're missing.
 
-VaultSeek is **not** a Soulseek client or a simple downloader. It is an **Acquisition Engine**: it analyses your existing library, identifies missing or improvable releases, searches external sources through pluggable **Providers**, scores results, downloads, **verifies** every file, imports through the same pipeline as MusicVault, and refreshes your media servers.
+VaultSeek is **not** a Soulseek client or a simple downloader. It is an **Acquisition Engine**: it analyses your existing library, identifies missing or improvable releases, searches external sources through pluggable **Providers**, scores results, sorts, **verifies** every file, imports through the same pipeline as MusicVault, and refreshes your media servers.
 
 ---
 
