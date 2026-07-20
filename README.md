@@ -153,7 +153,7 @@ Full reference: [docs/TECH_STACK.md](docs/TECH_STACK.md).
 |---|---|
 | **Maturity** | Early active development (post-fork, acquisition foundation) |
 | **Phase** | Phases 9–10 skeletons complete; live Nicotine+ next |
-| **Tests** | 574 unit/integration tests passing |
+| **Tests** | 580 unit/integration tests passing |
 | **Roadmap** | [docs/ROADMAP.md](docs/ROADMAP.md) (public) · [docs/DEVELOPMENT_ROADMAP.md](docs/DEVELOPMENT_ROADMAP.md) (internal / AI) · [Project board](https://github.com/users/oceanmasterza/projects/1) |
 
 ```powershell
