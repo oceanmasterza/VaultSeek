@@ -1,5 +1,8 @@
 # PROJECT_PLAN.md
 
+> **Terminology (2026-07):** The central subsystem is the **Acquisition Engine**, not “Search Engine”.
+> Search dispatch is a step inside it. See [ARCHITECTURAL_UPDATE_001.md](ARCHITECTURAL_UPDATE_001.md).
+
 # VaultSeek
 
 ## Project Overview
@@ -104,7 +107,7 @@ VaultSeek
 ├── Library Manager
 ├── Metadata Engine
 ├── Missing Media Analyzer
-├── Search Engine
+├── Acquisition Engine
 ├── Provider Framework
 ├── Download Manager
 ├── Import Manager
@@ -271,9 +274,9 @@ Never performs searching.
 
 ---
 
-# Search Engine
+# Search Dispatcher (Acquisition Engine)
 
-The Search Engine converts metadata into provider-independent search requests.
+The Search Dispatcher converts metadata into provider-independent `SearchRequest` objects.
 
 Example Input:
 
@@ -293,7 +296,7 @@ Output:
 
 SearchRequest
 
-The Search Engine never communicates directly with providers.
+The Search Dispatcher never communicates directly with providers — only via Provider Manager.
 
 ---
 
@@ -301,7 +304,7 @@ The Search Engine never communicates directly with providers.
 
 Providers return search results asynchronously.
 
-The Search Engine collects all results until:
+The Result Collector gathers results until:
 
 - timeout
 - user cancellation
@@ -610,7 +613,7 @@ Completion
 
 ## Phase 5
 
-Implement Search Engine.
+Implement Search Dispatcher and result collection within the Acquisition Engine.
 
 Metadata conversion
 

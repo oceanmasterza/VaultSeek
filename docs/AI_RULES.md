@@ -28,13 +28,31 @@ Always:
 
 Understand the existing architecture.
 
-Read PROJECT_PLAN.md.
+Read [ARCHITECTURAL_UPDATE_001.md](ARCHITECTURAL_UPDATE_001.md) and [DECISIONS.md](DECISIONS.md).
 
-Read ARCHITECTURE.md.
+Read [PROJECT_PLAN.md](PROJECT_PLAN.md) and [ARCHITECTURE.md](ARCHITECTURE.md).
+
+Read [DEVELOPMENT_ROADMAP.md](DEVELOPMENT_ROADMAP.md) for current phase and next tasks.
 
 Reuse existing code before creating new code.
 
 Avoid duplicate functionality.
+
+**Before any new feature:** review the current design against the Acquisition Engine model. Document recommended architectural refactors in DECISIONS or DEVELOPMENT_ROADMAP *before* implementing them. Only refactor for extensibility when user-visible behaviour stays unchanged.
+
+---
+
+# Documentation-First Development
+
+When you change architecture or add a subsystem:
+
+1. Update [ARCHITECTURE.md](ARCHITECTURE.md) and/or [ARCHITECTURAL_UPDATE_001.md](ARCHITECTURAL_UPDATE_001.md) if the model shifts
+2. Add or update an ADR in [DECISIONS.md](DECISIONS.md)
+3. Update [ROADMAP.md](ROADMAP.md) (public) and [DEVELOPMENT_ROADMAP.md](DEVELOPMENT_ROADMAP.md) (internal)
+4. Update [README.md](../README.md) feature status if user-visible
+5. Then implement in small, testable increments
+
+Use consistent terminology: **Acquisition Engine**, **AcquisitionJob**, **Provider**, **Verification Pipeline**, **Import Pipeline**. Do not introduce “Search Engine” as an architecture name.
 
 ---
 
@@ -110,7 +128,7 @@ Names should describe intent.
 
 Good:
 
-AlbumSearchService
+AcquisitionEngine
 
 ProviderManager
 
@@ -274,9 +292,9 @@ Those responsibilities belong elsewhere.
 
 Searches must be provider-independent.
 
-The Search Engine produces SearchRequest objects.
+The **Search Dispatcher** (inside the Acquisition Engine) produces `SearchRequest` objects.
 
-Providers translate SearchRequest into provider-specific requests.
+Providers translate `SearchRequest` into provider-specific requests.
 
 ---
 
@@ -394,7 +412,11 @@ Before considering a task complete, verify:
 
 ✓ Architecture respected
 
-✓ Public APIs documented
+✓ Public APIs documented (docstrings)
+
+✓ Architecture docs updated when design changes
+
+✓ ROADMAP / DEVELOPMENT_ROADMAP updated for milestones
 
 ✓ Configuration strongly typed
 

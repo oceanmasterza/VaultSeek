@@ -160,9 +160,11 @@ Business logic should not depend on individual providers.
 
 ### Decision
 
-The Search Engine produces SearchRequest objects.
+The Acquisition Engine's **Search Dispatcher** produces `SearchRequest` objects.
 
 Providers translate SearchRequest into provider-specific implementations.
+
+> **Note:** Earlier docs used “Search Engine” for this responsibility. ADR-0017 renames the overall subsystem to **Acquisition Engine**.
 
 ### Consequences
 

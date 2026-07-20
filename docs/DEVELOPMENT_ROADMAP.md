@@ -321,7 +321,7 @@ Accurate missing-media identification.
 
 ## Phase 6
 
-Search Engine
+Search Dispatcher (Acquisition Engine)
 
 Status
 

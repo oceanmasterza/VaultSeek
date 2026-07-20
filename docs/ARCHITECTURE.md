@@ -2,62 +2,65 @@
 
 # VaultSeek Architecture
 
+> **Terminology:** The central workflow is the **Acquisition Engine**, not a “Search Engine”.
+> See [ARCHITECTURAL_UPDATE_001.md](ARCHITECTURAL_UPDATE_001.md) and ADR-0017 in [DECISIONS.md](DECISIONS.md).
+
 ## Overview
 
-VaultSeek is designed as a modular, provider-driven Windows desktop application.
+VaultSeek is a modular, provider-driven Windows desktop application.
 
-The application extends the ideas of MusicVault by adding intelligent music discovery and acquisition while preserving the existing library management pipeline.
+It extends MusicVault by adding intelligent music **acquisition** while preserving the existing library management **Import Pipeline** (fingerprint, identify, organize, artwork, media-server sync).
 
-The architecture intentionally separates concerns so that new providers, metadata sources and workflows can be added without modifying existing components.
+New providers and metadata sources plug in without modifying core Acquisition Engine logic.
+
+**Runtime:** Python 3.14, PySide6, SQLite, Container-based DI, `typing.Protocol` for plugins (ADR-0016).
 
 ---
 
 # High-Level Architecture
 
-```
-                     +--------------------+
-                     |        UI          |
-                     +----------+---------+
-                                |
-                                v
-                     +--------------------+
-                     | Application Layer  |
-                     +----------+---------+
-                                |
-      +-------------------------+-------------------------+
-      |                         |                         |
-      v                         v                         v
-+-------------+        +----------------+        +----------------+
-| Library     |        | Search Engine  |        | ProviderManager|
-+------+------+        +-------+--------+        +--------+-------+
-       |                       |                          |
-       |                       |                          |
-       |                       |                          |
-       |              +--------+---------+                |
-       |              | Scoring Engine   |                |
-       |              +--------+---------+                |
-       |                       |                          |
-       |                       v                          |
-       |              +------------------+                |
-       |              | DownloadManager  |                |
-       |              +--------+---------+                |
-       |                       |                          |
-       |                       v                          |
-       |              +------------------+                |
-       |              | Verification     |                |
-       |              +--------+---------+                |
-       |                       |                          |
-       +-----------------------+--------------------------+
-                               |
-                               v
-                    +------------------------+
-                    | Import Manager         |
-                    +-----------+------------+
-                                |
-                                v
-                    +------------------------+
-                    | Media Server Manager   |
-                    +------------------------+
+```mermaid
+flowchart TB
+    UI[UI / Qt pages]
+
+    subgraph services [Application services]
+        LS[Library services]
+        AE[Acquisition Engine]
+        PM[Provider Manager]
+    end
+
+    subgraph engine [Acquisition Engine subsystems]
+        MMA[Missing Media Analyzer]
+        AJS[Job Scheduler]
+        SD[Search Dispatcher]
+        RC[Result Collector]
+        SC[Scoring Engine]
+        DM[Download Manager]
+        VP[Verification Pipeline]
+        IP[Import Pipeline]
+    end
+
+    subgraph providers [Providers]
+        NIC[Nicotine+]
+        STUB[Stub / future]
+    end
+
+    MS[Media Server Manager]
+
+    UI --> services
+    LS --> IP
+    AE --> MMA
+    AE --> AJS
+    AE --> SD
+    AE --> RC
+    AE --> SC
+    AE --> DM
+    AE --> VP
+    SD --> PM
+    PM --> NIC
+    PM --> STUB
+    VP --> IP
+    IP --> MS
 ```
 
 ---
@@ -66,431 +69,183 @@ The architecture intentionally separates concerns so that new providers, metadat
 
 ## UI
 
-Responsible only for presentation.
-
-Never contains business logic.
-
-Communicates with ViewModels only.
-
----
-
-## ViewModels
-
-Responsible for:
-
-- commands
-- data binding
-- progress updates
-- user interaction
-
-Never performs searching.
-
-Never downloads files.
-
-Never communicates with providers directly.
-
----
+Presentation only. No business logic. Talks to thin page controllers / services — never to Providers directly.
 
 ## Services
 
-Business logic belongs here.
+Business logic lives in `vaultseek/services/` and workers.
 
 Examples:
 
-LibraryService
-
-MetadataService
-
-SearchService
-
-DownloadService
-
-ImportService
-
----
+- Library / metadata services (MusicVault heritage)
+- **AcquisitionEngine** — coordinates `AcquisitionJob` lifecycle
+- **ProviderManager** — sole gateway to acquisition Providers
+- Import / verification services (planned)
 
 ## Providers
 
-Providers communicate with external systems.
+External communication only (`plugins/builtin/…`).
 
-Examples:
+Examples: Nicotine+ (planned), stub provider (today), future local archive / Lidarr / …
 
-NicotineProvider
-
-SoulseekProvider
-
-FTPProvider
-
-WebDAVProvider
-
-Future providers
-
-Providers never know about the library.
-
-Providers simply return search results and downloaded files.
+Providers return normalized `SearchResult` and file paths. They never modify the library or run the Import Pipeline.
 
 ---
 
 # Dependency Rules
 
-Allowed:
-
-```
-UI
-↓
-
-ViewModel
-↓
-
-Service
-↓
-
-ProviderManager
-↓
-
-Provider
+```mermaid
+flowchart TD
+    UI --> SVC[Services]
+    SVC --> PM[ProviderManager]
+    PM --> PRV[Provider]
 ```
 
-Not Allowed:
-
-```
-UI → Provider
-
-Provider → UI
-
-Provider → Database
-
-ViewModel → Provider
-
-Provider → Import Manager
-```
-
-Dependencies must always point downward.
+**Not allowed:** UI → Provider, Provider → UI, Provider → database, Provider → Import Pipeline.
 
 ---
 
-# Plugin Architecture
+# Plugin Architecture (Python)
 
 ```
-Providers/
-
-    Nicotine/
-
-        NicotineProvider.cs
-
-        NicotineSearch.cs
-
-        NicotineDownload.cs
-
-        NicotineConfiguration.cs
-
-    Soulseek/
-
-    FTP/
-
-    Local/
+src/vaultseek/plugins/builtin/
+    acquisition_stub/     # Phase 1 placeholder
+    nicotine/             # planned
+    musicbrainz/          # metadata (heritage)
+    cover_art_archive/    # artwork (heritage)
+    navidrome/            # media server (heritage)
 ```
 
-Every provider exposes:
-
-```
-Name
-
-Version
-
-Capabilities
-
-Configuration
-
-Connect()
-
-Disconnect()
-
-Search()
-
-Download()
-
-Cancel()
-
-Dispose()
-```
+Every **AcquisitionProvider** implements: `connect`, `disconnect`, `search`, `download`, `cancel`, `get_status`, `capabilities`.
 
 ---
 
-# Search Pipeline
+# Acquisition Pipeline
 
-```
-Missing Album
+Each step updates an **AcquisitionJob** — subsystems do not call each other directly.
 
-↓
-
-Metadata Lookup
-
-↓
-
-Search Request
-
-↓
-
-Provider Search
-
-↓
-
-Collect Results
-
-↓
-
-Score Results
-
-↓
-
-Choose Best
-
-↓
-
-Download
-
-↓
-
-Verify
-
-↓
-
-Import
+```mermaid
+flowchart TD
+    A[Missing album or upgrade] --> B[AcquisitionJob Created]
+    B --> C[Metadata lookup]
+    C --> D[SearchRequest via Search Dispatcher]
+    D --> E[Provider search]
+    E --> F[Result Collector]
+    F --> G[Scoring Engine]
+    G --> H[Download Manager]
+    H --> I[Verification Pipeline]
+    I --> J[Import Pipeline]
+    J --> K[Library + media server refresh]
 ```
 
-Every step should be independently testable.
+Every step is independently testable.
+
+---
+
+# Acquisition Job lifecycle
+
+```mermaid
+stateDiagram-v2
+    [*] --> Created
+    Created --> Queued
+    Queued --> Searching
+    Searching --> CollectingResults
+    CollectingResults --> Scoring
+    Scoring --> WaitingForUser
+    Scoring --> Downloading
+    WaitingForUser --> Downloading
+    Downloading --> Verifying
+    Verifying --> Importing
+    Importing --> Completed
+    Searching --> NoResults
+    Downloading --> DownloadFailed
+    Verifying --> VerificationFailed
+    Importing --> ImportFailed
+    NoResults --> RetryScheduled
+    RetryScheduled --> Queued
+    Completed --> [*]
+    Cancelled --> [*]
+```
+
+Implementation: `vaultseek/models/entities/acquisition_job.py`.
 
 ---
 
 # Result Scoring Pipeline
 
+Provider-neutral. All Providers emit normalized results; Scoring Engine picks the best match.
+
 ```
-Search Results
-
-↓
-
-Normalize
-
-↓
-
-Artist Match
-
-↓
-
-Album Match
-
-↓
-
-Track Count
-
-↓
-
-Codec
-
-↓
-
-Bit Depth
-
-↓
-
-Year
-
-↓
-
-Folder Structure
-
-↓
-
-Trusted Source
-
-↓
-
-Final Score
+Search Results → Normalize → Artist → Album → Track count → Codec →
+Bit depth → Year → Folder structure → Trusted source → Final score
 ```
 
-No provider-specific scoring.
+Weights are configurable (planned).
 
-All providers produce normalized results.
+---
+
+# Verification Pipeline
+
+Mandatory before Import (ADR-0005). No downloaded file enters the library without:
+
+- Readable format
+- Fingerprint validation
+- Metadata comparison
+- Duplicate detection
+- Release verification
 
 ---
 
 # Import Pipeline
 
+Reuses MusicVault workers/services:
+
 ```
-Downloaded Files
-
-↓
-
-Read Metadata
-
-↓
-
-Fingerprint
-
-↓
-
-MusicBrainz Validation
-
-↓
-
-Duplicate Detection
-
-↓
-
-Artwork
-
-↓
-
-Organise
-
-↓
-
-Library
-
-↓
-
-Media Server Refresh
+Downloaded files → Read metadata → Fingerprint → MB validation →
+Duplicates → Artwork → Organise → Library → Media server refresh
 ```
-
-Reuse MusicVault code wherever possible.
 
 ---
 
 # Configuration
 
-All configuration belongs in strongly typed objects.
+Strongly typed dataclasses in `vaultseek.core.config` — not ad-hoc dicts for app settings.
 
-Example:
-
-```
-ProviderSettings
-
-DownloadSettings
-
-SearchSettings
-
-MediaServerSettings
-
-LoggingSettings
-```
-
-Never use dictionaries for application configuration.
+Acquisition-specific settings (planned): provider tokens, scoring weights, auto-acquire threshold, concurrent downloads.
 
 ---
 
 # Logging
 
-Every subsystem receives an ILogger.
-
-Never use Console.WriteLine().
-
-Logging should include:
-
-Information
-
-Warning
-
-Error
-
-Debug
-
-Trace
+Structured logging via **loguru**. Never `print()` for operational messages in production paths.
 
 ---
 
-# Threading
+# Concurrency
 
-Everything should be asynchronous.
-
-Long-running work must never block the UI.
-
-Use:
-
-async
-
-await
-
-CancellationToken
-
-IProgress<T>
-
-Never use Thread.Sleep().
-
----
-
-# Error Handling
-
-Failures should never crash the application.
-
-Recover whenever practical.
-
-Retry where appropriate.
-
-Log everything.
-
-Provide meaningful feedback.
+Long-running work runs in worker threads/processes; UI stays responsive. Cooperative cancellation on jobs (AcquisitionJob cancel, download cancel).
 
 ---
 
 # Testing Strategy
 
-Each service should be independently testable.
+- Unit tests per service and state machine
+- Mock Providers for Acquisition Engine tests
+- Integration tests for provider IPC (when Nicotine+ lands)
+- No live external API calls in CI — use `responses` fixtures
 
-Providers should be mockable.
-
-Every interface should have unit tests.
-
-Integration tests should validate provider communication.
+See [architecture/09-testing-strategy.md](architecture/09-testing-strategy.md).
 
 ---
 
 # Shared Code Strategy
 
-MusicVault and VaultSeek should gradually evolve toward a shared reusable core.
-
-Proposed future structure:
-
-```
-MusicVault.Core
-
-    Fingerprinting
-
-    Metadata
-
-    Artwork
-
-    Library
-
-    Import
-
-    Media Servers
-
-MusicVault
-
-VaultSeek
-```
-
-Avoid duplicating business logic whenever possible.
+Long-term: extract **MusicVault.Core** (fingerprint, metadata, artwork, library, import, media servers) consumed by both MusicVault and VaultSeek (ADR-0015).
 
 ---
 
 # Design Principles
 
-Single Responsibility
+Single Responsibility · Open/Closed · Dependency Inversion · Composition over inheritance · Small, readable modules · **Documentation follows architecture changes**
 
-Open/Closed
-
-Dependency Inversion
-
-Composition over Inheritance
-
-Interfaces over Concrete Types
-
-Small Classes
-
-Small Methods
-
-Readable Code
-
-Predictable Behaviour
+Further reading: [PROJECT_PLAN.md](PROJECT_PLAN.md), [TECH_STACK.md](TECH_STACK.md), [ROADMAP.md](ROADMAP.md).
