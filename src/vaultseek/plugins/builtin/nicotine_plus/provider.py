@@ -1,4 +1,4 @@
-"""Nicotine+ acquisition provider — skeleton (Phase 4)."""
+"""Nicotine+ acquisition provider — RPC-backed skeleton (Phase 4)."""
 
 from __future__ import annotations
 
@@ -13,20 +13,31 @@ from vaultseek.models.interfaces.acquisition import (
     SearchRequest,
     SearchResult,
 )
+from vaultseek.plugins.builtin.nicotine_plus.rpc import (
+    NicotinePlusRpcClient,
+    UnimplementedRpcClient,
+    hits_to_search_results,
+)
 
 
 class NicotinePlusProvider:
-    """Skeleton provider that probes Nicotine+ RPC availability.
+    """Provider that probes Nicotine+ availability and delegates to an RPC client.
 
-    Does not implement Soulseek search/download yet — returns empty results
-    and fails downloads gracefully when Nicotine+ is unavailable.
+    Default RPC client is a no-op stub. Tests (and a future real transport)
+    inject a NicotinePlusRpcClient implementation.
     """
 
     provider_id = "nicotine_plus"
     display_name = "Nicotine+"
 
-    def __init__(self, *, connect_timeout_seconds: float = 1.0) -> None:
+    def __init__(
+        self,
+        *,
+        connect_timeout_seconds: float = 1.0,
+        rpc_client: NicotinePlusRpcClient | None = None,
+    ) -> None:
         self._connect_timeout = connect_timeout_seconds
+        self._rpc: NicotinePlusRpcClient = rpc_client or UnimplementedRpcClient()
         self._connected = False
         self._settings: dict[str, Any] = {}
 
@@ -39,6 +50,14 @@ class NicotinePlusProvider:
             cancel=True,
             progress=True,
         )
+
+    @property
+    def rpc_client(self) -> NicotinePlusRpcClient:
+        return self._rpc
+
+    def set_rpc_client(self, client: NicotinePlusRpcClient) -> None:
+        """Replace the RPC transport (tests / future real client)."""
+        self._rpc = client
 
     def connect(self, config: AcquisitionProviderConfig) -> bool:
         if not config.enabled:
@@ -58,17 +77,20 @@ class NicotinePlusProvider:
     def search(self, request: SearchRequest) -> list[SearchResult]:
         if not self._connected:
             return []
-        return []
+        return hits_to_search_results(self._rpc.search(request))
 
     def download(self, result: SearchResult) -> DownloadHandle:
+        download_id = self._rpc.enqueue_download(result.result_id, raw=dict(result.raw))
         return DownloadHandle(
             provider_id=self.provider_id,
-            download_id=f"nicotine-{result.result_id}",
+            download_id=download_id,
             result_id=result.result_id,
         )
 
     def cancel(self, handle: DownloadHandle) -> bool:
-        return self._connected
+        if not self._connected:
+            return False
+        return self._rpc.cancel(handle.download_id)
 
     def get_status(self, handle: DownloadHandle) -> DownloadStatus:
         if not self._connected:
@@ -78,11 +100,13 @@ class NicotinePlusProvider:
                 progress=0.0,
                 message="Nicotine+ is not connected.",
             )
+        state = self._rpc.download_status(handle.download_id)
         return DownloadStatus(
-            download_id=handle.download_id,
-            state="failed",
-            progress=0.0,
-            message="Nicotine+ download not implemented yet (Phase 4 skeleton).",
+            download_id=state.download_id,
+            state=state.state,
+            progress=state.progress,
+            message=state.message,
+            local_paths=state.local_paths,
         )
 
     def _probe_host(self, host: str, port: int) -> bool:

@@ -6,7 +6,7 @@ Version: 1.1
 
 Status: Active development
 
-Overall Progress: 34%
+Overall Progress: 35%
 
 ---
 
@@ -40,8 +40,8 @@ Sprint 3
 
 Current Goal
 
-Phases 9–10 skeletons wired. Next: live Nicotine+ search/download RPC;
-fingerprint/duplicate verification; real ImportPipeline organize hand-off.
+NicotinePlusRpcClient protocol + FakeRpcClient in place. Next: real TCP/JSON
+transport; fingerprint/duplicate verification; ImportPipeline organize hand-off.
 ---
 
 # Vision Statement
@@ -803,7 +803,11 @@ Also added
 
 Next session goal
 
-Live Nicotine+ search/download; harden verification with real fingerprints.
+Also added NicotinePlusRpcClient / FakeRpcClient injection point.
+
+Next session goal
+
+Implement real Nicotine+ RPC transport; harden verification with fingerprints.
 
 
 ---
