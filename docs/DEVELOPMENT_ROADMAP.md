@@ -728,7 +728,7 @@ Summary
 - Imported planning docs + ARCHITECTURAL_UPDATE_001; ADR-0016, ADR-0017.
 - AcquisitionProvider Protocol, ProviderManager, stub provider.
 - AcquisitionJob state machine + in-memory AcquisitionEngine.
-- GitHub repo created and initial VaultSeek commit pushed.
+- Local commit `926777a` pushed to https://github.com/oceanmasterza/VaultSeek (`origin/master` in sync).
 
 Recommended refactors (no user-visible change, before new features)
 
