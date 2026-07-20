@@ -93,6 +93,6 @@ User-facing: wishlist, confidence %, auto-acquire above threshold (e.g. 90%).
 
 ## How to follow progress
 
-- **Issues & board:** [GitHub Projects](https://github.com/users/oceanmasterza/projects) (VaultSeek board)
+- **Issues & board:** [VaultSeek project board](https://github.com/users/oceanmasterza/projects/1)
 - **CI:** [![CI](https://github.com/oceanmasterza/VaultSeek/actions/workflows/ci.yml/badge.svg)](https://github.com/oceanmasterza/VaultSeek/actions/workflows/ci.yml)
 - **Contributing:** [CONTRIBUTING.md](../CONTRIBUTING.md)

@@ -154,7 +154,7 @@ Full reference: [docs/TECH_STACK.md](docs/TECH_STACK.md).
 | **Maturity** | Early active development (post-fork, acquisition foundation) |
 | **Phase** | Phase 2 — Acquisition Engine foundation |
 | **Tests** | 550+ unit/integration tests passing |
-| **Roadmap** | [docs/ROADMAP.md](docs/ROADMAP.md) (public) · [docs/DEVELOPMENT_ROADMAP.md](docs/DEVELOPMENT_ROADMAP.md) (internal / AI) |
+| **Roadmap** | [docs/ROADMAP.md](docs/ROADMAP.md) (public) · [docs/DEVELOPMENT_ROADMAP.md](docs/DEVELOPMENT_ROADMAP.md) (internal / AI) · [Project board](https://github.com/users/oceanmasterza/projects/1) |
 
 ```powershell
 git clone https://github.com/oceanmasterza/VaultSeek.git
