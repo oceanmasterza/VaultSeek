@@ -1,4 +1,4 @@
-"""Unit tests for musicvault.db.repositories.artwork_repo."""
+"""Unit tests for vaultseek.db.repositories.artwork_repo."""
 
 from __future__ import annotations
 
@@ -8,9 +8,9 @@ from uuid import UUID
 import pytest
 from sqlalchemy import Engine
 
-from musicvault.db.repositories.artwork_repo import ArtworkRepository
-from musicvault.db.uuid_utils import generate_uuid7
-from musicvault.models.entities.artwork import Artwork
+from vaultseek.db.repositories.artwork_repo import ArtworkRepository
+from vaultseek.db.uuid_utils import generate_uuid7
+from vaultseek.models.entities.artwork import Artwork
 
 _NOW = datetime(2026, 7, 17, tzinfo=UTC)
 
@@ -24,8 +24,8 @@ def artwork_repo(engine: Engine) -> ArtworkRepository:
 def album_id(engine: Engine) -> UUID:
     from sqlalchemy import insert
 
-    from musicvault.db.tables import albums
-    from musicvault.db.uuid_utils import uuid_to_blob
+    from vaultseek.db.tables import albums
+    from vaultseek.db.uuid_utils import uuid_to_blob
 
     alb_id = generate_uuid7()
     with engine.begin() as conn:

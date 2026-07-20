@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from musicvault.gui.widgets.desktop import open_path
+from vaultseek.gui.widgets.desktop import open_path
 
 
 def test_open_path_creates_missing_directory(tmp_path: Path, monkeypatch) -> None:
@@ -12,7 +12,7 @@ def test_open_path_creates_missing_directory(tmp_path: Path, monkeypatch) -> Non
     opened: list[str] = []
 
     monkeypatch.setattr(
-        "musicvault.gui.widgets.desktop.QDesktopServices.openUrl",
+        "vaultseek.gui.widgets.desktop.QDesktopServices.openUrl",
         lambda url: opened.append(url.toLocalFile()) or True,
     )
 

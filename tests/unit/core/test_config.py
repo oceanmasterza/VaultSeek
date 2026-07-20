@@ -1,4 +1,4 @@
-"""Unit tests for musicvault.core.config."""
+"""Unit tests for vaultseek.core.config."""
 
 from __future__ import annotations
 
@@ -8,7 +8,7 @@ from pathlib import Path
 
 import pytest
 
-from musicvault.core.config import (
+from vaultseek.core.config import (
     CURRENT_SCHEMA_VERSION,
     AppConfig,
     ArtworkConfig,
@@ -19,7 +19,7 @@ from musicvault.core.config import (
     load_config,
     save_config,
 )
-from musicvault.core.exceptions import ConfigError, ConfigMigrationError, ConfigVersionError
+from vaultseek.core.exceptions import ConfigError, ConfigMigrationError, ConfigVersionError
 
 
 def test_default_config_uses_current_schema_version() -> None:

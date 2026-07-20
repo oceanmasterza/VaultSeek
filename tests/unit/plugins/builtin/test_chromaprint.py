@@ -1,4 +1,4 @@
-"""Unit tests for musicvault.plugins.builtin.chromaprint."""
+"""Unit tests for vaultseek.plugins.builtin.chromaprint."""
 
 from __future__ import annotations
 
@@ -8,8 +8,8 @@ from pathlib import Path
 import acoustid
 import pytest
 
-from musicvault.models.interfaces.fingerprint import FingerprintResult
-from musicvault.plugins.builtin.chromaprint import (
+from vaultseek.models.interfaces.fingerprint import FingerprintResult
+from vaultseek.plugins.builtin.chromaprint import (
     ChromaprintFingerprintProvider,
     generate_chromaprint,
 )
@@ -84,7 +84,7 @@ def test_provider_delegates_to_generate_chromaprint(
     audio.write_bytes(b"x")
     expected = FingerprintResult(1.0, b"fp", "hh" * 32)
     monkeypatch.setattr(
-        "musicvault.plugins.builtin.chromaprint.provider.generate_chromaprint",
+        "vaultseek.plugins.builtin.chromaprint.provider.generate_chromaprint",
         lambda _path: expected,
     )
 

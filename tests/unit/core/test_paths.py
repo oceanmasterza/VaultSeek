@@ -1,4 +1,4 @@
-"""Unit tests for musicvault.core.paths."""
+"""Unit tests for vaultseek.core.paths."""
 
 from __future__ import annotations
 
@@ -7,13 +7,13 @@ from pathlib import Path
 
 import pytest
 
-from musicvault.core.paths import _resolve_base_dir, get_app_paths
+from vaultseek.core.paths import _resolve_base_dir, get_app_paths
 
 
 def test_get_app_paths_roots_under_base_override(tmp_path: Path) -> None:
     paths = get_app_paths(base_override=tmp_path)
 
-    assert paths.root == tmp_path / "MusicVault"
+    assert paths.root == tmp_path / "VaultSeek"
 
 
 def test_get_app_paths_derives_all_locations_under_root(tmp_path: Path) -> None:

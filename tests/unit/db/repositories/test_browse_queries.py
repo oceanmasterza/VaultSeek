@@ -7,15 +7,15 @@ from uuid import UUID
 
 from sqlalchemy import Engine, insert
 
-from musicvault.db.repositories.album_repo import AlbumRepository
-from musicvault.db.repositories.artist_repo import ArtistRepository
-from musicvault.db.repositories.artwork_repo import ArtworkRepository
-from musicvault.db.repositories.track_repo import TrackRepository
-from musicvault.db.tables import albums
-from musicvault.db.uuid_utils import generate_uuid7, uuid_to_blob
-from musicvault.models.entities.artist import Artist
-from musicvault.models.entities.artwork import Artwork
-from musicvault.models.entities.track import LibraryZone, Track
+from vaultseek.db.repositories.album_repo import AlbumRepository
+from vaultseek.db.repositories.artist_repo import ArtistRepository
+from vaultseek.db.repositories.artwork_repo import ArtworkRepository
+from vaultseek.db.repositories.track_repo import TrackRepository
+from vaultseek.db.tables import albums
+from vaultseek.db.uuid_utils import generate_uuid7, uuid_to_blob
+from vaultseek.models.entities.artist import Artist
+from vaultseek.models.entities.artwork import Artwork
+from vaultseek.models.entities.track import LibraryZone, Track
 
 _NOW = datetime(2026, 7, 19, tzinfo=UTC)
 

@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from musicvault.models.interfaces.metadata import MetadataQuery
-from musicvault.plugins.builtin.filename_parser import FilenameParserProvider
+from vaultseek.models.interfaces.metadata import MetadataQuery
+from vaultseek.plugins.builtin.filename_parser import FilenameParserProvider
 
 
 def test_parses_artist_album_track_title_path() -> None:

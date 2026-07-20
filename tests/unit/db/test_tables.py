@@ -1,4 +1,4 @@
-"""Unit tests for musicvault.db.tables.
+"""Unit tests for vaultseek.db.tables.
 
 These tests exercise the schema directly against a real (temp file)
 SQLite database rather than mocking SQLAlchemy, because the whole point
@@ -15,7 +15,7 @@ import pytest
 from sqlalchemy import Engine, event, insert, select, text
 from sqlalchemy.exc import IntegrityError
 
-from musicvault.db.tables import (
+from vaultseek.db.tables import (
     duplicate_groups,
     file_identity,
     jobs,
@@ -26,7 +26,7 @@ from musicvault.db.tables import (
     rollback_snapshots,
     tracks,
 )
-from musicvault.db.uuid_utils import generate_uuid7, uuid_to_blob
+from vaultseek.db.uuid_utils import generate_uuid7, uuid_to_blob
 
 EXPECTED_TABLE_NAMES = {
     "libraries",

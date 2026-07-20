@@ -1,4 +1,4 @@
-"""Unit tests for musicvault.services.operation_orchestrator."""
+"""Unit tests for vaultseek.services.operation_orchestrator."""
 
 from __future__ import annotations
 
@@ -9,22 +9,22 @@ from uuid import UUID
 import pytest
 from sqlalchemy import Engine
 
-from musicvault.core.exceptions import OperationError, RollbackError
-from musicvault.db.repositories.album_repo import AlbumRepository
-from musicvault.db.repositories.artist_repo import ArtistRepository
-from musicvault.db.repositories.library_repo import LibraryRepository
-from musicvault.db.repositories.operation_repo import OperationRepository
-from musicvault.db.repositories.track_repo import TrackRepository
-from musicvault.db.uuid_utils import generate_uuid7
-from musicvault.models.entities.job import JobStatus, JobType
-from musicvault.models.entities.library import Library
-from musicvault.models.entities.operation import OperationStatus, OperationType
-from musicvault.models.entities.track import LibraryZone, Track
-from musicvault.models.services.organize_engine import OrganizeEngine
-from musicvault.services.dto.operation_dto import OperationRequest
-from musicvault.services.job_queue_service import JobQueueService
-from musicvault.services.operation_orchestrator import OperationOrchestrator
-from musicvault.workers.io.organizer_worker import OrganizerWorker
+from vaultseek.core.exceptions import OperationError, RollbackError
+from vaultseek.db.repositories.album_repo import AlbumRepository
+from vaultseek.db.repositories.artist_repo import ArtistRepository
+from vaultseek.db.repositories.library_repo import LibraryRepository
+from vaultseek.db.repositories.operation_repo import OperationRepository
+from vaultseek.db.repositories.track_repo import TrackRepository
+from vaultseek.db.uuid_utils import generate_uuid7
+from vaultseek.models.entities.job import JobStatus, JobType
+from vaultseek.models.entities.library import Library
+from vaultseek.models.entities.operation import OperationStatus, OperationType
+from vaultseek.models.entities.track import LibraryZone, Track
+from vaultseek.models.services.organize_engine import OrganizeEngine
+from vaultseek.services.dto.operation_dto import OperationRequest
+from vaultseek.services.job_queue_service import JobQueueService
+from vaultseek.services.operation_orchestrator import OperationOrchestrator
+from vaultseek.workers.io.organizer_worker import OrganizerWorker
 
 _NOW = datetime(2026, 7, 18, tzinfo=UTC)
 
@@ -93,8 +93,8 @@ def organizer(
     duplicate_repo: object,
     job_queue: JobQueueService,
 ) -> OrganizerWorker:
-    from musicvault.db.repositories.duplicate_repo import DuplicateRepository
-    from musicvault.db.repositories.review_repo import ReviewRepository
+    from vaultseek.db.repositories.duplicate_repo import DuplicateRepository
+    from vaultseek.db.repositories.review_repo import ReviewRepository
 
     assert isinstance(review_repo, ReviewRepository)
     assert isinstance(duplicate_repo, DuplicateRepository)
@@ -160,9 +160,10 @@ def test_preview_rejects_illegal_zone_transition(
     track_repo: TrackRepository,
     zone_library: Library,
 ) -> None:
-    source = Path(zone_library.incoming_path) / "track.flac"
+    source = Path(zone_library.library_path) / "track.flac"
+    source.parent.mkdir(parents=True, exist_ok=True)
     source.write_bytes(b"audio")
-    track = _make_track(zone_library, source)
+    track = _make_track(zone_library, source, zone=LibraryZone.LIBRARY)
     track_repo.upsert(track)
 
     with pytest.raises(OperationError, match="Illegal zone transition"):
@@ -170,7 +171,7 @@ def test_preview_rejects_illegal_zone_transition(
             OperationRequest(
                 operation_type=OperationType.FILE_MOVE,
                 track_id=track.id,
-                target_zone=LibraryZone.LIBRARY,  # incoming → library is illegal
+                target_zone=LibraryZone.INCOMING,  # library → incoming is illegal
             )
         )
 
@@ -181,7 +182,7 @@ def test_execute_dry_run_delegates_to_preview(
     zone_library: Library,
     job_repo: object,
 ) -> None:
-    from musicvault.db.repositories.job_repo import JobRepository
+    from vaultseek.db.repositories.job_repo import JobRepository
 
     assert isinstance(job_repo, JobRepository)
     source = Path(zone_library.incoming_path) / "track.flac"
@@ -209,7 +210,7 @@ def test_execute_enqueues_an_organize_file_job(
     zone_library: Library,
     job_repo: object,
 ) -> None:
-    from musicvault.db.repositories.job_repo import JobRepository
+    from vaultseek.db.repositories.job_repo import JobRepository
 
     assert isinstance(job_repo, JobRepository)
     source = Path(zone_library.incoming_path) / "track.flac"
@@ -246,8 +247,8 @@ def test_rollback_reverses_a_completed_file_move(
     job_queue: JobQueueService,
     job_repo: object,
 ) -> None:
-    from musicvault.db.repositories.job_repo import JobRepository
-    from musicvault.models.entities.job import Job
+    from vaultseek.db.repositories.job_repo import JobRepository
+    from vaultseek.models.entities.job import Job
 
     assert isinstance(job_repo, JobRepository)
     source = Path(zone_library.incoming_path) / "track.flac"
@@ -304,7 +305,7 @@ def test_rollback_rejects_already_rolled_back_operation(
     job_queue: JobQueueService,
     job_repo: object,
 ) -> None:
-    from musicvault.db.repositories.job_repo import JobRepository
+    from vaultseek.db.repositories.job_repo import JobRepository
 
     assert isinstance(job_repo, JobRepository)
     source = Path(zone_library.incoming_path) / "track.flac"
@@ -335,7 +336,7 @@ def test_rollback_suffixes_when_original_path_is_occupied(
     job_queue: JobQueueService,
     job_repo: object,
 ) -> None:
-    from musicvault.db.repositories.job_repo import JobRepository
+    from vaultseek.db.repositories.job_repo import JobRepository
 
     assert isinstance(job_repo, JobRepository)
     source = Path(zone_library.incoming_path) / "track.flac"
@@ -374,7 +375,7 @@ def test_list_recent_and_history_for_track(
     job_queue: JobQueueService,
     job_repo: object,
 ) -> None:
-    from musicvault.db.repositories.job_repo import JobRepository
+    from vaultseek.db.repositories.job_repo import JobRepository
 
     assert isinstance(job_repo, JobRepository)
     source = Path(zone_library.incoming_path) / "track.flac"

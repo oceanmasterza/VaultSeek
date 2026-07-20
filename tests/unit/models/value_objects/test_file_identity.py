@@ -1,11 +1,11 @@
-"""Unit tests for musicvault.models.value_objects.file_identity."""
+"""Unit tests for vaultseek.models.value_objects.file_identity."""
 
 from __future__ import annotations
 
 from datetime import UTC, datetime
 
-from musicvault.db.uuid_utils import generate_uuid7
-from musicvault.models.value_objects.file_identity import FileIdentity
+from vaultseek.db.uuid_utils import generate_uuid7
+from vaultseek.models.value_objects.file_identity import FileIdentity
 
 _MODIFIED = datetime(2026, 7, 15, tzinfo=UTC)
 

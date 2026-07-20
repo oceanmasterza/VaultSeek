@@ -1,4 +1,4 @@
-"""Unit tests for musicvault.workers.io.scanner_worker.ScannerWorker."""
+"""Unit tests for vaultseek.workers.io.scanner_worker.ScannerWorker."""
 
 from __future__ import annotations
 
@@ -9,17 +9,17 @@ from uuid import UUID
 
 import pytest
 
-import musicvault.workers.io.scanner_worker as scanner_worker_module
-from musicvault.db.repositories.file_identity_repo import FileIdentityRepository
-from musicvault.db.repositories.job_repo import JobRepository
-from musicvault.db.repositories.track_repo import TrackRepository
-from musicvault.db.uuid_utils import generate_uuid7
-from musicvault.db.writer import DatabaseWriter
-from musicvault.models.entities.job import JobStatus, JobType
-from musicvault.models.entities.track import LibraryZone, Track
-from musicvault.models.value_objects.file_identity import FileIdentity
-from musicvault.services.job_queue_service import JobQueueService
-from musicvault.workers.io.scanner_worker import ScannerWorker, _iter_audio_files
+import vaultseek.workers.io.scanner_worker as scanner_worker_module
+from vaultseek.db.repositories.file_identity_repo import FileIdentityRepository
+from vaultseek.db.repositories.job_repo import JobRepository
+from vaultseek.db.repositories.track_repo import TrackRepository
+from vaultseek.db.uuid_utils import generate_uuid7
+from vaultseek.db.writer import DatabaseWriter
+from vaultseek.models.entities.job import JobStatus, JobType
+from vaultseek.models.entities.track import LibraryZone, Track
+from vaultseek.models.value_objects.file_identity import FileIdentity
+from vaultseek.services.job_queue_service import JobQueueService
+from vaultseek.workers.io.scanner_worker import ScannerWorker, _iter_audio_files
 
 _NOW = datetime(2026, 7, 15, tzinfo=UTC)
 

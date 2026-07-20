@@ -4,8 +4,8 @@ from __future__ import annotations
 
 import responses
 
-from musicvault.models.interfaces.metadata import MetadataQuery
-from musicvault.plugins.builtin.acoustid import AcoustIdProvider
+from vaultseek.models.interfaces.metadata import MetadataQuery
+from vaultseek.plugins.builtin.acoustid import AcoustIdProvider
 
 
 @responses.activate

@@ -1,4 +1,4 @@
-"""Unit tests for musicvault.db.engine."""
+"""Unit tests for vaultseek.db.engine."""
 
 from __future__ import annotations
 
@@ -8,7 +8,7 @@ from unittest.mock import MagicMock, patch
 
 from sqlalchemy import Engine, text
 
-from musicvault.db.engine import (
+from vaultseek.db.engine import (
     _MMAP_CEILING_BYTES,
     _MMAP_FLOOR_BYTES,
     adaptive_mmap_size_bytes,
@@ -99,19 +99,19 @@ def test_create_sqlite_engine_creates_the_database_file(tmp_path: Path) -> None:
 
 
 def test_adaptive_mmap_size_never_below_floor() -> None:
-    with patch("musicvault.db.engine.psutil.virtual_memory") as mock_vm:
+    with patch("vaultseek.db.engine.psutil.virtual_memory") as mock_vm:
         mock_vm.return_value = MagicMock(available=1)  # pathologically low RAM
         assert adaptive_mmap_size_bytes() == _MMAP_FLOOR_BYTES
 
 
 def test_adaptive_mmap_size_never_above_ceiling() -> None:
-    with patch("musicvault.db.engine.psutil.virtual_memory") as mock_vm:
+    with patch("vaultseek.db.engine.psutil.virtual_memory") as mock_vm:
         mock_vm.return_value = MagicMock(available=1024**4)  # 1 TB, implausibly high
         assert adaptive_mmap_size_bytes() == _MMAP_CEILING_BYTES
 
 
 def test_adaptive_mmap_size_scales_to_quarter_of_available_ram() -> None:
     available = 16 * 1024**3  # 16 GB — well within floor/ceiling bounds
-    with patch("musicvault.db.engine.psutil.virtual_memory") as mock_vm:
+    with patch("vaultseek.db.engine.psutil.virtual_memory") as mock_vm:
         mock_vm.return_value = MagicMock(available=available)
         assert adaptive_mmap_size_bytes() == available // 4

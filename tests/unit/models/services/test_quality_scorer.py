@@ -1,4 +1,4 @@
-"""Unit tests for musicvault.models.services.quality_scorer.
+"""Unit tests for vaultseek.models.services.quality_scorer.
 
 Mirrors the exact example scores from
 docs/architecture/09-testing-strategy.md ("Domain Layer").
@@ -8,9 +8,9 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 
-from musicvault.db.uuid_utils import generate_uuid7
-from musicvault.models.entities.track import LibraryZone, Track
-from musicvault.models.services.quality_scorer import (
+from vaultseek.db.uuid_utils import generate_uuid7
+from vaultseek.models.entities.track import LibraryZone, Track
+from vaultseek.models.services.quality_scorer import (
     DEFAULT_WEIGHTS,
     QualityScorer,
     QualityWeights,

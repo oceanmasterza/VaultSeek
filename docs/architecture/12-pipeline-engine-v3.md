@@ -30,7 +30,7 @@ This document evaluates the latest scalability recommendations, records adopt/re
 
 ## Execution Engine Architecture
 
-MusicVault is a **local data pipeline**, not a conventional desktop app. The execution model has four distinct tiers:
+VaultSeek is a **local data pipeline**, not a conventional desktop app. The execution model has four distinct tiers:
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
@@ -295,7 +295,7 @@ The recommendation specifies UUIDv4. We keep **v7** because:
 
 v4's only advantage is wider library support in older code. Python's standard library
 gained `uuid.uuid7()` natively in **3.14** (verified against the official CPython
-changelog — an earlier draft of this document incorrectly said 3.12). MusicVault now
+changelog — an earlier draft of this document incorrectly said 3.12). VaultSeek now
 requires Python **3.14+** for exactly this reason: it is the single most-used primitive
 in the entire schema, and a native stdlib implementation avoids taking on a third-party
 dependency for it. See [07-roadmap.md](07-roadmap.md) Phase 1 notes for how this was
@@ -497,7 +497,7 @@ Writing directly to Navidrome's SQLite bypasses its in-memory cache and business
 # Safe
 conn = sqlite3.connect(f"file:{navidrome_db}?mode=ro", uri=True)
 
-# Never in MusicVault
+# Never in VaultSeek
 conn.execute("UPDATE album SET ...")  # FORBIDDEN
 ```
 
@@ -508,7 +508,7 @@ conn.execute("UPDATE album SET ...")  # FORBIDDEN
 Cleaner layer names aligned with the pipeline model:
 
 ```
-src/musicvault/
+src/vaultseek/
 ├── models/          # Pure dataclasses (was domain/entities + value_objects)
 ├── core/            # DI, config, logging, paths, exceptions, event_bus
 ├── db/              # SQLAlchemy Core tables, engine, migrations, repositories
@@ -548,7 +548,7 @@ Import boundary rules unchanged; paths updated.
 These refinements are documentation-only. Phase 1 scaffold uses the v3 folder layout:
 
 ```
-src/musicvault/
+src/vaultseek/
 ├── models/
 ├── core/          # includes event_bus.py stub
 ├── db/

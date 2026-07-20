@@ -65,7 +65,7 @@ Phase 16  ██████████ Packaging + installer
 
 ### Deliverables
 - [x] `pyproject.toml` with dependencies and tool config (ruff, black, mypy, import-linter)
-- [x] `src/musicvault/` package structure per v3 layout (`models/`, `core/`, `db/`, `services/`, `workers/`, `plugins/`, `gui/`)
+- [x] `src/vaultseek/` package structure per v3 layout (`models/`, `core/`, `db/`, `services/`, `workers/`, `plugins/`, `gui/`)
 - [x] `core/config.py`, `container.py`, `logging.py`, `paths.py`, `exceptions.py`, `event_bus.py`
 - [x] `app.py`, `__main__.py`
 - [x] `config/defaults.json`
@@ -74,12 +74,12 @@ Phase 16  ██████████ Packaging + installer
 - [x] `CONTRIBUTING.md`
 
 ### Acceptance Criteria
-- [x] `python -m musicvault` exits 0, prints version
+- [x] `python -m vaultseek` exits 0, prints version
 - [x] `pytest` passes (43/43, 97% coverage)
 - [x] `mypy src/ --strict` passes (0 errors, 29 files)
 - [x] `ruff check` and `black --check` pass
 - [x] `lint-imports` passes (3/3 contracts kept)
-- [x] GitHub Actions green on push (verified: https://github.com/oceanmasterza/MusicVault/actions)
+- [x] GitHub Actions green on push (verified: https://github.com/oceanmasterza/VaultSeek/actions)
 - [x] Git commit: `feat: project scaffold with CI pipeline`
 
 ### Notes
@@ -154,7 +154,7 @@ Phase 16  ██████████ Packaging + installer
 - [x] `pytest` passes (127/127, 98% coverage)
 - [x] `mypy`, `ruff check`, `black --check` pass
 - [x] `lint-imports` passes (3/3 contracts kept)
-- [x] GitHub Actions green on push (verified: https://github.com/oceanmasterza/MusicVault/actions/runs/29395697039)
+- [x] GitHub Actions green on push (verified: https://github.com/oceanmasterza/VaultSeek/actions/runs/29395697039)
 - [x] Git commit: `feat: Phase 2 database layer with UUIDv7, Alembic migrations, and repositories`
 
 ### Notes
@@ -162,9 +162,9 @@ Phase 16  ██████████ Packaging + installer
   translate Alembic/SQLAlchemy failures (locked files, missing directories, corrupt
   databases) into the application's own exception hierarchy — callers (currently
   `Container.bootstrap`, eventually the GUI's startup error dialog) only need to
-  catch `MusicVaultError`.
+  catch `VaultSeekError`.
 - **`Container.close()` added** to dispose the database engine's connection pool.
-  `python -m musicvault` calls it before exiting; the test suite's `container`
+  `python -m vaultseek` calls it before exiting; the test suite's `container`
   fixture calls it on teardown so tests don't leak SQLite connections into later
   test cases.
 - Repository tests live under `tests/unit/db/repositories/`, with a shared
@@ -253,7 +253,7 @@ Phase 16  ██████████ Packaging + installer
       service module)
 - [x] `mypy`, `ruff check`, `black --check` pass
 - [x] `lint-imports` passes (3/3 contracts kept)
-- [x] GitHub Actions green on push (verified: https://github.com/oceanmasterza/MusicVault/actions/runs/29398619948)
+- [x] GitHub Actions green on push (verified: https://github.com/oceanmasterza/VaultSeek/actions/runs/29398619948)
 - [x] Git commit: `feat: Phase 3 domain models — Track/Album/Artist, QualityScorer, RenameEngine, rules AST`
 
 ### Notes
@@ -348,7 +348,7 @@ Phase 16  ██████████ Packaging + installer
       Phase 4 module)
 - [x] `mypy`, `ruff check`, `black --check` pass
 - [x] `lint-imports` passes (3/3 contracts kept)
-- [x] GitHub Actions green on push (verified: https://github.com/oceanmasterza/MusicVault/actions/runs/29442968257)
+- [x] GitHub Actions green on push (verified: https://github.com/oceanmasterza/VaultSeek/actions/runs/29442968257)
 - [x] Git commit: `feat: Phase 4 job dispatcher + scanner/hash workers`
 
 ### Notes
@@ -414,7 +414,7 @@ Phase 16  ██████████ Packaging + installer
 - [x] `pytest` passes (298/298, 98% coverage overall; 100% on Phase 5 modules)
 - [x] `mypy`, `ruff check`, `black --check` pass
 - [x] `lint-imports` passes (3/3 contracts kept)
-- [x] GitHub Actions green on push (verified: https://github.com/oceanmasterza/MusicVault/actions/runs/29473149169)
+- [x] GitHub Actions green on push (verified: https://github.com/oceanmasterza/VaultSeek/actions/runs/29473149169)
 - [x] Git commit: `feat: Phase 5 FingerprintWorker with Chromaprint persistence`
 
 ---
@@ -466,7 +466,7 @@ Phase 16  ██████████ Packaging + installer
 - [x] `pytest` passes (333/333)
 - [x] `mypy`, `ruff check`, `black --check` pass
 - [x] `lint-imports` passes (3/3 contracts kept)
-- [x] GitHub Actions green on push (verified: https://github.com/oceanmasterza/MusicVault/actions/runs/29475808849)
+- [x] GitHub Actions green on push (verified: https://github.com/oceanmasterza/VaultSeek/actions/runs/29475808849)
 - [x] Git commit: `feat: Phase 6 MetadataArbitrator + metadata providers`
 
 ---
@@ -747,7 +747,7 @@ Phase 16  ██████████ Packaging + installer
   import).
 - `ReportWorker` + dispatcher `generate_report` route (shared I/O pool);
   terminal job. `ReportService.enqueue` is the user/CLI entry point.
-- `AppPaths.reports_dir` (`%APPDATA%/MusicVault/reports/`) — default
+- `AppPaths.reports_dir` (`%APPDATA%/VaultSeek/reports/`) — default
   output location when `output_path` is omitted.
 - GUI report viewer stays Phase 14.
 
@@ -769,7 +769,7 @@ Phase 16  ██████████ Packaging + installer
 
 **Delivered**:
 - Qt bootstrap (`gui/app.py`) + dark/light theme; `__main__` launches GUI
-  (escape hatch: `--headless` / `MUSICVAULT_HEADLESS=1`)
+  (escape hatch: `--headless` / `VAULTSEEK_HEADLESS=1`)
 - `MainWindow` shell with sidebar nav, library selector, status bar, 2s poll
 - **Dashboard** — KPIs, pipeline strip, Force rescan, last-scan + processing report
 - **Library** — zone filter, folder tree (Incoming/Staging/Library/Archive →
@@ -815,8 +815,8 @@ deep validation audits beyond Navidrome count-mismatch warning.
 **Status**: Complete.
 
 **Delivered**:
-- `packaging/musicvault.spec` — PyInstaller onedir (`dist/MusicVault/`)
-- `packaging/installer.iss` — Inno Setup script → `MusicVault-Setup.exe`
+- `packaging/vaultseek.spec` — PyInstaller onedir (`dist/VaultSeek/`)
+- `packaging/installer.iss` — Inno Setup script → `VaultSeek-Setup.exe`
 - `packaging/README.md` build instructions
 - Release workflow already wired to the spec on `v*.*.*` tags
 

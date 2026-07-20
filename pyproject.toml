@@ -3,13 +3,13 @@ requires = ["setuptools>=69", "wheel"]
 build-backend = "setuptools.build_meta"
 
 [project]
-name = "musicvault"
+name = "vaultseek"
 version = "1.0.0"
-description = "Lightroom for Music — professional music library management for Navidrome, Jellyfin, Plex, and self-hosted media servers."
+description = "Find what you're missing — music discovery and acquisition companion to MusicVault."
 readme = "README.md"
 license = { text = "MIT" }
 requires-python = ">=3.14"
-authors = [{ name = "MusicVault Contributors" }]
+authors = [{ name = "VaultSeek Contributors" }]
 keywords = ["music", "library", "navidrome", "jellyfin", "plex", "metadata", "musicbrainz"]
 classifiers = [
     "Development Status :: 5 - Production/Stable",
@@ -56,7 +56,7 @@ build = [
 ]
 
 [project.scripts]
-musicvault = "musicvault.__main__:main"
+vaultseek = "vaultseek.__main__:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
@@ -82,7 +82,7 @@ target-version = ["py314"]
 [tool.mypy]
 python_version = "3.14"
 strict = true
-packages = ["musicvault"]
+packages = ["vaultseek"]
 mypy_path = "src"
 explicit_package_bases = true
 
@@ -98,39 +98,39 @@ markers = [
 ]
 
 [tool.coverage.run]
-source = ["src/musicvault"]
+source = ["src/vaultseek"]
 
 [tool.importlinter]
-root_packages = ["musicvault"]
+root_packages = ["vaultseek"]
 
 [[tool.importlinter.contracts]]
 name = "Models isolation"
 type = "forbidden"
-source_modules = ["musicvault.models"]
+source_modules = ["vaultseek.models"]
 forbidden_modules = [
-    "musicvault.gui",
-    "musicvault.db",
-    "musicvault.services",
-    "musicvault.workers",
-    "musicvault.plugins",
+    "vaultseek.gui",
+    "vaultseek.db",
+    "vaultseek.services",
+    "vaultseek.workers",
+    "vaultseek.plugins",
 ]
 
 [[tool.importlinter.contracts]]
 name = "GUI does not touch persistence or workers directly"
 type = "forbidden"
-source_modules = ["musicvault.gui"]
+source_modules = ["vaultseek.gui"]
 forbidden_modules = [
-    "musicvault.db",
-    "musicvault.workers",
+    "vaultseek.db",
+    "vaultseek.workers",
 ]
 allow_indirect_imports = true
 
 [[tool.importlinter.contracts]]
 name = "DB layer stays below services and workers"
 type = "forbidden"
-source_modules = ["musicvault.db"]
+source_modules = ["vaultseek.db"]
 forbidden_modules = [
-    "musicvault.gui",
-    "musicvault.services",
-    "musicvault.workers",
+    "vaultseek.gui",
+    "vaultseek.services",
+    "vaultseek.workers",
 ]

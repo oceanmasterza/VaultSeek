@@ -9,13 +9,13 @@ from uuid import UUID
 import pytest
 from sqlalchemy import Engine
 
-from musicvault.db.repositories.job_repo import JobRepository
-from musicvault.db.repositories.library_repo import LibraryRepository
-from musicvault.db.uuid_utils import generate_uuid7
-from musicvault.models.entities.job import JobStatus, JobType
-from musicvault.models.entities.library import Library
-from musicvault.services.job_queue_service import JobQueueService
-from musicvault.services.watch_folder_service import WatchFolderService
+from vaultseek.db.repositories.job_repo import JobRepository
+from vaultseek.db.repositories.library_repo import LibraryRepository
+from vaultseek.db.uuid_utils import generate_uuid7
+from vaultseek.models.entities.job import JobStatus, JobType
+from vaultseek.models.entities.library import Library
+from vaultseek.services.job_queue_service import JobQueueService
+from vaultseek.services.watch_folder_service import WatchFolderService
 
 _NOW = datetime(2026, 7, 17, tzinfo=UTC)
 

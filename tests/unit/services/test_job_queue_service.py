@@ -1,16 +1,16 @@
-"""Unit tests for musicvault.services.job_queue_service.JobQueueService."""
+"""Unit tests for vaultseek.services.job_queue_service.JobQueueService."""
 
 from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
 from uuid import UUID
 
-from musicvault.core.config import PipelineConfig
-from musicvault.db.repositories.job_repo import JobRepository
-from musicvault.db.uuid_utils import generate_uuid7
-from musicvault.models.entities.job import Job, JobStatus, JobType
-from musicvault.services.dto.job_dto import JobCreate
-from musicvault.services.job_queue_service import JobQueueService
+from vaultseek.core.config import PipelineConfig
+from vaultseek.db.repositories.job_repo import JobRepository
+from vaultseek.db.uuid_utils import generate_uuid7
+from vaultseek.models.entities.job import Job, JobStatus, JobType
+from vaultseek.services.dto.job_dto import JobCreate
+from vaultseek.services.job_queue_service import JobQueueService
 
 _NOW = datetime(2026, 7, 15, 12, 0, 0, tzinfo=UTC)
 

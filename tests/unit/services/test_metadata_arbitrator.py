@@ -6,15 +6,15 @@ from datetime import UTC, datetime
 from typing import Literal
 from uuid import UUID
 
-from musicvault.db.uuid_utils import generate_uuid7
-from musicvault.models.entities.track import LibraryZone, Track
-from musicvault.models.interfaces.metadata import (
+from vaultseek.db.uuid_utils import generate_uuid7
+from vaultseek.models.entities.track import LibraryZone, Track
+from vaultseek.models.interfaces.metadata import (
     FingerprintData,
     MetadataQuery,
     ProviderFieldResult,
     ProviderResult,
 )
-from musicvault.services.metadata_arbitrator import MetadataArbitrator
+from vaultseek.services.metadata_arbitrator import MetadataArbitrator
 
 _NOW = datetime(2026, 7, 15, tzinfo=UTC)
 

@@ -1,4 +1,4 @@
-"""Unit tests for musicvault.db.uuid_utils."""
+"""Unit tests for vaultseek.db.uuid_utils."""
 
 from __future__ import annotations
 
@@ -6,7 +6,7 @@ from uuid import UUID
 
 import pytest
 
-from musicvault.db.uuid_utils import blob_to_uuid, generate_uuid7, uuid_to_blob
+from vaultseek.db.uuid_utils import blob_to_uuid, generate_uuid7, uuid_to_blob
 
 
 def test_generate_uuid7_returns_version_7_uuid() -> None:

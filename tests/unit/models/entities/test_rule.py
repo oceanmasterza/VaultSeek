@@ -1,11 +1,11 @@
-"""Unit tests for musicvault.models.entities.rule."""
+"""Unit tests for vaultseek.models.entities.rule."""
 
 from __future__ import annotations
 
 from datetime import UTC, datetime
 
-from musicvault.db.uuid_utils import generate_uuid7
-from musicvault.models.entities.rule import Rule
+from vaultseek.db.uuid_utils import generate_uuid7
+from vaultseek.models.entities.rule import Rule
 
 _NOW = datetime(2026, 7, 15, tzinfo=UTC)
 

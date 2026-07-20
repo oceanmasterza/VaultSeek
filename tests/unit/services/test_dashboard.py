@@ -5,11 +5,11 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from pathlib import Path
 
-from musicvault.app import bootstrap
-from musicvault.db.uuid_utils import generate_uuid7
-from musicvault.models.entities.library import Library
-from musicvault.models.entities.track import LibraryZone, Track
-from musicvault.services.dashboard import PIPELINE_STAGES, build_dashboard_snapshot
+from vaultseek.app import bootstrap
+from vaultseek.db.uuid_utils import generate_uuid7
+from vaultseek.models.entities.library import Library
+from vaultseek.models.entities.track import LibraryZone, Track
+from vaultseek.services.dashboard import PIPELINE_STAGES, build_dashboard_snapshot
 
 
 def test_dashboard_empty_library_insight(tmp_path: Path) -> None:
@@ -101,7 +101,7 @@ def test_dashboard_snapshot_with_tracks_and_confidence(tmp_path: Path) -> None:
 
 
 def test_dashboard_processing_report_tallies_wave_outcomes(tmp_path: Path) -> None:
-    from musicvault.models.entities.job import JobType
+    from vaultseek.models.entities.job import JobType
 
     container = bootstrap(base_dir_override=tmp_path, console_logging=False)
     try:

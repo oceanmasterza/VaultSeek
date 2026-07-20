@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from musicvault.services.incoming_cleanup import cleanup_incoming_after_move
+from vaultseek.services.incoming_cleanup import cleanup_incoming_after_move
 
 
 def test_cleanup_removes_sidecars_and_empty_album_folder(tmp_path: Path) -> None:

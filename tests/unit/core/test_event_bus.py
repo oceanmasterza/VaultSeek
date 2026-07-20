@@ -1,10 +1,10 @@
-"""Unit tests for musicvault.core.event_bus."""
+"""Unit tests for vaultseek.core.event_bus."""
 
 from __future__ import annotations
 
 from dataclasses import dataclass
 
-from musicvault.core.event_bus import DomainEvent, EventBus
+from vaultseek.core.event_bus import DomainEvent, EventBus
 
 
 @dataclass(frozen=True, kw_only=True)

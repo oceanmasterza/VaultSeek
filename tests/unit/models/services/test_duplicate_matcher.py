@@ -1,4 +1,4 @@
-"""Unit tests for musicvault.models.services.duplicate_matcher."""
+"""Unit tests for vaultseek.models.services.duplicate_matcher."""
 
 from __future__ import annotations
 
@@ -7,11 +7,11 @@ from uuid import UUID
 
 import pytest
 
-from musicvault.db.uuid_utils import generate_uuid7
-from musicvault.models.entities.duplicate_group import GroupStatus, MatchType
-from musicvault.models.entities.track import LibraryZone, Track
-from musicvault.models.services.duplicate_matcher import DuplicateMatcher
-from musicvault.models.services.quality_scorer import DEFAULT_WEIGHTS, QualityScorer
+from vaultseek.db.uuid_utils import generate_uuid7
+from vaultseek.models.entities.duplicate_group import GroupStatus, MatchType
+from vaultseek.models.entities.track import LibraryZone, Track
+from vaultseek.models.services.duplicate_matcher import DuplicateMatcher
+from vaultseek.models.services.quality_scorer import DEFAULT_WEIGHTS, QualityScorer
 
 _NOW = datetime(2026, 7, 17, tzinfo=UTC)
 

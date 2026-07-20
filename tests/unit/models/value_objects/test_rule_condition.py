@@ -1,10 +1,10 @@
-"""Unit tests for musicvault.models.value_objects.rule_condition."""
+"""Unit tests for vaultseek.models.value_objects.rule_condition."""
 
 from __future__ import annotations
 
 import pytest
 
-from musicvault.models.value_objects.rule_condition import (
+from vaultseek.models.value_objects.rule_condition import (
     AndNode,
     ConditionLeaf,
     OrNode,

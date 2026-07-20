@@ -1,4 +1,4 @@
-"""Tests for musicvault.core.logging."""
+"""Tests for vaultseek.core.logging."""
 
 from __future__ import annotations
 
@@ -8,8 +8,8 @@ from pathlib import Path
 import pytest
 from loguru import logger
 
-from musicvault.core.logging import configure_logging
-from musicvault.core.paths import get_app_paths
+from vaultseek.core.logging import configure_logging
+from vaultseek.core.paths import get_app_paths
 
 
 def test_configure_logging_skips_none_stderr(
@@ -23,4 +23,4 @@ def test_configure_logging_skips_none_stderr(
     configure_logging(paths, console=True)
 
     logger.info("file sinks still work without a console")
-    assert (paths.logs_dir / "musicvault.log").is_file()
+    assert (paths.logs_dir / "vaultseek.log").is_file()

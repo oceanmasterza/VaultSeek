@@ -5,7 +5,7 @@
 ## Repository Structure
 
 ```
-MusicVault/
+VaultSeek/
 ├── .github/
 │   └── workflows/
 │       ├── ci.yml                  # ruff, black, mypy, pytest
@@ -17,9 +17,9 @@ MusicVault/
 │   └── api/
 │
 ├── src/
-│   └── musicvault/
+│   └── vaultseek/
 │       ├── __init__.py
-│       ├── __main__.py             # Entry point: python -m musicvault
+│       ├── __main__.py             # Entry point: python -m vaultseek
 │       ├── app.py                  # Bootstrap: DI, logging, config, event bus
 │       │
 │       ├── models/                 # Pure domain (zero I/O dependencies)
@@ -208,10 +208,10 @@ Parses JSON/YAML rules into AST, evaluates against `TrackContext`.
 ## Runtime Data Directories
 
 ```
-%APPDATA%/MusicVault/
+%APPDATA%/VaultSeek/
 ├── config.json
 ├── secrets.json
-├── musicvault.db
+├── vaultseek.db
 ├── logs/
 ├── cache/
 ├── backups/

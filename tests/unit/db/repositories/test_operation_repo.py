@@ -1,4 +1,4 @@
-"""Unit tests for musicvault.db.repositories.operation_repo."""
+"""Unit tests for vaultseek.db.repositories.operation_repo."""
 
 from __future__ import annotations
 
@@ -8,9 +8,9 @@ from uuid import UUID
 import pytest
 from sqlalchemy import Engine
 
-from musicvault.db.repositories.operation_repo import OperationRepository
-from musicvault.db.uuid_utils import generate_uuid7
-from musicvault.models.entities.operation import (
+from vaultseek.db.repositories.operation_repo import OperationRepository
+from vaultseek.db.uuid_utils import generate_uuid7
+from vaultseek.models.entities.operation import (
     ChangeRecord,
     ChangeType,
     Operation,
@@ -113,12 +113,12 @@ def test_list_changes_for_track_orders_by_timestamp(
 def test_record_with_snapshot_links_operation_and_snapshot(
     repo: OperationRepository, track_id: UUID
 ) -> None:
-    from musicvault.db.repositories.operation_repo import (
+    from vaultseek.db.repositories.operation_repo import (
         build_move_snapshot_payload,
         decode_snapshot_data,
         encode_snapshot_data,
     )
-    from musicvault.models.entities.operation import RollbackSnapshot
+    from vaultseek.models.entities.operation import RollbackSnapshot
 
     operation_id = generate_uuid7()
     snapshot_id = generate_uuid7()
@@ -157,11 +157,11 @@ def test_list_recent_returns_newest_first(repo: OperationRepository) -> None:
 
 
 def test_set_status_and_mark_snapshot_restored(repo: OperationRepository, track_id: UUID) -> None:
-    from musicvault.db.repositories.operation_repo import (
+    from vaultseek.db.repositories.operation_repo import (
         build_move_snapshot_payload,
         encode_snapshot_data,
     )
-    from musicvault.models.entities.operation import RollbackSnapshot
+    from vaultseek.models.entities.operation import RollbackSnapshot
 
     operation_id = generate_uuid7()
     snapshot_id = generate_uuid7()

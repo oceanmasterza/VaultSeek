@@ -58,12 +58,12 @@ tests/
 import pytest
 from pathlib import Path
 from sqlalchemy import create_engine
-from musicvault.core.container import Container
+from vaultseek.core.container import Container
 
 @pytest.fixture
 def tmp_data_dir(tmp_path: Path) -> Path:
     """Isolated app data directory for each test."""
-    data_dir = tmp_path / "MusicVault"
+    data_dir = tmp_path / "VaultSeek"
     data_dir.mkdir()
     (data_dir / "logs").mkdir()
     (data_dir / "cache").mkdir()
@@ -320,7 +320,7 @@ jobs:
           python-version: "3.14"
       - run: pip install -e ".[dev]"
       - run: python tests/fixtures/generate_audio.py
-      - run: pytest --cov=musicvault --cov-report=xml
+      - run: pytest --cov=vaultseek --cov-report=xml
       - run: mypy src/ --strict
       - run: ruff check src/ tests/
       - run: import-linter

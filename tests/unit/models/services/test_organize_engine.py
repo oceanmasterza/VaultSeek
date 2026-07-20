@@ -1,4 +1,4 @@
-"""Unit tests for musicvault.models.services.organize_engine."""
+"""Unit tests for vaultseek.models.services.organize_engine."""
 
 from __future__ import annotations
 
@@ -8,10 +8,10 @@ from uuid import UUID
 
 import pytest
 
-from musicvault.db.uuid_utils import generate_uuid7
-from musicvault.models.entities.library import Library
-from musicvault.models.entities.track import LibraryZone, Track
-from musicvault.models.services.organize_engine import (
+from vaultseek.db.uuid_utils import generate_uuid7
+from vaultseek.models.entities.library import Library
+from vaultseek.models.entities.track import LibraryZone, Track
+from vaultseek.models.services.organize_engine import (
     ALLOWED_TRANSITIONS,
     OrganizeEngine,
     sanitize_component,

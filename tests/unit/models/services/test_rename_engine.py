@@ -1,4 +1,4 @@
-"""Unit tests for musicvault.models.services.rename_engine.
+"""Unit tests for vaultseek.models.services.rename_engine.
 
 Mirrors docs/architecture/09-testing-strategy.md ("Domain Layer",
 `TestRenameEngine`) exactly, plus additional coverage cases.
@@ -8,7 +8,7 @@ from __future__ import annotations
 
 import pytest
 
-from musicvault.models.services.rename_engine import RenameEngine
+from vaultseek.models.services.rename_engine import RenameEngine
 
 
 class TestRenameEngine:

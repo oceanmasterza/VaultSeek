@@ -1,4 +1,4 @@
-"""Unit tests for musicvault.services.report_service and exporters."""
+"""Unit tests for vaultseek.services.report_service and exporters."""
 
 from __future__ import annotations
 
@@ -10,24 +10,24 @@ from uuid import UUID
 import pytest
 from sqlalchemy import Engine
 
-from musicvault.core.exceptions import ReportError
-from musicvault.db.repositories.duplicate_repo import DuplicateRepository
-from musicvault.db.repositories.library_repo import LibraryRepository
-from musicvault.db.repositories.review_repo import ReviewRepository
-from musicvault.db.repositories.track_repo import TrackRepository
-from musicvault.db.uuid_utils import generate_uuid7
-from musicvault.models.entities.job import JobStatus, JobType
-from musicvault.models.entities.library import Library
-from musicvault.models.entities.review_item import ReviewItem, ReviewStatus, ReviewType
-from musicvault.models.entities.track import LibraryZone, Track
-from musicvault.services.dto.report_dto import ReportFormat, ReportRequest
-from musicvault.services.job_queue_service import JobQueueService
-from musicvault.services.report_exporters import (
+from vaultseek.core.exceptions import ReportError
+from vaultseek.db.repositories.duplicate_repo import DuplicateRepository
+from vaultseek.db.repositories.library_repo import LibraryRepository
+from vaultseek.db.repositories.review_repo import ReviewRepository
+from vaultseek.db.repositories.track_repo import TrackRepository
+from vaultseek.db.uuid_utils import generate_uuid7
+from vaultseek.models.entities.job import JobStatus, JobType
+from vaultseek.models.entities.library import Library
+from vaultseek.models.entities.review_item import ReviewItem, ReviewStatus, ReviewType
+from vaultseek.models.entities.track import LibraryZone, Track
+from vaultseek.services.dto.report_dto import ReportFormat, ReportRequest
+from vaultseek.services.job_queue_service import JobQueueService
+from vaultseek.services.report_exporters import (
     CsvReportExporter,
     HtmlReportExporter,
     JsonReportExporter,
 )
-from musicvault.services.report_service import ReportService
+from vaultseek.services.report_service import ReportService
 
 _NOW = datetime(2026, 7, 18, tzinfo=UTC)
 
@@ -207,7 +207,7 @@ def test_enqueue_creates_generate_report_job(
     zone_library: Library,
     job_repo: object,
 ) -> None:
-    from musicvault.db.repositories.job_repo import JobRepository
+    from vaultseek.db.repositories.job_repo import JobRepository
 
     assert isinstance(job_repo, JobRepository)
     job_id = report_service.enqueue(

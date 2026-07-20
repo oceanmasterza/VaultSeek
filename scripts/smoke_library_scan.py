@@ -1,6 +1,6 @@
 """End-to-end library smoke test against a folder of audio files.
 
-Creates a temporary MusicVault data dir + four zone folders, optionally
+Creates a temporary VaultSeek data dir + four zone folders, optionally
 generates a few tagged WAV samples, enqueues ``scan_directory``, waits for
 the job queue to drain, and prints a pipeline report.
 
@@ -40,10 +40,10 @@ from mutagen.wave import WAVE
 _ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(_ROOT / "src"))
 
-from musicvault.app import bootstrap  # noqa: E402
-from musicvault.models.entities.job import JobStatus, JobType  # noqa: E402
-from musicvault.models.entities.library import Library  # noqa: E402
-from musicvault.models.entities.track import LibraryZone  # noqa: E402
+from vaultseek.app import bootstrap  # noqa: E402
+from vaultseek.models.entities.job import JobStatus, JobType  # noqa: E402
+from vaultseek.models.entities.library import Library  # noqa: E402
+from vaultseek.models.entities.track import LibraryZone  # noqa: E402
 
 _SAMPLE_TRACKS = (
     ("Demo Artist", "Demo Album", "Morning Light", 1),
@@ -53,7 +53,7 @@ _SAMPLE_TRACKS = (
 
 
 def _ensure_fpcalc_on_path(root: Path) -> str | None:
-    from musicvault.core.native_bins import configure_native_bin_path
+    from vaultseek.core.native_bins import configure_native_bin_path
 
     # Prefer repo tools/ then packaging/vendor/ via the shared helper.
     os.environ.setdefault("PATH", "")

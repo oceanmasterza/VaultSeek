@@ -1,4 +1,4 @@
-"""Unit tests for musicvault.db.repositories.rule_repo.RuleRepository."""
+"""Unit tests for vaultseek.db.repositories.rule_repo.RuleRepository."""
 
 from __future__ import annotations
 
@@ -8,9 +8,9 @@ from uuid import UUID
 
 from sqlalchemy import Engine
 
-from musicvault.db.repositories.rule_repo import RuleRepository
-from musicvault.db.uuid_utils import generate_uuid7
-from musicvault.models.entities.rule import Rule
+from vaultseek.db.repositories.rule_repo import RuleRepository
+from vaultseek.db.uuid_utils import generate_uuid7
+from vaultseek.models.entities.rule import Rule
 
 _NOW = datetime(2026, 7, 15, tzinfo=UTC)
 

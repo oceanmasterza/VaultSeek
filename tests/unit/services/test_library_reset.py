@@ -5,15 +5,15 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from uuid import uuid4, uuid7
 
-from musicvault.db.repositories.job_repo import JobRepository
-from musicvault.db.repositories.library_repo import LibraryRepository
-from musicvault.db.repositories.review_repo import ReviewRepository
-from musicvault.db.repositories.track_repo import TrackRepository
-from musicvault.models.entities.job import Job, JobStatus, JobType
-from musicvault.models.entities.library import Library
-from musicvault.models.entities.review_item import ReviewItem, ReviewStatus, ReviewType
-from musicvault.models.entities.track import LibraryZone, Track
-from musicvault.services.library_reset import reset_library_processing
+from vaultseek.db.repositories.job_repo import JobRepository
+from vaultseek.db.repositories.library_repo import LibraryRepository
+from vaultseek.db.repositories.review_repo import ReviewRepository
+from vaultseek.db.repositories.track_repo import TrackRepository
+from vaultseek.models.entities.job import Job, JobStatus, JobType
+from vaultseek.models.entities.library import Library
+from vaultseek.models.entities.review_item import ReviewItem, ReviewStatus, ReviewType
+from vaultseek.models.entities.track import LibraryZone, Track
+from vaultseek.services.library_reset import reset_library_processing
 
 
 def _library() -> Library:

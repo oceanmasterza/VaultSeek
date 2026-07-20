@@ -10,20 +10,20 @@ import pytest
 import responses
 from sqlalchemy import Engine
 
-from musicvault.db.repositories.job_repo import JobRepository
-from musicvault.db.repositories.media_server_repo import MediaServerStateRepository
-from musicvault.db.repositories.track_repo import TrackRepository
-from musicvault.models.entities.job import Job, JobStatus, JobType
-from musicvault.models.entities.media_server_state import MediaServerState
-from musicvault.models.interfaces.media_server import (
+from vaultseek.db.repositories.job_repo import JobRepository
+from vaultseek.db.repositories.media_server_repo import MediaServerStateRepository
+from vaultseek.db.repositories.track_repo import TrackRepository
+from vaultseek.models.entities.job import Job, JobStatus, JobType
+from vaultseek.models.entities.media_server_state import MediaServerState
+from vaultseek.models.interfaces.media_server import (
     LibrarySummary,
     MediaServerConfig,
     ServerCapabilities,
     ValidationIssue,
 )
-from musicvault.plugins.builtin.subsonic.client import SubsonicClient
-from musicvault.services.job_queue_service import JobQueueService
-from musicvault.workers.io.media_server_worker import MediaServerWorker
+from vaultseek.plugins.builtin.subsonic.client import SubsonicClient
+from vaultseek.services.job_queue_service import JobQueueService
+from vaultseek.workers.io.media_server_worker import MediaServerWorker
 
 _NOW = datetime(2026, 7, 18, tzinfo=UTC)
 

@@ -8,25 +8,25 @@ from uuid import UUID
 
 from sqlalchemy import Engine
 
-from musicvault.db.repositories.file_identity_repo import FileIdentityRepository
-from musicvault.db.repositories.job_repo import JobRepository
-from musicvault.db.repositories.metadata_confidence_repo import MetadataConfidenceRepository
-from musicvault.db.repositories.review_repo import ReviewRepository
-from musicvault.db.repositories.track_repo import TrackRepository
-from musicvault.db.uuid_utils import generate_uuid7
-from musicvault.models.entities.job import Job, JobStatus, JobType
-from musicvault.models.entities.review_item import ReviewType
-from musicvault.models.entities.track import LibraryZone, Track
-from musicvault.models.interfaces.metadata import (
+from vaultseek.db.repositories.file_identity_repo import FileIdentityRepository
+from vaultseek.db.repositories.job_repo import JobRepository
+from vaultseek.db.repositories.metadata_confidence_repo import MetadataConfidenceRepository
+from vaultseek.db.repositories.review_repo import ReviewRepository
+from vaultseek.db.repositories.track_repo import TrackRepository
+from vaultseek.db.uuid_utils import generate_uuid7
+from vaultseek.models.entities.job import Job, JobStatus, JobType
+from vaultseek.models.entities.review_item import ReviewType
+from vaultseek.models.entities.track import LibraryZone, Track
+from vaultseek.models.interfaces.metadata import (
     MetadataQuery,
     ProviderFieldResult,
     ProviderResult,
 )
-from musicvault.models.value_objects.file_identity import FileIdentity
-from musicvault.services.job_queue_service import JobQueueService
-from musicvault.services.metadata_arbitrator import MetadataArbitrator
-from musicvault.services.review_queue_service import ReviewQueueService
-from musicvault.workers.io.metadata_worker import MetadataWorker
+from vaultseek.models.value_objects.file_identity import FileIdentity
+from vaultseek.services.job_queue_service import JobQueueService
+from vaultseek.services.metadata_arbitrator import MetadataArbitrator
+from vaultseek.services.review_queue_service import ReviewQueueService
+from vaultseek.workers.io.metadata_worker import MetadataWorker
 
 _NOW = datetime(2026, 7, 15, tzinfo=UTC)
 
@@ -368,8 +368,8 @@ def test_execute_persists_artist_and_album_from_tags(
     library_id: UUID,
     track_id: UUID,
 ) -> None:
-    from musicvault.db.repositories.album_repo import AlbumRepository
-    from musicvault.db.repositories.artist_repo import ArtistRepository
+    from vaultseek.db.repositories.album_repo import AlbumRepository
+    from vaultseek.db.repositories.artist_repo import ArtistRepository
 
     track_repo.upsert(_make_track(library_id, track_id))
     job_id = job_queue.enqueue(

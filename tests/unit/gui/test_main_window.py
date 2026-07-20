@@ -8,13 +8,13 @@ from uuid import uuid7
 
 import pytest
 
-from musicvault.core.container import Container
-from musicvault.gui.bridge.qt_event_bridge import QtEventBridge
-from musicvault.gui.main_window import MainWindow
-from musicvault.gui.theme import apply_theme
-from musicvault.models.entities.library import Library
-from musicvault.models.entities.review_item import ReviewType
-from musicvault.services.dto.review_dto import ReviewItemCreate
+from vaultseek.core.container import Container
+from vaultseek.gui.bridge.qt_event_bridge import QtEventBridge
+from vaultseek.gui.main_window import MainWindow
+from vaultseek.gui.theme import apply_theme
+from vaultseek.models.entities.library import Library
+from vaultseek.models.entities.review_item import ReviewType
+from vaultseek.services.dto.review_dto import ReviewItemCreate
 
 pytest.importorskip("pytestqt")
 
@@ -47,7 +47,7 @@ def test_main_window_opens(qtbot, container: Container, gui_library: Library) ->
     window = MainWindow(container)
     qtbot.addWidget(window)
     window.show()
-    assert window.windowTitle() == "MusicVault"
+    assert window.windowTitle() == "VaultSeek"
     assert window._library_combo.count() == 1  # noqa: SLF001
     assert window._library_combo.currentData() == gui_library.id  # noqa: SLF001
 
@@ -75,10 +75,10 @@ def test_apply_theme_dark(qapp) -> None:
 
 
 def test_headless_flag_parsing(monkeypatch: pytest.MonkeyPatch) -> None:
-    from musicvault.__main__ import _wants_headless
+    from vaultseek.__main__ import _wants_headless
 
-    monkeypatch.delenv("MUSICVAULT_HEADLESS", raising=False)
+    monkeypatch.delenv("VAULTSEEK_HEADLESS", raising=False)
     assert _wants_headless(["--headless"])
     assert not _wants_headless([])
-    monkeypatch.setenv("MUSICVAULT_HEADLESS", "1")
+    monkeypatch.setenv("VAULTSEEK_HEADLESS", "1")
     assert _wants_headless([])

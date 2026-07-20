@@ -455,7 +455,7 @@ PRAGMAS = [
 ## Migration Strategy
 
 - **Tool**: Alembic (works with SQLAlchemy Core `MetaData`)
-- **Location**: `src/musicvault/db/migrations/versions/`
+- **Location**: `src/vaultseek/db/migrations/versions/`
 - **First migration**: `001_initial_schema_v2.py`
 - **Auto-run**: On startup; backup to `backups/auto/` before applying
 

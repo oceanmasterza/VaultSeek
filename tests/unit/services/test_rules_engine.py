@@ -8,21 +8,21 @@ from uuid import UUID
 import pytest
 from sqlalchemy import Engine
 
-from musicvault.core.event_bus import EventBus
-from musicvault.core.exceptions import RuleError
-from musicvault.db.repositories.artist_repo import ArtistRepository
-from musicvault.db.repositories.job_repo import JobRepository
-from musicvault.db.repositories.review_repo import ReviewRepository
-from musicvault.db.repositories.rule_repo import RuleRepository
-from musicvault.db.repositories.track_repo import TrackRepository
-from musicvault.models.entities.job import JobStatus, JobType
-from musicvault.models.entities.review_item import ReviewStatus, ReviewType
-from musicvault.models.entities.track import LibraryZone, Track
-from musicvault.services.dto.rule_dto import RuleCreate
-from musicvault.services.events import RulesMatchedEvent
-from musicvault.services.job_queue_service import JobQueueService
-from musicvault.services.review_queue_service import ReviewQueueService
-from musicvault.services.rules_engine import RulesEngine
+from vaultseek.core.event_bus import EventBus
+from vaultseek.core.exceptions import RuleError
+from vaultseek.db.repositories.artist_repo import ArtistRepository
+from vaultseek.db.repositories.job_repo import JobRepository
+from vaultseek.db.repositories.review_repo import ReviewRepository
+from vaultseek.db.repositories.rule_repo import RuleRepository
+from vaultseek.db.repositories.track_repo import TrackRepository
+from vaultseek.models.entities.job import JobStatus, JobType
+from vaultseek.models.entities.review_item import ReviewStatus, ReviewType
+from vaultseek.models.entities.track import LibraryZone, Track
+from vaultseek.services.dto.rule_dto import RuleCreate
+from vaultseek.services.events import RulesMatchedEvent
+from vaultseek.services.job_queue_service import JobQueueService
+from vaultseek.services.review_queue_service import ReviewQueueService
+from vaultseek.services.rules_engine import RulesEngine
 
 _NOW = datetime(2026, 7, 16, tzinfo=UTC)
 

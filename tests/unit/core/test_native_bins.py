@@ -1,4 +1,4 @@
-"""Tests for musicvault.core.native_bins."""
+"""Tests for vaultseek.core.native_bins."""
 
 from __future__ import annotations
 
@@ -8,7 +8,7 @@ from pathlib import Path
 
 import pytest
 
-from musicvault.core.native_bins import configure_native_bin_path, find_fpcalc
+from vaultseek.core.native_bins import configure_native_bin_path, find_fpcalc
 
 
 def test_configure_native_bin_path_prefers_fpcalc_env(
@@ -35,7 +35,7 @@ def test_find_fpcalc_returns_none_when_missing(
     monkeypatch.delenv("FPCALC_COMMAND", raising=False)
     monkeypatch.delattr(sys, "_MEIPASS", raising=False)
     monkeypatch.setattr(
-        "musicvault.core.native_bins.application_dir",
+        "vaultseek.core.native_bins.application_dir",
         lambda: tmp_path,
     )
     assert find_fpcalc() is None
@@ -52,7 +52,7 @@ def test_find_fpcalc_checks_meipass(
     fake.write_bytes(b"MZ")
     monkeypatch.setattr(sys, "_MEIPASS", str(meipass), raising=False)
     monkeypatch.setattr(
-        "musicvault.core.native_bins.application_dir",
+        "vaultseek.core.native_bins.application_dir",
         lambda: tmp_path / "empty",
     )
     assert find_fpcalc() == fake.resolve()

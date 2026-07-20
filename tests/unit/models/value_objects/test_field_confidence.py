@@ -1,4 +1,4 @@
-"""Unit tests for musicvault.models.value_objects.field_confidence."""
+"""Unit tests for vaultseek.models.value_objects.field_confidence."""
 
 from __future__ import annotations
 
@@ -6,7 +6,7 @@ import dataclasses
 
 import pytest
 
-from musicvault.models.value_objects.field_confidence import FieldConfidence
+from vaultseek.models.value_objects.field_confidence import FieldConfidence
 
 
 def test_field_confidence_stores_all_fields() -> None:

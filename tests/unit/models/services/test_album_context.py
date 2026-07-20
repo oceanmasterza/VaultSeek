@@ -4,9 +4,9 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 
-from musicvault.db.uuid_utils import generate_uuid7
-from musicvault.models.entities.album import Album
-from musicvault.models.services.album_context import albums_equivalent
+from vaultseek.db.uuid_utils import generate_uuid7
+from vaultseek.models.entities.album import Album
+from vaultseek.models.services.album_context import albums_equivalent
 
 
 _NOW = datetime(2026, 7, 19, tzinfo=UTC)

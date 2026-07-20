@@ -4,8 +4,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from musicvault.plugins.builtin.musicbrainz.provider import OfficialTrack, ReleaseTracklist
-from musicvault.services.folder_trust import (
+from vaultseek.plugins.builtin.musicbrainz.provider import OfficialTrack, ReleaseTracklist
+from vaultseek.services.folder_trust import (
     _filename_looks_correct,
     _titles_match,
     normalize_folder_path,

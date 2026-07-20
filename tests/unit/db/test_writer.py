@@ -1,4 +1,4 @@
-"""Unit tests for musicvault.db.writer.DatabaseWriter."""
+"""Unit tests for vaultseek.db.writer.DatabaseWriter."""
 
 from __future__ import annotations
 
@@ -10,9 +10,9 @@ from pathlib import Path
 import pytest
 from sqlalchemy import Engine, create_engine, event, select
 
-from musicvault.db.tables import artists, metadata
-from musicvault.db.uuid_utils import generate_uuid7, uuid_to_blob
-from musicvault.db.writer import DatabaseWriter, WriteDTO
+from vaultseek.db.tables import artists, metadata
+from vaultseek.db.uuid_utils import generate_uuid7, uuid_to_blob
+from vaultseek.db.writer import DatabaseWriter, WriteDTO
 
 _NOW = datetime(2026, 7, 15, tzinfo=UTC).isoformat()
 
@@ -115,7 +115,7 @@ def test_flushes_automatically_after_the_idle_interval(engine: Engine) -> None:
 def test_multiple_dtos_for_different_tables_apply_in_one_flush(engine: Engine) -> None:
     from sqlalchemy import insert
 
-    from musicvault.db.tables import jobs, libraries
+    from vaultseek.db.tables import jobs, libraries
 
     library_id = generate_uuid7()
     with engine.begin() as conn:

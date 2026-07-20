@@ -1,6 +1,6 @@
 {
   "schema_version": 1,
-  "description": "Pinned third-party native binaries shipped with MusicVault. URLs are versioned GitHub release assets (immutable). Always verify sha256 before use.",
+  "description": "Pinned third-party native binaries shipped with VaultSeek. URLs are versioned GitHub release assets (immutable). Always verify sha256 before use.",
   "binaries": [
     {
       "id": "fpcalc",

@@ -1,4 +1,4 @@
-"""Unit tests for musicvault.models.entities.track."""
+"""Unit tests for vaultseek.models.entities.track."""
 
 from __future__ import annotations
 
@@ -7,8 +7,8 @@ from datetime import UTC, datetime
 
 import pytest
 
-from musicvault.db.uuid_utils import generate_uuid7
-from musicvault.models.entities.track import LibraryZone, Track
+from vaultseek.db.uuid_utils import generate_uuid7
+from vaultseek.models.entities.track import LibraryZone, Track
 
 _NOW = datetime(2026, 7, 15, tzinfo=UTC)
 

@@ -1,4 +1,4 @@
-"""Unit tests for musicvault.db.repositories.base.
+"""Unit tests for vaultseek.db.repositories.base.
 
 Uses the `jobs` table as the vehicle for these tests — see Scope
 Decision 2 in docs/architecture/07-roadmap.md (Phase 2) for why the
@@ -15,9 +15,9 @@ from pathlib import Path
 import pytest
 from sqlalchemy import Engine, event, insert, select
 
-from musicvault.db.repositories.base import batch_upsert
-from musicvault.db.tables import jobs, libraries, metadata
-from musicvault.db.uuid_utils import generate_uuid7, uuid_to_blob
+from vaultseek.db.repositories.base import batch_upsert
+from vaultseek.db.tables import jobs, libraries, metadata
+from vaultseek.db.uuid_utils import generate_uuid7, uuid_to_blob
 
 
 @pytest.fixture

@@ -1,4 +1,4 @@
-"""Unit tests for musicvault.core.container."""
+"""Unit tests for vaultseek.core.container."""
 
 from __future__ import annotations
 
@@ -6,46 +6,48 @@ from datetime import UTC, datetime
 
 from sqlalchemy import insert, text
 
-from musicvault.core.config import AppConfig
-from musicvault.core.container import Container
-from musicvault.core.event_bus import EventBus
-from musicvault.core.paths import AppPaths
-from musicvault.db.repositories.album_repo import AlbumRepository
-from musicvault.db.repositories.artist_repo import ArtistRepository
-from musicvault.db.repositories.artwork_repo import ArtworkRepository
-from musicvault.db.repositories.duplicate_repo import DuplicateRepository
-from musicvault.db.repositories.file_identity_repo import FileIdentityRepository
-from musicvault.db.repositories.job_repo import JobRepository
-from musicvault.db.repositories.library_repo import LibraryRepository
-from musicvault.db.repositories.metadata_confidence_repo import MetadataConfidenceRepository
-from musicvault.db.repositories.operation_repo import OperationRepository
-from musicvault.db.repositories.review_repo import ReviewRepository
-from musicvault.db.repositories.rule_repo import RuleRepository
-from musicvault.db.repositories.track_repo import TrackRepository
-from musicvault.db.tables import libraries
-from musicvault.db.uuid_utils import generate_uuid7, uuid_to_blob
-from musicvault.db.writer import DatabaseWriter
-from musicvault.models.entities.job import Job, JobStatus, JobType
-from musicvault.models.services.duplicate_matcher import DuplicateMatcher
-from musicvault.models.services.organize_engine import OrganizeEngine
-from musicvault.plugins.manager import PluginManager
-from musicvault.services.job_dispatcher import JobDispatcher
-from musicvault.services.job_queue_service import JobQueueService
-from musicvault.services.metadata_arbitrator import MetadataArbitrator
-from musicvault.services.operation_orchestrator import OperationOrchestrator
-from musicvault.services.report_service import ReportService
-from musicvault.services.review_queue_service import ReviewQueueService
-from musicvault.services.rules_engine import RulesEngine
-from musicvault.services.watch_folder_service import WatchFolderService
-from musicvault.workers.cpu.fingerprint_worker import FingerprintWorker
-from musicvault.workers.cpu.hash_worker import HashWorker
-from musicvault.workers.io.artwork_worker import ArtworkWorker
-from musicvault.workers.io.duplicate_worker import DuplicateWorker
-from musicvault.workers.io.metadata_worker import MetadataWorker
-from musicvault.workers.io.organizer_worker import OrganizerWorker
-from musicvault.workers.io.report_worker import ReportWorker
-from musicvault.workers.io.rule_worker import RuleWorker
-from musicvault.workers.io.scanner_worker import ScannerWorker
+from vaultseek.core.config import AppConfig
+from vaultseek.core.container import Container
+from vaultseek.core.event_bus import EventBus
+from vaultseek.core.paths import AppPaths
+from vaultseek.db.repositories.album_repo import AlbumRepository
+from vaultseek.db.repositories.artist_repo import ArtistRepository
+from vaultseek.db.repositories.artwork_repo import ArtworkRepository
+from vaultseek.db.repositories.duplicate_repo import DuplicateRepository
+from vaultseek.db.repositories.file_identity_repo import FileIdentityRepository
+from vaultseek.db.repositories.job_repo import JobRepository
+from vaultseek.db.repositories.library_repo import LibraryRepository
+from vaultseek.db.repositories.metadata_confidence_repo import MetadataConfidenceRepository
+from vaultseek.db.repositories.operation_repo import OperationRepository
+from vaultseek.db.repositories.review_repo import ReviewRepository
+from vaultseek.db.repositories.rule_repo import RuleRepository
+from vaultseek.db.repositories.track_repo import TrackRepository
+from vaultseek.db.tables import libraries
+from vaultseek.db.uuid_utils import generate_uuid7, uuid_to_blob
+from vaultseek.db.writer import DatabaseWriter
+from vaultseek.models.entities.job import Job, JobStatus, JobType
+from vaultseek.models.services.duplicate_matcher import DuplicateMatcher
+from vaultseek.models.services.organize_engine import OrganizeEngine
+from vaultseek.plugins.manager import PluginManager
+from vaultseek.services.job_dispatcher import JobDispatcher
+from vaultseek.services.job_queue_service import JobQueueService
+from vaultseek.services.metadata_arbitrator import MetadataArbitrator
+from vaultseek.services.operation_orchestrator import OperationOrchestrator
+from vaultseek.services.provider_manager import ProviderManager
+from vaultseek.services.acquisition_engine import AcquisitionEngine
+from vaultseek.services.report_service import ReportService
+from vaultseek.services.review_queue_service import ReviewQueueService
+from vaultseek.services.rules_engine import RulesEngine
+from vaultseek.services.watch_folder_service import WatchFolderService
+from vaultseek.workers.cpu.fingerprint_worker import FingerprintWorker
+from vaultseek.workers.cpu.hash_worker import HashWorker
+from vaultseek.workers.io.artwork_worker import ArtworkWorker
+from vaultseek.workers.io.duplicate_worker import DuplicateWorker
+from vaultseek.workers.io.metadata_worker import MetadataWorker
+from vaultseek.workers.io.organizer_worker import OrganizerWorker
+from vaultseek.workers.io.report_worker import ReportWorker
+from vaultseek.workers.io.rule_worker import RuleWorker
+from vaultseek.workers.io.scanner_worker import ScannerWorker
 
 
 def test_bootstrap_wires_provided_paths_and_config(
@@ -146,6 +148,8 @@ def test_bootstrap_wires_the_phase_6_metadata_stack(
 
     assert isinstance(container.metadata_confidence_repo, MetadataConfidenceRepository)
     assert isinstance(container.plugin_manager, PluginManager)
+    assert isinstance(container.provider_manager, ProviderManager)
+    assert isinstance(container.acquisition_engine, AcquisitionEngine)
     assert isinstance(container.metadata_arbitrator, MetadataArbitrator)
     assert isinstance(container.metadata_worker, MetadataWorker)
     assert isinstance(container.review_queue, ReviewQueueService)
@@ -216,8 +220,8 @@ def test_bootstrap_wires_the_phase_13_report_stack(
 def test_bootstrap_wires_the_phase_15_media_server_stack(
     app_paths: AppPaths, app_config: AppConfig
 ) -> None:
-    from musicvault.db.repositories.media_server_repo import MediaServerStateRepository
-    from musicvault.workers.io.media_server_worker import MediaServerWorker
+    from vaultseek.db.repositories.media_server_repo import MediaServerStateRepository
+    from vaultseek.workers.io.media_server_worker import MediaServerWorker
 
     container = Container.bootstrap(paths=app_paths, config=app_config)
 
@@ -271,7 +275,7 @@ def test_bootstrap_recovers_orphaned_jobs_on_startup(
         job_type=JobType.SCAN_DIRECTORY,
         status=JobStatus.RUNNING,
         payload={
-            "directory": "C:/nonexistent_musicvault_orphan_recovery_test",
+            "directory": "C:/nonexistent_vaultseek_orphan_recovery_test",
             "zone": "incoming",
         },
         created_at=datetime.now(UTC),

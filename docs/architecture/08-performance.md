@@ -5,7 +5,7 @@
 
 ## Target
 
-MusicVault must comfortably manage libraries of **1,000,000+ tracks** on a typical enthusiast PC (8-core CPU, 16 GB RAM, NVMe SSD).
+VaultSeek must comfortably manage libraries of **1,000,000+ tracks** on a typical enthusiast PC (8-core CPU, 16 GB RAM, NVMe SSD).
 
 ## Performance Budgets
 

@@ -4,8 +4,8 @@ from __future__ import annotations
 
 import responses
 
-from musicvault.models.interfaces.metadata import MetadataQuery
-from musicvault.plugins.builtin.musicbrainz import MusicBrainzProvider
+from vaultseek.models.interfaces.metadata import MetadataQuery
+from vaultseek.plugins.builtin.musicbrainz import MusicBrainzProvider
 
 
 @responses.activate

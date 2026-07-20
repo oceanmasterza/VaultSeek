@@ -7,8 +7,8 @@ from uuid import UUID
 
 from sqlalchemy import Engine
 
-from musicvault.db.repositories.metadata_confidence_repo import MetadataConfidenceRepository
-from musicvault.models.value_objects.field_confidence import FieldConfidence
+from vaultseek.db.repositories.metadata_confidence_repo import MetadataConfidenceRepository
+from vaultseek.models.value_objects.field_confidence import FieldConfidence
 
 _NOW = datetime(2026, 7, 15, tzinfo=UTC)
 

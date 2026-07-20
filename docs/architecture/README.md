@@ -1,6 +1,6 @@
-# MusicVault Architecture Documentation
+# VaultSeek Architecture Documentation
 
-Complete software architecture for MusicVault. Implementation has caught up
+Complete software architecture for VaultSeek. Implementation has caught up
 with Phases 1–16 (pipeline, GUI browse pages, media servers, Windows Setup).
 
 > **Current version**: v3. Start with [12-pipeline-engine-v3.md](12-pipeline-engine-v3.md).

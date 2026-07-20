@@ -23,8 +23,8 @@ from uuid import UUID
 import pytest
 from sqlalchemy import Engine, create_engine, event, insert
 
-from musicvault.db.tables import artists, libraries, metadata, tracks
-from musicvault.db.uuid_utils import generate_uuid7, uuid_to_blob
+from vaultseek.db.tables import artists, libraries, metadata, tracks
+from vaultseek.db.uuid_utils import generate_uuid7, uuid_to_blob
 
 
 @pytest.fixture

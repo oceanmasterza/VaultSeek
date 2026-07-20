@@ -19,13 +19,13 @@ python packaging/fetch_vendor.py
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
 Write-Host "==> PyInstaller onedir"
-pyinstaller packaging/musicvault.spec --noconfirm
+pyinstaller packaging/vaultseek.spec --noconfirm
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
 $fpcalc = $null
 foreach ($candidate in @(
-        "dist\MusicVault\_internal\fpcalc.exe",
-        "dist\MusicVault\fpcalc.exe"
+        "dist\VaultSeek\_internal\fpcalc.exe",
+        "dist\VaultSeek\fpcalc.exe"
     )) {
     if (Test-Path $candidate) {
         $fpcalc = $candidate
@@ -33,7 +33,7 @@ foreach ($candidate in @(
     }
 }
 if (-not $fpcalc) {
-    Write-Error "Build missing fpcalc.exe under dist\MusicVault\ - vendor binary was not collected"
+    Write-Error "Build missing fpcalc.exe under dist\VaultSeek\ - vendor binary was not collected"
     exit 1
 }
 Write-Host "Verified bundled $fpcalc"
@@ -48,7 +48,7 @@ if (-not $SkipInstaller) {
         Write-Host "==> Inno Setup installer"
         & $iscc.Source packaging\installer.iss
         if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
-        Write-Host "Installer: packaging\output\MusicVault-Setup.exe"
+        Write-Host "Installer: packaging\output\VaultSeek-Setup.exe"
     }
     else {
         Write-Host "==> Python Setup.exe (ISCC not found)"

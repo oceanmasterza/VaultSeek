@@ -26,25 +26,25 @@ jobs:
       - name: Run full test suite
         env:
           QT_QPA_PLATFORM: offscreen
-          MUSICVAULT_HEADLESS: "1"
+          VAULTSEEK_HEADLESS: "1"
         run: pytest
 
       - name: Fetch pinned vendor binaries
         run: python packaging/fetch_vendor.py
 
       - name: Build executable
-        run: pyinstaller packaging/musicvault.spec --noconfirm
+        run: pyinstaller packaging/vaultseek.spec --noconfirm
 
       - name: Verify bundled fpcalc
         shell: pwsh
         run: |
-          if (-not (Test-Path dist/MusicVault/fpcalc.exe)) {
+          if (-not (Test-Path dist/VaultSeek/fpcalc.exe)) {
             throw "fpcalc.exe missing from onedir bundle"
           }
-          Get-Item dist/MusicVault/fpcalc.exe | Format-List Name, Length
+          Get-Item dist/VaultSeek/fpcalc.exe | Format-List Name, Length
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: MusicVault-${{ github.ref_name }}-windows
-          path: dist/MusicVault/
+          name: VaultSeek-${{ github.ref_name }}-windows
+          path: dist/VaultSeek/

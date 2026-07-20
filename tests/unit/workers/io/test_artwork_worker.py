@@ -1,4 +1,4 @@
-"""Unit tests for musicvault.workers.io.artwork_worker.ArtworkWorker."""
+"""Unit tests for vaultseek.workers.io.artwork_worker.ArtworkWorker."""
 
 from __future__ import annotations
 
@@ -11,18 +11,18 @@ import pytest
 from PIL import Image
 from sqlalchemy import Engine, insert
 
-from musicvault.db.repositories.album_repo import AlbumRepository
-from musicvault.db.repositories.artwork_repo import ArtworkRepository
-from musicvault.db.repositories.job_repo import JobRepository
-from musicvault.db.repositories.track_repo import TrackRepository
-from musicvault.db.tables import albums
-from musicvault.db.uuid_utils import generate_uuid7, uuid_to_blob
-from musicvault.models.entities.job import Job, JobStatus, JobType
-from musicvault.models.entities.review_item import ReviewType
-from musicvault.models.interfaces.artwork import ArtworkQuery, ArtworkResult
-from musicvault.services.job_queue_service import JobQueueService
-from musicvault.services.review_queue_service import ReviewQueueService
-from musicvault.workers.io.artwork_worker import ArtworkWorker
+from vaultseek.db.repositories.album_repo import AlbumRepository
+from vaultseek.db.repositories.artwork_repo import ArtworkRepository
+from vaultseek.db.repositories.job_repo import JobRepository
+from vaultseek.db.repositories.track_repo import TrackRepository
+from vaultseek.db.tables import albums
+from vaultseek.db.uuid_utils import generate_uuid7, uuid_to_blob
+from vaultseek.models.entities.job import Job, JobStatus, JobType
+from vaultseek.models.entities.review_item import ReviewType
+from vaultseek.models.interfaces.artwork import ArtworkQuery, ArtworkResult
+from vaultseek.services.job_queue_service import JobQueueService
+from vaultseek.services.review_queue_service import ReviewQueueService
+from vaultseek.workers.io.artwork_worker import ArtworkWorker
 
 _NOW = datetime(2026, 7, 17, tzinfo=UTC)
 
@@ -341,7 +341,7 @@ def test_identical_bytes_across_tracks_share_one_artwork_row(
     track_id: UUID,
     artwork_dir: Path,
 ) -> None:
-    from musicvault.db.tables import tracks as tracks_table
+    from vaultseek.db.tables import tracks as tracks_table
 
     other_track_id = generate_uuid7()
     with engine.begin() as conn:

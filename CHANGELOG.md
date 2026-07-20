@@ -1,6 +1,6 @@
 # Changelog
 
-All notable changes to MusicVault are documented in this file.
+All notable changes to VaultSeek are documented in this file.
 
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
@@ -74,7 +74,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - **Phase 15 media servers** — `MediaServerPlugin` + Navidrome /
     Jellyfin / Plex / Subsonic; `MediaServerWorker` +
     `sync_media_server` route; organizer enqueues sync on library entry
-  - **Phase 16 packaging** — `packaging/musicvault.spec` (PyInstaller
+  - **Phase 16 packaging** — `packaging/vaultseek.spec` (PyInstaller
     onedir), Inno Setup `installer.iss`, packaging README
 
 ### Added
@@ -340,7 +340,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
     with minimal entities/value objects (`Job`, `ReviewItem`, `Rule`,
     `FileIdentity`) pulled forward from Phase 3 as their return types
   - `core/exceptions.DatabaseError` — translates Alembic/SQLAlchemy failures at
-    the migration boundary into MusicVault's own exception hierarchy
+    the migration boundary into VaultSeek's own exception hierarchy
   - `Container.bootstrap` now runs migrations and opens the database on every
     application startup (satisfying "DB auto-created on first run"), and
     `Container.close()` disposes the engine on shutdown
@@ -362,17 +362,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - **Phase 1 project scaffold** — first runnable application code:
-  - `src/musicvault/` package skeleton following the v3 folder layout
+  - `src/vaultseek/` package skeleton following the v3 folder layout
     (`models/`, `core/`, `db/`, `services/`, `workers/`, `plugins/`, `gui/`)
   - `core/exceptions.py` — application exception hierarchy
   - `core/paths.py` — cross-platform app data directory resolution
-    (`%APPDATA%/MusicVault` on Windows)
+    (`%APPDATA%/VaultSeek` on Windows)
   - `core/config.py` — versioned JSON configuration with migration chain
-  - `core/logging.py` — Loguru sinks (console, `musicvault.log`, `debug.log`, crash logs)
+  - `core/logging.py` — Loguru sinks (console, `vaultseek.log`, `debug.log`, crash logs)
   - `core/event_bus.py` — thread-safe publish/subscribe for domain events
   - `core/container.py` — dependency injection container
   - `app.py` — application bootstrap sequence
-  - `__main__.py` — `python -m musicvault` / `musicvault` CLI entry point
+  - `__main__.py` — `python -m vaultseek` / `vaultseek` CLI entry point
   - `config/defaults.json` — default configuration template
   - 43 tests (unit + integration), 97% coverage
   - `pyproject.toml` with full dependency set and tool configuration

@@ -1,11 +1,11 @@
-"""Unit tests for musicvault.models.entities.review_item."""
+"""Unit tests for vaultseek.models.entities.review_item."""
 
 from __future__ import annotations
 
 from datetime import UTC, datetime
 
-from musicvault.db.uuid_utils import generate_uuid7
-from musicvault.models.entities.review_item import ReviewItem, ReviewStatus, ReviewType
+from vaultseek.db.uuid_utils import generate_uuid7
+from vaultseek.models.entities.review_item import ReviewItem, ReviewStatus, ReviewType
 
 _NOW = datetime(2026, 7, 15, tzinfo=UTC)
 

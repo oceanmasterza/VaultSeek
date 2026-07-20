@@ -1,4 +1,4 @@
-"""Unit tests for musicvault.workers.io.report_worker."""
+"""Unit tests for vaultseek.workers.io.report_worker."""
 
 from __future__ import annotations
 
@@ -9,18 +9,18 @@ from uuid import UUID
 import pytest
 from sqlalchemy import Engine
 
-from musicvault.db.repositories.duplicate_repo import DuplicateRepository
-from musicvault.db.repositories.job_repo import JobRepository
-from musicvault.db.repositories.library_repo import LibraryRepository
-from musicvault.db.repositories.review_repo import ReviewRepository
-from musicvault.db.repositories.track_repo import TrackRepository
-from musicvault.db.uuid_utils import generate_uuid7
-from musicvault.models.entities.job import Job, JobStatus, JobType
-from musicvault.models.entities.library import Library
-from musicvault.models.entities.track import LibraryZone, Track
-from musicvault.services.job_queue_service import JobQueueService
-from musicvault.services.report_service import ReportService
-from musicvault.workers.io.report_worker import ReportWorker
+from vaultseek.db.repositories.duplicate_repo import DuplicateRepository
+from vaultseek.db.repositories.job_repo import JobRepository
+from vaultseek.db.repositories.library_repo import LibraryRepository
+from vaultseek.db.repositories.review_repo import ReviewRepository
+from vaultseek.db.repositories.track_repo import TrackRepository
+from vaultseek.db.uuid_utils import generate_uuid7
+from vaultseek.models.entities.job import Job, JobStatus, JobType
+from vaultseek.models.entities.library import Library
+from vaultseek.models.entities.track import LibraryZone, Track
+from vaultseek.services.job_queue_service import JobQueueService
+from vaultseek.services.report_service import ReportService
+from vaultseek.workers.io.report_worker import ReportWorker
 
 _NOW = datetime(2026, 7, 18, tzinfo=UTC)
 

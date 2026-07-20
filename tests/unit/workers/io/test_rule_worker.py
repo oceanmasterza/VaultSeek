@@ -7,26 +7,26 @@ from uuid import UUID
 
 from sqlalchemy import Engine
 
-from musicvault.core.event_bus import EventBus
-from musicvault.db.repositories.artist_repo import ArtistRepository
-from musicvault.db.repositories.duplicate_repo import DuplicateRepository
-from musicvault.db.repositories.job_repo import JobRepository
-from musicvault.db.repositories.review_repo import ReviewRepository
-from musicvault.db.repositories.rule_repo import RuleRepository
-from musicvault.db.repositories.track_repo import TrackRepository
-from musicvault.db.uuid_utils import generate_uuid7
-from musicvault.models.entities.duplicate_group import (
+from vaultseek.core.event_bus import EventBus
+from vaultseek.db.repositories.artist_repo import ArtistRepository
+from vaultseek.db.repositories.duplicate_repo import DuplicateRepository
+from vaultseek.db.repositories.job_repo import JobRepository
+from vaultseek.db.repositories.review_repo import ReviewRepository
+from vaultseek.db.repositories.rule_repo import RuleRepository
+from vaultseek.db.repositories.track_repo import TrackRepository
+from vaultseek.db.uuid_utils import generate_uuid7
+from vaultseek.models.entities.duplicate_group import (
     DuplicateGroup,
     DuplicateMember,
     MatchType,
 )
-from musicvault.models.entities.job import Job, JobStatus, JobType
-from musicvault.models.entities.review_item import ReviewStatus, ReviewType
-from musicvault.models.entities.track import LibraryZone, Track
-from musicvault.services.job_queue_service import JobQueueService
-from musicvault.services.review_queue_service import ReviewQueueService
-from musicvault.services.rules_engine import RulesEngine
-from musicvault.workers.io.rule_worker import RuleWorker
+from vaultseek.models.entities.job import Job, JobStatus, JobType
+from vaultseek.models.entities.review_item import ReviewStatus, ReviewType
+from vaultseek.models.entities.track import LibraryZone, Track
+from vaultseek.services.job_queue_service import JobQueueService
+from vaultseek.services.review_queue_service import ReviewQueueService
+from vaultseek.services.rules_engine import RulesEngine
+from vaultseek.workers.io.rule_worker import RuleWorker
 
 _NOW = datetime(2026, 7, 16, tzinfo=UTC)
 

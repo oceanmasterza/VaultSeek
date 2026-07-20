@@ -12,19 +12,19 @@ from uuid import UUID
 import pytest
 from sqlalchemy import Engine, create_engine, event, insert
 
-from musicvault.core.config import PipelineConfig
-from musicvault.core.event_bus import EventBus
-from musicvault.db.repositories.duplicate_repo import DuplicateRepository
-from musicvault.db.repositories.file_identity_repo import FileIdentityRepository
-from musicvault.db.repositories.job_repo import JobRepository
-from musicvault.db.repositories.review_repo import ReviewRepository
-from musicvault.db.repositories.rule_repo import RuleRepository
-from musicvault.db.repositories.track_repo import TrackRepository
-from musicvault.db.tables import libraries, metadata, tracks
-from musicvault.db.uuid_utils import generate_uuid7, uuid_to_blob
-from musicvault.db.writer import DatabaseWriter
-from musicvault.services.job_queue_service import JobQueueService
-from musicvault.services.review_queue_service import ReviewQueueService
+from vaultseek.core.config import PipelineConfig
+from vaultseek.core.event_bus import EventBus
+from vaultseek.db.repositories.duplicate_repo import DuplicateRepository
+from vaultseek.db.repositories.file_identity_repo import FileIdentityRepository
+from vaultseek.db.repositories.job_repo import JobRepository
+from vaultseek.db.repositories.review_repo import ReviewRepository
+from vaultseek.db.repositories.rule_repo import RuleRepository
+from vaultseek.db.repositories.track_repo import TrackRepository
+from vaultseek.db.tables import libraries, metadata, tracks
+from vaultseek.db.uuid_utils import generate_uuid7, uuid_to_blob
+from vaultseek.db.writer import DatabaseWriter
+from vaultseek.services.job_queue_service import JobQueueService
+from vaultseek.services.review_queue_service import ReviewQueueService
 
 
 @pytest.fixture
@@ -36,7 +36,7 @@ def engine(tmp_path: Path) -> Iterator[Engine]:
     def _configure_connection(dbapi_connection: object, _record: object) -> None:
         cursor = dbapi_connection.cursor()  # type: ignore[attr-defined]
         cursor.execute("PRAGMA foreign_keys = ON")
-        # Match production's WAL + busy_timeout (musicvault.db.engine) so
+        # Match production's WAL + busy_timeout (vaultseek.db.engine) so
         # tests that run background threads (DatabaseWriter) don't flake
         # with "database is locked" on slow CI runners.
         cursor.execute("PRAGMA journal_mode = WAL")

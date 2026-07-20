@@ -7,8 +7,8 @@ import io
 import responses
 from PIL import Image
 
-from musicvault.models.interfaces.artwork import ArtworkQuery
-from musicvault.plugins.builtin.cover_art_archive import CoverArtArchiveProvider
+from vaultseek.models.interfaces.artwork import ArtworkQuery
+from vaultseek.plugins.builtin.cover_art_archive import CoverArtArchiveProvider
 
 _RELEASE_MBID = "11111111-1111-1111-1111-111111111111"
 _GROUP_MBID = "22222222-2222-2222-2222-222222222222"

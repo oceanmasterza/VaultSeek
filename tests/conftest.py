@@ -1,4 +1,4 @@
-"""Shared pytest fixtures for the MusicVault test suite."""
+"""Shared pytest fixtures for the VaultSeek test suite."""
 
 from __future__ import annotations
 
@@ -7,9 +7,9 @@ from pathlib import Path
 
 import pytest
 
-from musicvault.core.config import AppConfig, PipelineConfig
-from musicvault.core.container import Container
-from musicvault.core.paths import AppPaths, get_app_paths
+from vaultseek.core.config import AppConfig, PipelineConfig
+from vaultseek.core.container import Container
+from vaultseek.core.paths import AppPaths, get_app_paths
 
 
 @pytest.fixture

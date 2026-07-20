@@ -1,4 +1,4 @@
-"""Unit tests for musicvault.models.value_objects.rule_action."""
+"""Unit tests for vaultseek.models.value_objects.rule_action."""
 
 from __future__ import annotations
 
@@ -6,7 +6,7 @@ import dataclasses
 
 import pytest
 
-from musicvault.models.value_objects.rule_action import RuleAction
+from vaultseek.models.value_objects.rule_action import RuleAction
 
 
 def test_rule_action_defaults_to_empty_parameters() -> None:

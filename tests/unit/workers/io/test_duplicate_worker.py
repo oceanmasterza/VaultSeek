@@ -7,24 +7,24 @@ from uuid import UUID
 
 from sqlalchemy import Engine, insert
 
-from musicvault.db.repositories.album_repo import AlbumRepository
-from musicvault.db.repositories.duplicate_repo import DuplicateRepository
-from musicvault.db.repositories.file_identity_repo import FileIdentityRepository
-from musicvault.db.repositories.job_repo import JobRepository
-from musicvault.db.repositories.review_repo import ReviewRepository
-from musicvault.db.repositories.track_repo import TrackRepository
-from musicvault.db.tables import albums
-from musicvault.db.uuid_utils import generate_uuid7, uuid_to_blob
-from musicvault.models.entities.duplicate_group import MatchType
-from musicvault.models.entities.job import Job, JobStatus, JobType
-from musicvault.models.entities.review_item import ReviewStatus, ReviewType
-from musicvault.models.entities.track import LibraryZone, Track
-from musicvault.models.services.duplicate_matcher import DuplicateMatcher
-from musicvault.models.services.quality_scorer import DEFAULT_WEIGHTS, QualityScorer
-from musicvault.models.value_objects.file_identity import FileIdentity
-from musicvault.services.job_queue_service import JobQueueService
-from musicvault.services.review_queue_service import ReviewQueueService
-from musicvault.workers.io.duplicate_worker import DuplicateWorker
+from vaultseek.db.repositories.album_repo import AlbumRepository
+from vaultseek.db.repositories.duplicate_repo import DuplicateRepository
+from vaultseek.db.repositories.file_identity_repo import FileIdentityRepository
+from vaultseek.db.repositories.job_repo import JobRepository
+from vaultseek.db.repositories.review_repo import ReviewRepository
+from vaultseek.db.repositories.track_repo import TrackRepository
+from vaultseek.db.tables import albums
+from vaultseek.db.uuid_utils import generate_uuid7, uuid_to_blob
+from vaultseek.models.entities.duplicate_group import MatchType
+from vaultseek.models.entities.job import Job, JobStatus, JobType
+from vaultseek.models.entities.review_item import ReviewStatus, ReviewType
+from vaultseek.models.entities.track import LibraryZone, Track
+from vaultseek.models.services.duplicate_matcher import DuplicateMatcher
+from vaultseek.models.services.quality_scorer import DEFAULT_WEIGHTS, QualityScorer
+from vaultseek.models.value_objects.file_identity import FileIdentity
+from vaultseek.services.job_queue_service import JobQueueService
+from vaultseek.services.review_queue_service import ReviewQueueService
+from vaultseek.workers.io.duplicate_worker import DuplicateWorker
 
 _NOW = datetime(2026, 7, 17, tzinfo=UTC)
 

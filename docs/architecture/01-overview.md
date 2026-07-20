@@ -4,7 +4,7 @@
 
 ## Purpose
 
-MusicVault is a desktop Windows application that automates music library management for collectors and self-hosted media server users. It operates as a **local-first, job-driven** system: all data lives in SQLite, processing happens through a persistent job queue, and uncertain results go to a human review queue before touching the canonical library.
+VaultSeek is a desktop Windows application that automates music library management for collectors and self-hosted media server users. It operates as a **local-first, job-driven** system: all data lives in SQLite, processing happens through a persistent job queue, and uncertain results go to a human review queue before touching the canonical library.
 
 ## Target Users
 
@@ -19,10 +19,10 @@ MusicVault is a desktop Windows application that automates music library managem
 
 ```mermaid
 C4Context
-    title MusicVault System Context (v2)
+    title VaultSeek System Context (v2)
 
     Person(user, "Power User", "Collector / Navidrome admin")
-    System(mv, "MusicVault", "Job-driven library manager")
+    System(mv, "VaultSeek", "Job-driven library manager")
     System_Ext(fs, "File System", "Incoming / Staging / Library / Archive")
     System_Ext(mb, "MusicBrainz", "Metadata")
     System_Ext(dc, "Discogs", "Metadata + artwork")
@@ -170,7 +170,7 @@ class Container:
 
 ## Configuration
 
-- Location: `%APPDATA%/MusicVault/config.json`
+- Location: `%APPDATA%/VaultSeek/config.json`
 - Versioned JSON with migration chain
 - Key sections: `library_zones`, `watch_folder`, `auto_approve_threshold`, `metadata_providers`, `rules`, `quality_weights`, `plugins`
 
@@ -178,7 +178,7 @@ class Container:
 
 | Log | Level | Purpose |
 |-----|-------|---------|
-| `musicvault.log` | INFO | User-visible operations |
+| `vaultseek.log` | INFO | User-visible operations |
 | `debug.log` | DEBUG | Job dispatch, SQL queries, API calls |
 | `crashes/` | ERROR | Uncaught exceptions |
 

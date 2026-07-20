@@ -10,7 +10,7 @@
 > and no longer accurate. UUIDs are `BLOB(16)` (see v3 §"UUID Storage"), and the
 > database layer lives under `db/` (see [02-folder-layout.md](02-folder-layout.md)).
 
-This document is the authoritative revision of the MusicVault architecture. It incorporates scalability review findings, the asynchronous job pipeline, UUID identities, confidence scoring, the rules engine, review queue, staging library, and expanded media server support.
+This document is the authoritative revision of the VaultSeek architecture. It incorporates scalability review findings, the asynchronous job pipeline, UUID identities, confidence scoring, the rules engine, review queue, staging library, and expanded media server support.
 
 ---
 
@@ -249,7 +249,7 @@ flowchart TB
 
 ## Job Queue System (Core Infrastructure)
 
-The job queue is the **central nervous system** of MusicVault. It replaces direct service-to-service calls for all background processing.
+The job queue is the **central nervous system** of VaultSeek. It replaces direct service-to-service calls for all background processing.
 
 ### Job Model
 
@@ -812,7 +812,7 @@ Phase 0 is extended with this revision. Phase 1 begins only after this document 
 When you approve this revision and switch to the implementation model, Phase 1 creates:
 
 ```
-src/musicvault/
+src/vaultseek/
 ├── core/           config, container, logging, paths, exceptions
 ├── domain/         empty packages with __init__.py
 ├── application/    empty packages
@@ -826,7 +826,7 @@ pyproject.toml      dependencies, tool config
 config/defaults.json
 ```
 
-Runnable: `python -m musicvault` prints version and exits 0.
+Runnable: `python -m vaultseek` prints version and exits 0.
 CI: green on every push.
 
 No database, no workers, no GUI — scaffold only.

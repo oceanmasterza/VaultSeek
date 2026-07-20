@@ -7,32 +7,32 @@ from uuid import UUID
 
 import pytest
 
-from musicvault.core.event_bus import EventBus
-from musicvault.core.exceptions import ReviewError
-from musicvault.db.repositories.duplicate_repo import DuplicateRepository
-from musicvault.db.repositories.job_repo import JobRepository
-from musicvault.db.repositories.review_repo import ReviewRepository
-from musicvault.db.repositories.track_repo import TrackRepository
-from musicvault.models.entities.duplicate_group import (
+from vaultseek.core.event_bus import EventBus
+from vaultseek.core.exceptions import ReviewError
+from vaultseek.db.repositories.duplicate_repo import DuplicateRepository
+from vaultseek.db.repositories.job_repo import JobRepository
+from vaultseek.db.repositories.review_repo import ReviewRepository
+from vaultseek.db.repositories.track_repo import TrackRepository
+from vaultseek.models.entities.duplicate_group import (
     DuplicateGroup,
     DuplicateMember,
     GroupResolution,
     GroupStatus,
     MatchType,
 )
-from musicvault.models.entities.job import JobStatus, JobType
-from musicvault.models.entities.review_item import ReviewStatus, ReviewType
-from musicvault.models.entities.track import LibraryZone, Track
-from musicvault.models.interfaces.metadata import (
+from vaultseek.models.entities.job import JobStatus, JobType
+from vaultseek.models.entities.review_item import ReviewStatus, ReviewType
+from vaultseek.models.entities.track import LibraryZone, Track
+from vaultseek.models.interfaces.metadata import (
     ArbitrationResult,
     ProviderFieldResult,
     ProviderResult,
 )
-from musicvault.models.value_objects.field_confidence import FieldConfidence
-from musicvault.services.dto.review_dto import ReviewItemCreate
-from musicvault.services.events import ReviewItemAddedEvent
-from musicvault.services.job_queue_service import JobQueueService
-from musicvault.services.review_queue_service import ReviewQueueService, classify_review_type
+from vaultseek.models.value_objects.field_confidence import FieldConfidence
+from vaultseek.services.dto.review_dto import ReviewItemCreate
+from vaultseek.services.events import ReviewItemAddedEvent
+from vaultseek.services.job_queue_service import JobQueueService
+from vaultseek.services.review_queue_service import ReviewQueueService, classify_review_type
 
 _NOW = datetime(2026, 7, 16, tzinfo=UTC)
 

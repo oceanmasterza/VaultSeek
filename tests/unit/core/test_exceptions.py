@@ -1,14 +1,14 @@
-"""Unit tests for musicvault.core.exceptions."""
+"""Unit tests for vaultseek.core.exceptions."""
 
 from __future__ import annotations
 
 import pytest
 
-from musicvault.core.exceptions import (
+from vaultseek.core.exceptions import (
     ConfigError,
     ConfigMigrationError,
     ConfigVersionError,
-    MusicVaultError,
+    VaultSeekError,
     PluginError,
     PluginLoadError,
 )
@@ -18,8 +18,8 @@ from musicvault.core.exceptions import (
     "exception_type",
     [ConfigError, ConfigVersionError, ConfigMigrationError, PluginError, PluginLoadError],
 )
-def test_all_exceptions_derive_from_musicvault_error(exception_type: type[Exception]) -> None:
-    assert issubclass(exception_type, MusicVaultError)
+def test_all_exceptions_derive_from_vaultseek_error(exception_type: type[Exception]) -> None:
+    assert issubclass(exception_type, VaultSeekError)
 
 
 def test_config_version_error_derives_from_config_error() -> None:

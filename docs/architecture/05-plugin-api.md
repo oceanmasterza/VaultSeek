@@ -202,7 +202,7 @@ class NavidromePlugin:
 Benefits of direct DB:
 - Bulk queries in milliseconds vs. minutes via API
 - Access to internal scan status, bookmark data
-- Detect server-side issues MusicVault can fix locally
+- Detect server-side issues VaultSeek can fix locally
 
 ### Subsonic-Compatible Base
 
@@ -211,21 +211,21 @@ Navidrome, Ampache (partially), and generic Subsonic share the Subsonic API. A `
 ## Plugin Discovery
 
 ```toml
-[project.entry-points."musicvault.plugins"]
-musicbrainz = "musicvault.plugins.builtin.musicbrainz:MusicBrainzPlugin"
-discogs = "musicvault.plugins.builtin.discogs:DiscogsPlugin"
-cover_art_archive = "musicvault.plugins.builtin.cover_art_archive:CoverArtArchivePlugin"
-filename_parser = "musicvault.plugins.builtin.filename_parser:FilenameParserPlugin"
-navidrome = "musicvault.plugins.builtin.navidrome:NavidromePlugin"
-jellyfin = "musicvault.plugins.builtin.jellyfin:JellyfinPlugin"
-plex = "musicvault.plugins.builtin.plex:PlexPlugin"
-emby = "musicvault.plugins.builtin.emby:EmbyPlugin"
-ampache = "musicvault.plugins.builtin.ampache:AmpachePlugin"
-koel = "musicvault.plugins.builtin.koel:KoelPlugin"
-subsonic = "musicvault.plugins.builtin.subsonic:SubsonicPlugin"
-funkwhale = "musicvault.plugins.builtin.funkwhale:FunkwhalePlugin"
-lyrion = "musicvault.plugins.builtin.lyrion:LyrionPlugin"
-mstream = "musicvault.plugins.builtin.mstream:MStreamPlugin"
+[project.entry-points."vaultseek.plugins"]
+musicbrainz = "vaultseek.plugins.builtin.musicbrainz:MusicBrainzPlugin"
+discogs = "vaultseek.plugins.builtin.discogs:DiscogsPlugin"
+cover_art_archive = "vaultseek.plugins.builtin.cover_art_archive:CoverArtArchivePlugin"
+filename_parser = "vaultseek.plugins.builtin.filename_parser:FilenameParserPlugin"
+navidrome = "vaultseek.plugins.builtin.navidrome:NavidromePlugin"
+jellyfin = "vaultseek.plugins.builtin.jellyfin:JellyfinPlugin"
+plex = "vaultseek.plugins.builtin.plex:PlexPlugin"
+emby = "vaultseek.plugins.builtin.emby:EmbyPlugin"
+ampache = "vaultseek.plugins.builtin.ampache:AmpachePlugin"
+koel = "vaultseek.plugins.builtin.koel:KoelPlugin"
+subsonic = "vaultseek.plugins.builtin.subsonic:SubsonicPlugin"
+funkwhale = "vaultseek.plugins.builtin.funkwhale:FunkwhalePlugin"
+lyrion = "vaultseek.plugins.builtin.lyrion:LyrionPlugin"
+mstream = "vaultseek.plugins.builtin.mstream:MStreamPlugin"
 ```
 
 Third-party plugins add their own entry points via pip install.

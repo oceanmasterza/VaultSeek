@@ -9,23 +9,23 @@ from uuid import UUID
 import pytest
 from sqlalchemy import Engine
 
-from musicvault.db.repositories.album_repo import AlbumRepository
-from musicvault.db.repositories.artist_repo import ArtistRepository
-from musicvault.db.repositories.duplicate_repo import DuplicateRepository
-from musicvault.db.repositories.job_repo import JobRepository
-from musicvault.db.repositories.library_repo import LibraryRepository
-from musicvault.db.repositories.operation_repo import OperationRepository
-from musicvault.db.repositories.review_repo import ReviewRepository
-from musicvault.db.repositories.track_repo import TrackRepository
-from musicvault.db.uuid_utils import generate_uuid7
-from musicvault.models.entities.artist import Artist
-from musicvault.models.entities.job import Job, JobStatus, JobType
-from musicvault.models.entities.library import Library
-from musicvault.models.entities.operation import ChangeType, OperationStatus, OperationType
-from musicvault.models.entities.track import LibraryZone, Track
-from musicvault.models.services.organize_engine import OrganizeEngine
-from musicvault.services.job_queue_service import JobQueueService
-from musicvault.workers.io.organizer_worker import OrganizerWorker
+from vaultseek.db.repositories.album_repo import AlbumRepository
+from vaultseek.db.repositories.artist_repo import ArtistRepository
+from vaultseek.db.repositories.duplicate_repo import DuplicateRepository
+from vaultseek.db.repositories.job_repo import JobRepository
+from vaultseek.db.repositories.library_repo import LibraryRepository
+from vaultseek.db.repositories.operation_repo import OperationRepository
+from vaultseek.db.repositories.review_repo import ReviewRepository
+from vaultseek.db.repositories.track_repo import TrackRepository
+from vaultseek.db.uuid_utils import generate_uuid7
+from vaultseek.models.entities.artist import Artist
+from vaultseek.models.entities.job import Job, JobStatus, JobType
+from vaultseek.models.entities.library import Library
+from vaultseek.models.entities.operation import ChangeType, OperationStatus, OperationType
+from vaultseek.models.entities.track import LibraryZone, Track
+from vaultseek.models.services.organize_engine import OrganizeEngine
+from vaultseek.services.job_queue_service import JobQueueService
+from vaultseek.workers.io.organizer_worker import OrganizerWorker
 
 _NOW = datetime(2026, 7, 17, tzinfo=UTC)
 

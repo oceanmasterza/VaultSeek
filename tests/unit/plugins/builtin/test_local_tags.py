@@ -7,9 +7,9 @@ from typing import Any
 
 import pytest
 
-from musicvault.models.interfaces.metadata import MetadataQuery
-from musicvault.plugins.builtin.local_tags import LocalTagsProvider
-from musicvault.plugins.builtin.local_tags import provider as local_tags_mod
+from vaultseek.models.interfaces.metadata import MetadataQuery
+from vaultseek.plugins.builtin.local_tags import LocalTagsProvider
+from vaultseek.plugins.builtin.local_tags import provider as local_tags_mod
 
 
 class _FakeAudio(dict[str, list[str]]):

@@ -1,4 +1,4 @@
-"""Unit tests for musicvault.db.repositories.file_identity_repo.FileIdentityRepository."""
+"""Unit tests for vaultseek.db.repositories.file_identity_repo.FileIdentityRepository."""
 
 from __future__ import annotations
 
@@ -7,9 +7,9 @@ from uuid import UUID
 
 from sqlalchemy import Engine
 
-from musicvault.db.repositories.file_identity_repo import FileIdentityRepository
-from musicvault.db.uuid_utils import generate_uuid7
-from musicvault.models.value_objects.file_identity import FileIdentity
+from vaultseek.db.repositories.file_identity_repo import FileIdentityRepository
+from vaultseek.db.uuid_utils import generate_uuid7
+from vaultseek.models.value_objects.file_identity import FileIdentity
 
 _NOW = datetime(2026, 7, 15, tzinfo=UTC)
 

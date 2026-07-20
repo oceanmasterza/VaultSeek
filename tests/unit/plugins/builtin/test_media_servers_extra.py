@@ -6,12 +6,12 @@ from uuid import UUID
 
 import responses
 
-from musicvault.models.interfaces.media_server import MediaServerConfig
-from musicvault.plugins.builtin.ampache import AmpachePlugin
-from musicvault.plugins.builtin.emby import EmbyPlugin
-from musicvault.plugins.builtin.funkwhale import FunkwhalePlugin
-from musicvault.plugins.builtin.koel import KoelPlugin
-from musicvault.plugins.builtin.lyrion import LyrionPlugin
+from vaultseek.models.interfaces.media_server import MediaServerConfig
+from vaultseek.plugins.builtin.ampache import AmpachePlugin
+from vaultseek.plugins.builtin.emby import EmbyPlugin
+from vaultseek.plugins.builtin.funkwhale import FunkwhalePlugin
+from vaultseek.plugins.builtin.koel import KoelPlugin
+from vaultseek.plugins.builtin.lyrion import LyrionPlugin
 
 _LIB = UUID(int=1)
 

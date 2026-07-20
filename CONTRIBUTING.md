@@ -1,6 +1,6 @@
-# Contributing to MusicVault
+# Contributing to VaultSeek
 
-Thank you for considering a contribution. MusicVault is built to eventually
+Thank you for considering a contribution. VaultSeek is built to eventually
 support hundreds of contributors, so the project favors explicit structure,
 strict typing, and small reviewable changes over speed.
 
@@ -26,8 +26,8 @@ used to generate every primary key in the schema — see
 [Database Schema](docs/architecture/03-database-schema.md)).
 
 ```powershell
-git clone https://github.com/musicvault/musicvault.git
-cd musicvault
+git clone https://github.com/vaultseek/vaultseek.git
+cd vaultseek
 python -m venv .venv
 .venv\Scripts\activate
 pip install -e ".[dev]"
@@ -65,7 +65,7 @@ lint-imports
 - **Use dataclasses** for entities, value objects, and DTOs. Prefer
   `@dataclass(frozen=True)` unless mutability is required and justified.
 - **No global mutable state.** Dependencies are threaded through
-  explicitly via `musicvault.core.container.Container`, not module-level
+  explicitly via `vaultseek.core.container.Container`, not module-level
   singletons.
 - **Respect layer boundaries** (see
   [docs/architecture/02-folder-layout.md](docs/architecture/02-folder-layout.md)).
@@ -105,8 +105,8 @@ for the full test pyramid, fixture conventions, and naming scheme
 
 ## Reporting Issues
 
-Include your MusicVault version, Windows version, and (if relevant) the
-contents of `%APPDATA%/MusicVault/logs/debug.log` around the time of the
+Include your VaultSeek version, Windows version, and (if relevant) the
+contents of `%APPDATA%/VaultSeek/logs/debug.log` around the time of the
 issue. Redact any personal file paths you're not comfortable sharing.
 
 ## License

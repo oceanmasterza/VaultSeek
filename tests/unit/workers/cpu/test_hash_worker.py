@@ -1,4 +1,4 @@
-"""Unit tests for musicvault.workers.cpu.hash_worker."""
+"""Unit tests for vaultseek.workers.cpu.hash_worker."""
 
 from __future__ import annotations
 
@@ -7,13 +7,13 @@ from datetime import UTC, datetime
 from pathlib import Path
 from uuid import UUID
 
-from musicvault.db.repositories.file_identity_repo import FileIdentityRepository
-from musicvault.db.repositories.job_repo import JobRepository
-from musicvault.db.writer import DatabaseWriter
-from musicvault.models.entities.job import JobStatus, JobType
-from musicvault.models.value_objects.file_identity import FileIdentity
-from musicvault.services.job_queue_service import JobQueueService
-from musicvault.workers.cpu.hash_worker import HashWorker, compute_hash
+from vaultseek.db.repositories.file_identity_repo import FileIdentityRepository
+from vaultseek.db.repositories.job_repo import JobRepository
+from vaultseek.db.writer import DatabaseWriter
+from vaultseek.models.entities.job import JobStatus, JobType
+from vaultseek.models.value_objects.file_identity import FileIdentity
+from vaultseek.services.job_queue_service import JobQueueService
+from vaultseek.workers.cpu.hash_worker import HashWorker, compute_hash
 
 _NOW = datetime(2026, 7, 15, tzinfo=UTC)
 
@@ -41,7 +41,7 @@ def test_compute_hash_returns_an_error_for_a_missing_file(tmp_path: Path) -> Non
 def test_compute_hash_streams_in_chunks_for_large_files(tmp_path: Path) -> None:
     """Not just a small in-memory read — must handle a file bigger than
     one chunk without loading it all into memory in one call."""
-    from musicvault.workers.cpu.hash_worker import _CHUNK_SIZE
+    from vaultseek.workers.cpu.hash_worker import _CHUNK_SIZE
 
     file_path = tmp_path / "big.flac"
     content = b"x" * (_CHUNK_SIZE * 2 + 123)

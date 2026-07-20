@@ -86,7 +86,7 @@ jobs:
         run: python tests/fixtures/generate_audio.py
 
       - name: Run tests with coverage
-        run: pytest --cov=musicvault --cov-report=xml --cov-fail-under=80
+        run: pytest --cov=vaultseek --cov-report=xml --cov-fail-under=80
 
       - name: Upload coverage
         if: github.event_name == 'push'
@@ -124,13 +124,13 @@ jobs:
         run: pytest
 
       - name: Build executable
-        run: pyinstaller packaging/musicvault.spec --noconfirm
+        run: pyinstaller packaging/vaultseek.spec --noconfirm
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
         with:
-          name: MusicVault-${{ github.ref_name }}-windows
-          path: dist/MusicVault/
+          name: VaultSeek-${{ github.ref_name }}-windows
+          path: dist/VaultSeek/
 ```
 
 ---
@@ -139,7 +139,7 @@ jobs:
 
 ```toml
 [project]
-name = "musicvault"
+name = "vaultseek"
 requires-python = ">=3.14"
 
 [project.optional-dependencies]
@@ -172,7 +172,7 @@ target-version = ["py314"]
 [tool.mypy]
 python_version = "3.14"
 strict = true
-packages = ["musicvault"]
+packages = ["vaultseek"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
@@ -181,28 +181,28 @@ markers = [
 ]
 
 [tool.coverage.run]
-source = ["src/musicvault"]
+source = ["src/vaultseek"]
 fail_under = 80
 
 [tool.importlinter]
-root_packages = ["musicvault"]
+root_packages = ["vaultseek"]
 
 [[tool.importlinter.contracts]]
 name = "Domain isolation"
 type = "forbidden"
-source_modules = ["musicvault.domain"]
+source_modules = ["vaultseek.domain"]
 forbidden_modules = [
-    "musicvault.gui",
-    "musicvault.infrastructure",
-    "musicvault.application",
+    "vaultseek.gui",
+    "vaultseek.infrastructure",
+    "vaultseek.application",
 ]
 
 [[tool.importlinter.contracts]]
 name = "GUI isolation"
 type = "forbidden"
-source_modules = ["musicvault.gui"]
+source_modules = ["vaultseek.gui"]
 forbidden_modules = [
-    "musicvault.infrastructure",
+    "vaultseek.infrastructure",
 ]
 ```
 

@@ -1,4 +1,4 @@
-"""Unit tests for musicvault.workers.cpu.fingerprint_worker."""
+"""Unit tests for vaultseek.workers.cpu.fingerprint_worker."""
 
 from __future__ import annotations
 
@@ -8,14 +8,14 @@ from uuid import UUID
 
 import pytest
 
-from musicvault.db.repositories.file_identity_repo import FileIdentityRepository
-from musicvault.db.repositories.job_repo import JobRepository
-from musicvault.db.writer import DatabaseWriter
-from musicvault.models.entities.job import JobStatus, JobType
-from musicvault.models.interfaces.fingerprint import FingerprintResult
-from musicvault.models.value_objects.file_identity import FileIdentity
-from musicvault.services.job_queue_service import JobQueueService
-from musicvault.workers.cpu.fingerprint_worker import FingerprintWorker, compute_fingerprint
+from vaultseek.db.repositories.file_identity_repo import FileIdentityRepository
+from vaultseek.db.repositories.job_repo import JobRepository
+from vaultseek.db.writer import DatabaseWriter
+from vaultseek.models.entities.job import JobStatus, JobType
+from vaultseek.models.interfaces.fingerprint import FingerprintResult
+from vaultseek.models.value_objects.file_identity import FileIdentity
+from vaultseek.services.job_queue_service import JobQueueService
+from vaultseek.workers.cpu.fingerprint_worker import FingerprintWorker, compute_fingerprint
 
 _NOW = datetime(2026, 7, 15, tzinfo=UTC)
 
@@ -35,7 +35,7 @@ def test_compute_fingerprint_returns_chromaprint_fields(
         )
 
     monkeypatch.setattr(
-        "musicvault.workers.cpu.fingerprint_worker.generate_chromaprint", _fake_generate
+        "vaultseek.workers.cpu.fingerprint_worker.generate_chromaprint", _fake_generate
     )
 
     result = compute_fingerprint({"track_id": "abc", "file_path": str(audio)})
@@ -57,7 +57,7 @@ def test_compute_fingerprint_returns_an_error_when_chromaprint_fails(
     def _boom(_path: Path) -> FingerprintResult:
         raise RuntimeError("fpcalc not found")
 
-    monkeypatch.setattr("musicvault.workers.cpu.fingerprint_worker.generate_chromaprint", _boom)
+    monkeypatch.setattr("vaultseek.workers.cpu.fingerprint_worker.generate_chromaprint", _boom)
 
     result = compute_fingerprint({"track_id": "abc", "file_path": str(audio)})
 

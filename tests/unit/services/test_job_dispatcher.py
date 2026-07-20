@@ -1,4 +1,4 @@
-"""Unit tests for musicvault.services.job_dispatcher.JobDispatcher."""
+"""Unit tests for vaultseek.services.job_dispatcher.JobDispatcher."""
 
 from __future__ import annotations
 
@@ -13,43 +13,43 @@ from uuid import UUID
 import pytest
 from sqlalchemy import Engine
 
-from musicvault.core.event_bus import EventBus
-from musicvault.db.repositories.album_repo import AlbumRepository
-from musicvault.db.repositories.artist_repo import ArtistRepository
-from musicvault.db.repositories.artwork_repo import ArtworkRepository
-from musicvault.db.repositories.duplicate_repo import DuplicateRepository
-from musicvault.db.repositories.file_identity_repo import FileIdentityRepository
-from musicvault.db.repositories.job_repo import JobRepository
-from musicvault.db.repositories.library_repo import LibraryRepository
-from musicvault.db.repositories.media_server_repo import MediaServerStateRepository
-from musicvault.db.repositories.metadata_confidence_repo import MetadataConfidenceRepository
-from musicvault.db.repositories.operation_repo import OperationRepository
-from musicvault.db.repositories.review_repo import ReviewRepository
-from musicvault.db.repositories.rule_repo import RuleRepository
-from musicvault.db.repositories.track_repo import TrackRepository
-from musicvault.db.writer import DatabaseWriter
-from musicvault.models.entities.job import JobStatus, JobType
-from musicvault.models.entities.library import Library
-from musicvault.models.services.duplicate_matcher import DuplicateMatcher
-from musicvault.models.services.organize_engine import OrganizeEngine
-from musicvault.models.services.quality_scorer import DEFAULT_WEIGHTS, QualityScorer
-from musicvault.plugins.builtin.filename_parser import FilenameParserProvider
-from musicvault.services.job_dispatcher import JobDispatcher
-from musicvault.services.job_queue_service import JobQueueService
-from musicvault.services.metadata_arbitrator import MetadataArbitrator
-from musicvault.services.report_service import ReportService
-from musicvault.services.review_queue_service import ReviewQueueService
-from musicvault.services.rules_engine import RulesEngine
-from musicvault.workers.cpu.fingerprint_worker import FingerprintWorker
-from musicvault.workers.cpu.hash_worker import HashWorker
-from musicvault.workers.io.artwork_worker import ArtworkWorker
-from musicvault.workers.io.duplicate_worker import DuplicateWorker
-from musicvault.workers.io.media_server_worker import MediaServerWorker
-from musicvault.workers.io.metadata_worker import MetadataWorker
-from musicvault.workers.io.organizer_worker import OrganizerWorker
-from musicvault.workers.io.report_worker import ReportWorker
-from musicvault.workers.io.rule_worker import RuleWorker
-from musicvault.workers.io.scanner_worker import ScannerWorker
+from vaultseek.core.event_bus import EventBus
+from vaultseek.db.repositories.album_repo import AlbumRepository
+from vaultseek.db.repositories.artist_repo import ArtistRepository
+from vaultseek.db.repositories.artwork_repo import ArtworkRepository
+from vaultseek.db.repositories.duplicate_repo import DuplicateRepository
+from vaultseek.db.repositories.file_identity_repo import FileIdentityRepository
+from vaultseek.db.repositories.job_repo import JobRepository
+from vaultseek.db.repositories.library_repo import LibraryRepository
+from vaultseek.db.repositories.media_server_repo import MediaServerStateRepository
+from vaultseek.db.repositories.metadata_confidence_repo import MetadataConfidenceRepository
+from vaultseek.db.repositories.operation_repo import OperationRepository
+from vaultseek.db.repositories.review_repo import ReviewRepository
+from vaultseek.db.repositories.rule_repo import RuleRepository
+from vaultseek.db.repositories.track_repo import TrackRepository
+from vaultseek.db.writer import DatabaseWriter
+from vaultseek.models.entities.job import JobStatus, JobType
+from vaultseek.models.entities.library import Library
+from vaultseek.models.services.duplicate_matcher import DuplicateMatcher
+from vaultseek.models.services.organize_engine import OrganizeEngine
+from vaultseek.models.services.quality_scorer import DEFAULT_WEIGHTS, QualityScorer
+from vaultseek.plugins.builtin.filename_parser import FilenameParserProvider
+from vaultseek.services.job_dispatcher import JobDispatcher
+from vaultseek.services.job_queue_service import JobQueueService
+from vaultseek.services.metadata_arbitrator import MetadataArbitrator
+from vaultseek.services.report_service import ReportService
+from vaultseek.services.review_queue_service import ReviewQueueService
+from vaultseek.services.rules_engine import RulesEngine
+from vaultseek.workers.cpu.fingerprint_worker import FingerprintWorker
+from vaultseek.workers.cpu.hash_worker import HashWorker
+from vaultseek.workers.io.artwork_worker import ArtworkWorker
+from vaultseek.workers.io.duplicate_worker import DuplicateWorker
+from vaultseek.workers.io.media_server_worker import MediaServerWorker
+from vaultseek.workers.io.metadata_worker import MetadataWorker
+from vaultseek.workers.io.organizer_worker import OrganizerWorker
+from vaultseek.workers.io.report_worker import ReportWorker
+from vaultseek.workers.io.rule_worker import RuleWorker
+from vaultseek.workers.io.scanner_worker import ScannerWorker
 
 _NOW = datetime(2026, 7, 15, tzinfo=UTC)
 _POLL_TIMEOUT_SECONDS = 5.0
@@ -61,8 +61,8 @@ class _SynchronousExecutor:
     Runs each submitted callable in the caller's thread so these unit tests
     exercise the dispatcher's submit/done-callback wiring without spawning
     real worker processes — which is slow and flaky on GitHub Actions
-    Windows runners. :func:`~musicvault.workers.cpu.hash_worker.compute_hash`
-    and :func:`~musicvault.workers.cpu.fingerprint_worker.compute_fingerprint`
+    Windows runners. :func:`~vaultseek.workers.cpu.hash_worker.compute_hash`
+    and :func:`~vaultseek.workers.cpu.fingerprint_worker.compute_fingerprint`
     are covered separately in their own worker test modules.
     """
 
@@ -367,7 +367,7 @@ def test_run_cycle_skips_process_pool_when_fingerprint_already_exists(
     library_id: UUID,
     track_id: UUID,
 ) -> None:
-    from musicvault.models.value_objects.file_identity import FileIdentity
+    from vaultseek.models.value_objects.file_identity import FileIdentity
 
     file_identity_repo.upsert(
         FileIdentity(
@@ -406,8 +406,8 @@ def test_run_cycle_dispatches_a_fingerprint_file_job(
     tmp_path: Path,
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
-    from musicvault.models.interfaces.fingerprint import FingerprintResult
-    from musicvault.models.value_objects.file_identity import FileIdentity
+    from vaultseek.models.interfaces.fingerprint import FingerprintResult
+    from vaultseek.models.value_objects.file_identity import FileIdentity
 
     audio = tmp_path / "track.flac"
     audio.write_bytes(b"audio")
@@ -420,7 +420,7 @@ def test_run_cycle_dispatches_a_fingerprint_file_job(
         )
     )
     monkeypatch.setattr(
-        "musicvault.workers.cpu.fingerprint_worker.generate_chromaprint",
+        "vaultseek.workers.cpu.fingerprint_worker.generate_chromaprint",
         lambda _path: FingerprintResult(10.0, b"fp", "aa" * 32),
     )
     job_id = job_queue.enqueue(
@@ -480,7 +480,7 @@ def test_run_cycle_dispatches_an_organize_file_job(
 ) -> None:
     """The organize route is wired: a job for a missing track is claimed,
     executed, and failed by the OrganizerWorker (not left pending)."""
-    from musicvault.db.uuid_utils import generate_uuid7
+    from vaultseek.db.uuid_utils import generate_uuid7
 
     job_id = job_queue.enqueue(
         JobType.ORGANIZE_FILE,
@@ -587,7 +587,7 @@ def test_run_cycle_dispatches_an_identify_metadata_job(
     library_id: UUID,
     track_id: UUID,
 ) -> None:
-    from musicvault.models.entities.track import LibraryZone, Track
+    from vaultseek.models.entities.track import LibraryZone, Track
 
     track_repo.upsert(
         Track(

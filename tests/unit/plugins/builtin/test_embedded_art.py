@@ -9,9 +9,9 @@ from typing import Any
 import pytest
 from PIL import Image
 
-from musicvault.models.interfaces.artwork import ArtworkQuery
-from musicvault.plugins.builtin.embedded_art import EmbeddedArtProvider
-from musicvault.plugins.builtin.embedded_art import provider as embedded_mod
+from vaultseek.models.interfaces.artwork import ArtworkQuery
+from vaultseek.plugins.builtin.embedded_art import EmbeddedArtProvider
+from vaultseek.plugins.builtin.embedded_art import provider as embedded_mod
 
 
 def _png(width: int = 600, height: int = 600) -> bytes:

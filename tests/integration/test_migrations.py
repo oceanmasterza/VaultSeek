@@ -12,8 +12,8 @@ from pathlib import Path
 import pytest
 from sqlalchemy import create_engine, text
 
-from musicvault.core.exceptions import DatabaseError
-from musicvault.db.migrations.runner import downgrade_migrations, run_migrations
+from vaultseek.core.exceptions import DatabaseError
+from vaultseek.db.migrations.runner import downgrade_migrations, run_migrations
 
 EXPECTED_TABLE_NAMES = {
     "libraries",
@@ -49,7 +49,7 @@ def _sqlite_table_names(db_path: Path) -> set[str]:
 
 
 def test_run_migrations_creates_the_database_file(tmp_path: Path) -> None:
-    db_path = tmp_path / "does_not_exist_yet" / "musicvault.db"
+    db_path = tmp_path / "does_not_exist_yet" / "vaultseek.db"
     db_path.parent.mkdir()
 
     run_migrations(db_path)
@@ -58,7 +58,7 @@ def test_run_migrations_creates_the_database_file(tmp_path: Path) -> None:
 
 
 def test_run_migrations_creates_all_specified_tables(tmp_path: Path) -> None:
-    db_path = tmp_path / "musicvault.db"
+    db_path = tmp_path / "vaultseek.db"
 
     run_migrations(db_path)
 
@@ -67,7 +67,7 @@ def test_run_migrations_creates_all_specified_tables(tmp_path: Path) -> None:
 
 
 def test_run_migrations_records_alembic_version(tmp_path: Path) -> None:
-    db_path = tmp_path / "musicvault.db"
+    db_path = tmp_path / "vaultseek.db"
 
     run_migrations(db_path)
 
@@ -82,7 +82,7 @@ def test_run_migrations_records_alembic_version(tmp_path: Path) -> None:
 
 
 def test_downgrade_to_base_drops_all_specified_tables(tmp_path: Path) -> None:
-    db_path = tmp_path / "musicvault.db"
+    db_path = tmp_path / "vaultseek.db"
     run_migrations(db_path)
 
     downgrade_migrations(db_path, "base")
@@ -94,7 +94,7 @@ def test_downgrade_to_base_drops_all_specified_tables(tmp_path: Path) -> None:
 def test_upgrade_downgrade_upgrade_round_trip_is_repeatable(tmp_path: Path) -> None:
     """Proves the migration is safe to run more than once — e.g. after a
     user rolls back and then re-applies an update."""
-    db_path = tmp_path / "musicvault.db"
+    db_path = tmp_path / "vaultseek.db"
 
     run_migrations(db_path)
     assert EXPECTED_TABLE_NAMES.issubset(_sqlite_table_names(db_path))
@@ -107,7 +107,7 @@ def test_upgrade_downgrade_upgrade_round_trip_is_repeatable(tmp_path: Path) -> N
 
 
 def test_run_migrations_is_a_no_op_when_already_up_to_date(tmp_path: Path) -> None:
-    db_path = tmp_path / "musicvault.db"
+    db_path = tmp_path / "vaultseek.db"
 
     run_migrations(db_path)
     run_migrations(db_path)  # must not raise
@@ -119,7 +119,7 @@ def test_run_migrations_wraps_failures_in_database_error(tmp_path: Path) -> None
     """A SQLite open failure (here: the parent directory does not exist)
     should surface as a `DatabaseError`, not a raw Alembic/SQLAlchemy
     exception — see `run_migrations`'s docstring."""
-    db_path = tmp_path / "missing_directory" / "musicvault.db"
+    db_path = tmp_path / "missing_directory" / "vaultseek.db"
 
     with pytest.raises(DatabaseError) as exc_info:
         run_migrations(db_path)
@@ -129,7 +129,7 @@ def test_run_migrations_wraps_failures_in_database_error(tmp_path: Path) -> None
 def test_downgrade_migrations_wraps_failures_in_database_error(tmp_path: Path) -> None:
     """An unknown target revision should surface as a `DatabaseError`,
     mirroring `run_migrations`'s error translation."""
-    db_path = tmp_path / "musicvault.db"
+    db_path = tmp_path / "vaultseek.db"
     run_migrations(db_path)
 
     with pytest.raises(DatabaseError) as exc_info:

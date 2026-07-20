@@ -4,10 +4,10 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from musicvault.app import bootstrap
-from musicvault.core.config import AppConfig, PipelineConfig, save_config
-from musicvault.core.container import Container
-from musicvault.core.paths import get_app_paths
+from vaultseek.app import bootstrap
+from vaultseek.core.config import AppConfig, PipelineConfig, save_config
+from vaultseek.core.container import Container
+from vaultseek.core.paths import get_app_paths
 
 
 def bootstrap_with_test_pipeline(tmp_path: Path) -> Container:

@@ -1,4 +1,4 @@
-"""Unit tests for musicvault.db.repositories.duplicate_repo."""
+"""Unit tests for vaultseek.db.repositories.duplicate_repo."""
 
 from __future__ import annotations
 
@@ -8,10 +8,10 @@ from uuid import UUID
 import pytest
 from sqlalchemy import Engine, insert
 
-from musicvault.db.repositories.duplicate_repo import DuplicateRepository
-from musicvault.db.tables import file_identity, tracks
-from musicvault.db.uuid_utils import generate_uuid7, uuid_to_blob
-from musicvault.models.entities.duplicate_group import (
+from vaultseek.db.repositories.duplicate_repo import DuplicateRepository
+from vaultseek.db.tables import file_identity, tracks
+from vaultseek.db.uuid_utils import generate_uuid7, uuid_to_blob
+from vaultseek.models.entities.duplicate_group import (
     DuplicateGroup,
     DuplicateMember,
     GroupResolution,
