@@ -1,5 +1,5 @@
 {
-  "schema_version": 7,
+  "schema_version": 8,
   "log_level": "INFO",
   "theme": "dark",
   "pipeline": {
@@ -27,5 +27,18 @@
     "fetch_enabled": true,
     "min_width": 500,
     "min_height": 500
+  },
+  "acquisition": {
+    "enabled_providers": ["stub"],
+    "provider_order": ["nicotine_plus", "stub"],
+    "search_timeout_seconds": 30.0,
+    "auto_queue_jobs": false,
+    "nicotine_plus": {
+      "enabled": false,
+      "host": "127.0.0.1",
+      "port": 22024,
+      "username": "",
+      "password": ""
+    }
   }
 }

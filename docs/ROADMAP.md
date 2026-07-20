@@ -13,7 +13,7 @@ Public-facing roadmap for GitHub visitors. For day-to-day engineering progress, 
 - Fork MusicVault into VaultSeek (separate app, separate data directory)
 - Rebrand package and installer (`vaultseek`, `%APPDATA%\VaultSeek`)
 - Preserve working library pipeline (scan → identify → organize → artwork → media server)
-- Planning docs, ADRs, CI, 550+ tests
+- Planning docs, ADRs, CI, 570+ tests
 - GitHub repository: [oceanmasterza/VaultSeek](https://github.com/oceanmasterza/VaultSeek)
 
 ---
@@ -28,56 +28,49 @@ Public-facing roadmap for GitHub visitors. For day-to-day engineering progress, 
 - Automatic `AcquisitionJob` creation for missing tracks
 - `AcquisitionProvider` protocol, `ProviderManager`, stub provider
 
-**Next:** provider configuration, Nicotine+ skeleton, search/scoring/download subsystems.
-
 ---
 
 ## Phase 3 — Provider configuration
 
-**Status: In progress**
+**Status: Complete**
 
-- Configurable enabled providers and connection settings
+- `AcquisitionConfig` (schema v8) — enabled providers, order, Nicotine+ settings
 - Bootstrap-time provider connect from `config.json`
 
 ---
 
 ## Phase 4 — Nicotine+ integration
 
-**Status: Planned**
+**Status: Skeleton complete**
 
 First real acquisition provider — communicates with an installed Nicotine+ client (not raw Soulseek protocol).
 
-- Connection and availability detection
-- Search dispatch and async result collection
-- Download queue and progress
-- Completion hand-off to Verification Pipeline
+- Connection probe and graceful failure when Nicotine+ is offline ✅
+- Live search / download RPC — **next**
+- Completion hand-off to Verification Pipeline — planned
 
 Nicotine+ is the **first** provider, not the architecture.
 
 ---
 
-## Phase 4 — Acquisition Engine
+## Phase 5 — Acquisition Engine subsystems
 
-**Status: Planned (design complete, implementation starting)**
+**Status: Skeletons complete**
 
-Full Acquisition Engine subsystems per [ARCHITECTURAL_UPDATE_001.md](ARCHITECTURAL_UPDATE_001.md):
+| Subsystem | Status |
+|-----------|--------|
+| Missing Media Analyzer | ✅ |
+| Search Dispatcher | ✅ skeleton |
+| Scoring Engine | ✅ skeleton |
+| Download Manager | ✅ skeleton |
+| Verification Engine | Planned |
+| Import Pipeline | Planned (reuse MusicVault organize) |
 
-| Subsystem | Purpose |
-|-----------|---------|
-| Missing Media Analyzer | Gap detection vs MusicBrainz / library |
-| Acquisition Job Scheduler | Queue and priority |
-| Search Dispatcher | Provider-independent search requests |
-| Result Collector | Timeouts, cancellation, aggregation |
-| Scoring Engine | Weighted confidence, best-match selection |
-| Download Manager | Retries, history, concurrency |
-| Verification Engine | Mandatory pre-import checks |
-| Import Pipeline | Reuse MusicVault organize / artwork / duplicates |
-
-User-facing: wishlist, confidence %, auto-acquire above threshold (e.g. 90%).
+User-facing: wishlist, confidence %, auto-acquire above threshold (e.g. 90%) — planned.
 
 ---
 
-## Phase 5 — Automation
+## Phase 6 — Automation
 
 **Status: Planned**
 
@@ -89,19 +82,8 @@ User-facing: wishlist, confidence %, auto-acquire above threshold (e.g. 90%).
 
 ---
 
-## Future vision
+## Longevity
 
-- **Multiple providers** in parallel (Nicotine+, local archive, Lidarr, …)
-- **Quality upgrades** — FLAC replacement jobs as first-class `AcquisitionJob` type
-- **Library optimisation** — completeness dashboard, duplicate replacement suggestions
-- **Intelligent acquisition** — learning preferred releases, scoring profiles
-- **Plugin ecosystem** — installable providers without core changes
-- **Shared core** — `MusicVault.Core` package consumed by both apps
-
----
-
-## How to follow progress
-
-- **Issues & board:** [VaultSeek project board](https://github.com/users/oceanmasterza/projects/1)
-- **CI:** [![CI](https://github.com/oceanmasterza/VaultSeek/actions/workflows/ci.yml/badge.svg)](https://github.com/oceanmasterza/VaultSeek/actions/workflows/ci.yml)
-- **Contributing:** [CONTRIBUTING.md](../CONTRIBUTING.md)
+- Shared `MusicVault.Core` extraction (library models, organize, plugins)
+- Additional providers beyond Nicotine+
+- Cross-platform only after Windows desktop maturity

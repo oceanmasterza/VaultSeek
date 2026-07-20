@@ -45,21 +45,19 @@ VaultSeek-specific foundation:
 - **AcquisitionJob** entity and state machine (persisted to SQLite)
 - **AcquisitionEngine** — create, queue, cancel, advance with DB persistence
 - **Missing Media Analyzer** — MusicBrainz tracklist gap detection + job creation
-- **Provider Framework** — `AcquisitionProvider` protocol, `ProviderManager`, stub provider
+- **Provider Framework** — config-driven providers, `ProviderManager`, stub + Nicotine+ skeleton
+- **SearchDispatcher / ScoringEngine / DownloadManager** — acquisition pipeline skeletons
 - Planning docs, ADRs, architectural update (`ARCHITECTURAL_UPDATE_001`)
 
 ### In development
 
-- Acquisition provider configuration (Nicotine+ settings)
-- Nicotine+ Provider (first real acquisition source)
-- Search dispatcher, scoring engine, download manager
+- Live Nicotine+ search and download (RPC)
+- Verification Pipeline before import
 - Public acquisition UI (wishlist, job progress, recommendations)
 
 ### Planned
 
-- Result scoring engine with configurable weights and auto-select above confidence threshold
-- Download Manager (queue, retries, history)
-- Verification Pipeline (fingerprint + metadata + duplicate checks before import)
+- Auto-select above confidence threshold + retries/history for downloads
 - Quality-upgrade AcquisitionJobs
 - Additional providers (local archive, SMB, Lidarr, native Soulseek, …)
 - Shared `MusicVault.Core` library extraction
@@ -153,8 +151,8 @@ Full reference: [docs/TECH_STACK.md](docs/TECH_STACK.md).
 | | |
 |---|---|
 | **Maturity** | Early active development (post-fork, acquisition foundation) |
-| **Phase** | Phase 2 — Acquisition Engine foundation |
-| **Tests** | 550+ unit/integration tests passing |
+| **Phase** | Phases 3–8 skeletons complete; Phase 9 Verification next |
+| **Tests** | 574 unit/integration tests passing |
 | **Roadmap** | [docs/ROADMAP.md](docs/ROADMAP.md) (public) · [docs/DEVELOPMENT_ROADMAP.md](docs/DEVELOPMENT_ROADMAP.md) (internal / AI) · [Project board](https://github.com/users/oceanmasterza/projects/1) |
 
 ```powershell

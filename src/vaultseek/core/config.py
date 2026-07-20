@@ -18,7 +18,29 @@ from typing import Any
 
 from vaultseek.core.exceptions import ConfigError, ConfigMigrationError, ConfigVersionError
 
-CURRENT_SCHEMA_VERSION = 7
+CURRENT_SCHEMA_VERSION = 8
+
+
+@dataclass(frozen=True)
+class NicotinePlusConfig:
+    """Connection settings for the Nicotine+ acquisition provider."""
+
+    enabled: bool = False
+    host: str = "127.0.0.1"
+    port: int = 22024
+    username: str = ""
+    password: str = ""
+
+
+@dataclass(frozen=True)
+class AcquisitionConfig:
+    """Acquisition Engine provider enablement and dispatch tunables."""
+
+    enabled_providers: tuple[str, ...] = ("stub",)
+    provider_order: tuple[str, ...] = ("nicotine_plus", "stub")
+    search_timeout_seconds: float = 30.0
+    auto_queue_jobs: bool = False
+    nicotine_plus: NicotinePlusConfig = field(default_factory=NicotinePlusConfig)
 
 
 @dataclass(frozen=True)
@@ -106,6 +128,7 @@ class AppConfig:
     metadata: MetadataConfig = field(default_factory=MetadataConfig)
     watch: WatchConfig = field(default_factory=WatchConfig)
     artwork: ArtworkConfig = field(default_factory=ArtworkConfig)
+    acquisition: AcquisitionConfig = field(default_factory=AcquisitionConfig)
 
     def to_dict(self) -> dict[str, Any]:
         """Return a plain-dict representation suitable for JSON serialization."""
@@ -116,6 +139,12 @@ class AppConfig:
                 value = metadata.get(key)
                 if isinstance(value, tuple):
                     metadata[key] = list(value)
+        acquisition = data.get("acquisition")
+        if isinstance(acquisition, dict):
+            for key in ("enabled_providers", "provider_order"):
+                value = acquisition.get(key)
+                if isinstance(value, tuple):
+                    acquisition[key] = list(value)
         return data
 
 
@@ -177,6 +206,13 @@ def _migrate_v6_to_v7(raw: dict[str, Any]) -> dict[str, Any]:
     return migrated
 
 
+def _migrate_v7_to_v8(raw: dict[str, Any]) -> dict[str, Any]:
+    migrated = dict(raw)
+    migrated["schema_version"] = 8
+    migrated["acquisition"] = asdict(AcquisitionConfig())
+    return migrated
+
+
 _MIGRATIONS: dict[int, Callable[[dict[str, Any]], dict[str, Any]]] = {
     1: _migrate_v1_to_v2,
     2: _migrate_v2_to_v3,
@@ -184,6 +220,7 @@ _MIGRATIONS: dict[int, Callable[[dict[str, Any]], dict[str, Any]]] = {
     4: _migrate_v4_to_v5,
     5: _migrate_v5_to_v6,
     6: _migrate_v6_to_v7,
+    7: _migrate_v7_to_v8,
 }
 
 
@@ -245,6 +282,24 @@ def _from_dict(raw: dict[str, Any]) -> AppConfig:
         filtered["artwork"] = ArtworkConfig(
             **{key: value for key, value in artwork_raw.items() if key in artwork_fields}
         )
+
+    acquisition_raw = filtered.get("acquisition")
+    if isinstance(acquisition_raw, dict):
+        acquisition_fields = set(AcquisitionConfig.__dataclass_fields__)
+        coerced = {
+            key: value for key, value in acquisition_raw.items() if key in acquisition_fields
+        }
+        if "enabled_providers" in coerced and isinstance(coerced["enabled_providers"], list):
+            coerced["enabled_providers"] = tuple(coerced["enabled_providers"])
+        if "provider_order" in coerced and isinstance(coerced["provider_order"], list):
+            coerced["provider_order"] = tuple(coerced["provider_order"])
+        nicotine_raw = coerced.get("nicotine_plus")
+        if isinstance(nicotine_raw, dict):
+            nicotine_fields = set(NicotinePlusConfig.__dataclass_fields__)
+            coerced["nicotine_plus"] = NicotinePlusConfig(
+                **{key: value for key, value in nicotine_raw.items() if key in nicotine_fields}
+            )
+        filtered["acquisition"] = AcquisitionConfig(**coerced)
 
     return AppConfig(**filtered)
 

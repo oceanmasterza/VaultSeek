@@ -6,7 +6,7 @@ Version: 1.1
 
 Status: Active development
 
-Overall Progress: 15%
+Overall Progress: 28%
 
 ---
 
@@ -32,17 +32,16 @@ Project State
 
 Current Phase
 
-Phase 2 – Acquisition Engine foundation
+Phase 9 — Verification Engine (skeletons for Phases 3–8 complete)
 
 Current Sprint
 
-Sprint 2
+Sprint 3
 
 Current Goal
 
-AcquisitionJob persistence + Missing Media Analyzer complete; next: provider config,
-Nicotine+ skeleton, search/scoring/download skeletons.
-
+VerificationEngine + ImportPipeline skeletons and wiring. Next: real Nicotine+
+search/download I/O; persist download handles; end-to-end verify→import.
 ---
 
 # Vision Statement
@@ -243,25 +242,25 @@ Provider Framework
 
 Status
 
-⬜ Not Started
+✅ Complete
 
 Tasks
 
-Create Provider interfaces
+Create Provider interfaces ✅
 
-Create Provider Manager
+Create Provider Manager ✅
 
-Provider registration
+Provider registration ✅
 
-Configuration
+Configuration ✅ (`AcquisitionConfig` schema v8)
 
-Plugin loading
+Plugin loading ✅
 
-Dependency Injection
+Dependency Injection ✅
 
 Deliverable
 
-Application supports multiple providers.
+Application supports multiple providers via config + ProviderManager.
 
 ---
 
@@ -271,29 +270,29 @@ Nicotine+ Provider
 
 Status
 
-⬜ Not Started
+🟡 Skeleton complete (no live search/download yet)
 
 Tasks
 
-Connection
+Connection ✅ (TCP probe)
 
-Availability detection
+Availability detection ✅
 
-Authentication (if required)
+Authentication (if required) — deferred
 
-Search
+Search — stub (empty until RPC client)
 
-Receive results
+Receive results — deferred
 
-Queue downloads
+Queue downloads — stub handle
 
-Monitor progress
+Monitor progress — stub status
 
-Completion detection
+Completion detection — deferred
 
 Deliverable
 
-Searches and downloads through Nicotine+.
+Graceful connect without Nicotine+; live search/download still planned.
 
 ---
 
@@ -303,21 +302,21 @@ Missing Media Detection
 
 Status
 
-⬜ Not Started
+✅ Complete (analyzer + job creation; quality comparison deferred)
 
 Tasks
 
-Album analysis
+Album analysis ✅
 
-Track analysis
+Track analysis ✅
 
-Incomplete release detection
+Incomplete release detection ✅
 
-Quality comparison
+Quality comparison — deferred
 
 Deliverable
 
-Accurate missing-media identification.
+Accurate missing-media identification vs MusicBrainz tracklists.
 
 ---
 
@@ -327,17 +326,17 @@ Search Dispatcher (Acquisition Engine)
 
 Status
 
-⬜ Not Started
+✅ Complete (skeleton)
 
 Tasks
 
-Generate SearchRequests
+Generate SearchRequests ✅
 
-Provider dispatch
+Provider dispatch ✅
 
-Timeout handling
+Timeout handling ✅ (config field; sync dispatch for now)
 
-Cancellation
+Cancellation — via job cancel
 
 Deliverable
 
@@ -351,21 +350,21 @@ Scoring Engine
 
 Status
 
-⬜ Not Started
+✅ Complete (skeleton)
 
 Tasks
 
-Normalize results
+Normalize results ✅
 
-Weighted scoring
+Weighted scoring ✅
 
-Recommendation engine
+Recommendation engine ✅ (`select_best`)
 
-Configurable priorities
+Configurable priorities ✅ (`ScoringWeights`)
 
 Deliverable
 
-Automatic best-match selection.
+Automatic best-match selection (heuristic weights).
 
 ---
 
@@ -375,23 +374,27 @@ Download Manager
 
 Status
 
-⬜ Not Started
+🟡 Skeleton complete
 
 Tasks
 
-Queue
+Queue ✅ (in-memory handles)
 
-Retries
+Retries — deferred
 
-Resume
+Resume — deferred
 
-Cancellation
+Cancellation ✅
 
-History
+History — deferred
 
-Progress
+Progress — via provider status
 
 Deliverable
+
+Download orchestration via ProviderManager (full retries later).
+
+---
 
 Reliable download workflow.
 
@@ -761,6 +764,27 @@ Recommended refactors (non-user-visible)
 Next session goal
 
 Provider config hardening, Nicotine+ skeleton, search/scoring/download skeletons.
+
+---
+
+## 2026-07-20 — Phases 3–8 skeletons
+
+Summary
+
+- `AcquisitionConfig` / schema v8 + bootstrap `connect_acquisition_providers`.
+- `NicotinePlusProvider` skeleton (TCP probe; graceful without client).
+- `SearchDispatcher`, `ScoringEngine`, `DownloadManager` wired in `Container`.
+- 574 tests passing.
+
+Recommended refactors (non-user-visible)
+
+- Persist search results on `AcquisitionJob.extra` during COLLECTING_RESULTS.
+- Replace sync Nicotine+ probe with real RPC when API surface is chosen.
+- Persist download handles (survive restart).
+
+Next session goal
+
+Verification + import pipeline integration; real Nicotine+ search/download.
 
 ---
 

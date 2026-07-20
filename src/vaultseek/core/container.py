@@ -47,6 +47,7 @@ from vaultseek.models.services.organize_engine import OrganizeEngine
 from vaultseek.models.services.quality_scorer import DEFAULT_WEIGHTS, QualityScorer
 from vaultseek.plugins.builtin.acoustid import AcoustIdProvider
 from vaultseek.plugins.builtin.acquisition_stub import StubAcquisitionProvider
+from vaultseek.plugins.builtin.nicotine_plus import NicotinePlusProvider
 from vaultseek.plugins.builtin.ampache import AmpachePlugin
 from vaultseek.plugins.builtin.cover_art_archive import CoverArtArchiveProvider
 from vaultseek.plugins.builtin.embedded_art import EmbeddedArtProvider
@@ -62,7 +63,9 @@ from vaultseek.plugins.builtin.navidrome import NavidromePlugin
 from vaultseek.plugins.builtin.plex import PlexPlugin
 from vaultseek.plugins.builtin.subsonic import SubsonicPlugin
 from vaultseek.plugins.manager import PluginManager
+from vaultseek.services.acquisition_bootstrap import connect_acquisition_providers
 from vaultseek.services.acquisition_engine import AcquisitionEngine
+from vaultseek.services.download_manager import DownloadManager
 from vaultseek.services.folder_trust import FolderTrustService
 from vaultseek.services.job_dispatcher import JobDispatcher
 from vaultseek.services.job_queue_service import JobQueueService
@@ -73,6 +76,8 @@ from vaultseek.services.provider_manager import ProviderManager
 from vaultseek.services.report_service import ReportService
 from vaultseek.services.review_queue_service import ReviewQueueService
 from vaultseek.services.rules_engine import RulesEngine
+from vaultseek.services.scoring_engine import ScoringEngine
+from vaultseek.services.search_dispatcher import SearchDispatcher
 from vaultseek.services.watch_folder_service import WatchFolderService
 from vaultseek.workers.cpu.fingerprint_worker import FingerprintWorker
 from vaultseek.workers.cpu.hash_worker import HashWorker
@@ -119,6 +124,9 @@ class Container:
     plugin_manager: PluginManager
     provider_manager: ProviderManager
     acquisition_engine: AcquisitionEngine
+    search_dispatcher: SearchDispatcher
+    scoring_engine: ScoringEngine
+    download_manager: DownloadManager
     missing_media_analyzer: MissingMediaAnalyzer | None
     metadata_arbitrator: MetadataArbitrator
     scanner_worker: ScannerWorker
@@ -224,7 +232,15 @@ class Container:
             _build_acquisition_providers(),
         )
         provider_manager = ProviderManager(plugin_manager.get_acquisition_providers())
+        connect_acquisition_providers(config.acquisition, provider_manager)
         acquisition_engine = AcquisitionEngine(provider_manager, acquisition_job_repo)
+        search_dispatcher = SearchDispatcher(
+            provider_manager,
+            acquisition_engine,
+            timeout_seconds=config.acquisition.search_timeout_seconds,
+        )
+        scoring_engine = ScoringEngine()
+        download_manager = DownloadManager(provider_manager, acquisition_engine)
         metadata_arbitrator = MetadataArbitrator(
             plugin_manager.get_metadata_providers(),
             confidence_threshold=config.metadata.confidence_threshold,
@@ -381,6 +397,9 @@ class Container:
             plugin_manager=plugin_manager,
             provider_manager=provider_manager,
             acquisition_engine=acquisition_engine,
+            search_dispatcher=search_dispatcher,
+            scoring_engine=scoring_engine,
+            download_manager=download_manager,
             missing_media_analyzer=missing_media_analyzer,
             metadata_arbitrator=metadata_arbitrator,
             scanner_worker=scanner_worker,
@@ -459,6 +478,6 @@ def _build_media_server_plugins() -> list[MediaServerPlugin]:
 
 
 def _build_acquisition_providers() -> list[AcquisitionProvider]:
-    """Construct Phase 1 acquisition providers (stub only)."""
-    return [StubAcquisitionProvider()]
+    """Construct acquisition providers (stub + Nicotine+ skeleton)."""
+    return [StubAcquisitionProvider(), NicotinePlusProvider()]
 
