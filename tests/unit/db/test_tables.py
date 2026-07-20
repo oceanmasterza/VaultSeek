@@ -48,6 +48,7 @@ EXPECTED_TABLE_NAMES = {
     "track_artwork",
     "album_artwork",
     "trusted_folders",
+    "acquisition_jobs",
 }
 
 
@@ -110,7 +111,7 @@ def _insert_track(eng: Engine, library_id: bytes) -> bytes:
 
 def test_create_all_produces_exactly_the_specified_tables(engine: Engine) -> None:
     assert set(metadata.tables) == EXPECTED_TABLE_NAMES
-    assert len(metadata.tables) == 19
+    assert len(metadata.tables) == 20
 
 
 def test_deferred_undocumented_tables_are_not_created(engine: Engine) -> None:

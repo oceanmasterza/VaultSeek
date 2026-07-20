@@ -42,16 +42,17 @@ Inherited from the MusicVault fork (working today):
 
 VaultSeek-specific foundation:
 
-- **AcquisitionJob** entity and state machine
-- **AcquisitionEngine** skeleton (create, queue, cancel, advance)
+- **AcquisitionJob** entity and state machine (persisted to SQLite)
+- **AcquisitionEngine** — create, queue, cancel, advance with DB persistence
+- **Missing Media Analyzer** — MusicBrainz tracklist gap detection + job creation
 - **Provider Framework** — `AcquisitionProvider` protocol, `ProviderManager`, stub provider
 - Planning docs, ADRs, architectural update (`ARCHITECTURAL_UPDATE_001`)
 
 ### In development
 
-- Persist AcquisitionJobs to the database
-- Missing Media Analyzer (album / track gaps vs official releases)
+- Acquisition provider configuration (Nicotine+ settings)
 - Nicotine+ Provider (first real acquisition source)
+- Search dispatcher, scoring engine, download manager
 - Public acquisition UI (wishlist, job progress, recommendations)
 
 ### Planned

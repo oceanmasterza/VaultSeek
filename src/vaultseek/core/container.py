@@ -22,6 +22,7 @@ from vaultseek.core.event_bus import EventBus
 from vaultseek.core.paths import AppPaths
 from vaultseek.db.engine import create_sqlite_engine
 from vaultseek.db.migrations.runner import run_migrations
+from vaultseek.db.repositories.acquisition_job_repo import AcquisitionJobRepository
 from vaultseek.db.repositories.album_repo import AlbumRepository
 from vaultseek.db.repositories.artist_repo import ArtistRepository
 from vaultseek.db.repositories.artwork_repo import ArtworkRepository
@@ -66,6 +67,7 @@ from vaultseek.services.folder_trust import FolderTrustService
 from vaultseek.services.job_dispatcher import JobDispatcher
 from vaultseek.services.job_queue_service import JobQueueService
 from vaultseek.services.metadata_arbitrator import MetadataArbitrator
+from vaultseek.services.missing_media_analyzer import MissingMediaAnalyzer
 from vaultseek.services.operation_orchestrator import OperationOrchestrator
 from vaultseek.services.provider_manager import ProviderManager
 from vaultseek.services.report_service import ReportService
@@ -104,6 +106,7 @@ class Container:
     album_repo: AlbumRepository
     artist_repo: ArtistRepository
     metadata_confidence_repo: MetadataConfidenceRepository
+    acquisition_job_repo: AcquisitionJobRepository
     database_writer: DatabaseWriter
     job_queue: JobQueueService
     review_queue: ReviewQueueService
@@ -116,6 +119,7 @@ class Container:
     plugin_manager: PluginManager
     provider_manager: ProviderManager
     acquisition_engine: AcquisitionEngine
+    missing_media_analyzer: MissingMediaAnalyzer | None
     metadata_arbitrator: MetadataArbitrator
     scanner_worker: ScannerWorker
     hash_worker: HashWorker
@@ -168,6 +172,7 @@ class Container:
         file_identity_repo = FileIdentityRepository(engine)
         metadata_confidence_repo = MetadataConfidenceRepository(engine)
         trusted_folder_repo = TrustedFolderRepository(engine)
+        acquisition_job_repo = AcquisitionJobRepository(engine)
         event_bus = EventBus()
 
         database_writer = DatabaseWriter(
@@ -219,7 +224,7 @@ class Container:
             _build_acquisition_providers(),
         )
         provider_manager = ProviderManager(plugin_manager.get_acquisition_providers())
-        acquisition_engine = AcquisitionEngine(provider_manager)
+        acquisition_engine = AcquisitionEngine(provider_manager, acquisition_job_repo)
         metadata_arbitrator = MetadataArbitrator(
             plugin_manager.get_metadata_providers(),
             confidence_threshold=config.metadata.confidence_threshold,
@@ -243,6 +248,11 @@ class Container:
                 job_repo,
                 sample_min=config.metadata.fingerprint_sample_min,
             )
+            if musicbrainz is not None
+            else None
+        )
+        missing_media_analyzer = (
+            MissingMediaAnalyzer(album_repo, track_repo, musicbrainz, artist_repo)
             if musicbrainz is not None
             else None
         )
@@ -358,6 +368,7 @@ class Container:
             album_repo=album_repo,
             artist_repo=artist_repo,
             metadata_confidence_repo=metadata_confidence_repo,
+            acquisition_job_repo=acquisition_job_repo,
             database_writer=database_writer,
             job_queue=job_queue,
             review_queue=review_queue,
@@ -370,6 +381,7 @@ class Container:
             plugin_manager=plugin_manager,
             provider_manager=provider_manager,
             acquisition_engine=acquisition_engine,
+            missing_media_analyzer=missing_media_analyzer,
             metadata_arbitrator=metadata_arbitrator,
             scanner_worker=scanner_worker,
             hash_worker=hash_worker,

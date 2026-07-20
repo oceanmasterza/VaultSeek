@@ -35,6 +35,7 @@ EXPECTED_TABLE_NAMES = {
     "track_artwork",
     "album_artwork",
     "trusted_folders",
+    "acquisition_jobs",
 }
 
 
@@ -78,7 +79,7 @@ def test_run_migrations_records_alembic_version(tmp_path: Path) -> None:
     finally:
         engine.dispose()
 
-    assert version == "0005"
+    assert version == "0006"
 
 
 def test_downgrade_to_base_drops_all_specified_tables(tmp_path: Path) -> None:

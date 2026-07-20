@@ -3,10 +3,12 @@
 from __future__ import annotations
 
 from datetime import UTC
-from uuid import uuid4
+from uuid import UUID
 
 import pytest
+from sqlalchemy import Engine
 
+from vaultseek.db.repositories.acquisition_job_repo import AcquisitionJobRepository
 from vaultseek.models.entities.acquisition_job import (
     AcquisitionJobState,
     AcquisitionJobType,
@@ -16,6 +18,14 @@ from vaultseek.models.entities.acquisition_job import (
 from vaultseek.plugins.builtin.acquisition_stub import StubAcquisitionProvider
 from vaultseek.services.acquisition_engine import AcquisitionEngine
 from vaultseek.services.provider_manager import ProviderManager
+
+
+@pytest.fixture
+def acquisition_engine(engine: Engine) -> AcquisitionEngine:
+    return AcquisitionEngine(
+        ProviderManager([StubAcquisitionProvider()]),
+        AcquisitionJobRepository(engine),
+    )
 
 
 def test_happy_path_transitions_are_legal() -> None:
@@ -39,10 +49,10 @@ def test_illegal_transition_raises() -> None:
         validate_transition(AcquisitionJobState.CREATED, AcquisitionJobState.DOWNLOADING)
 
 
-def test_engine_create_queue_and_cancel() -> None:
-    engine = AcquisitionEngine(ProviderManager([StubAcquisitionProvider()]))
-    library_id = uuid4()
-    job = engine.create_job(
+def test_engine_create_queue_and_cancel(
+    acquisition_engine: AcquisitionEngine, library_id: UUID
+) -> None:
+    job = acquisition_engine.create_job(
         library_id=library_id,
         job_type=AcquisitionJobType.MISSING_ALBUM,
         artist="Pink Floyd",
@@ -53,9 +63,29 @@ def test_engine_create_queue_and_cancel() -> None:
     assert job.state is AcquisitionJobState.CREATED
     assert job.created_at.tzinfo is UTC
 
-    queued = engine.queue(job.id)
+    queued = acquisition_engine.queue(job.id)
     assert queued.state is AcquisitionJobState.QUEUED
 
-    cancelled = engine.cancel(job.id)
+    cancelled = acquisition_engine.cancel(job.id)
     assert cancelled.state is AcquisitionJobState.CANCELLED
     assert cancelled.is_terminal
+
+
+def test_engine_persists_jobs_across_instances(engine: Engine, library_id: UUID) -> None:
+    repo = AcquisitionJobRepository(engine)
+    first = AcquisitionEngine(ProviderManager([StubAcquisitionProvider()]), repo)
+    job = first.create_job(
+        library_id=library_id,
+        job_type=AcquisitionJobType.MISSING_TRACK,
+        artist="Artist",
+        title="Missing Song",
+    )
+    first.queue(job.id)
+
+    second = AcquisitionEngine(ProviderManager([StubAcquisitionProvider()]), repo)
+    loaded = second.get(job.id)
+
+    assert loaded is not None
+    assert loaded.state is AcquisitionJobState.QUEUED
+    assert loaded.title == "Missing Song"
+    assert second.list_jobs(library_id=library_id) == [loaded]

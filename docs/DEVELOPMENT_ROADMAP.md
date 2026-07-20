@@ -40,8 +40,8 @@ Sprint 2
 
 Current Goal
 
-AcquisitionJob state machine + ProviderManager stub wired; next: persist jobs,
-Missing Media Analyzer, Nicotine+ provider.
+AcquisitionJob persistence + Missing Media Analyzer complete; next: provider config,
+Nicotine+ skeleton, search/scoring/download skeletons.
 
 ---
 
@@ -213,7 +213,7 @@ Core Refactoring / Acquisition foundation
 
 Status
 
-🟡 In Progress
+✅ Complete
 
 Tasks
 
@@ -225,13 +225,15 @@ Provider Framework stub ✅
 
 Import ARCHITECTURAL_UPDATE_001 ✅
 
-Persist AcquisitionJob (DB)
+Persist AcquisitionJob (DB) ✅
 
-Missing Media Analyzer
+Missing Media Analyzer ✅
+
+AcquisitionJob creation from gaps ✅
 
 Deliverable
 
-Stable AcquisitionJob API; ready for Nicotine+ provider.
+Stable persisted AcquisitionJob API; Missing Media Analyzer creates jobs for missing tracks.
 
 ---
 
@@ -739,6 +741,26 @@ Recommended refactors (no user-visible change, before new features)
 Next session goal
 
 Persist AcquisitionJob + Missing Media Analyzer.
+
+---
+
+## 2026-07-20 — Phase 2: Persist jobs + gap analyzer
+
+Summary
+
+- Added `acquisition_jobs` table (Alembic 0006) + `AcquisitionJobRepository`.
+- Refactored `AcquisitionEngine` to persist via repository (same public API).
+- `MissingMediaAnalyzer` compares library tracklists vs MusicBrainz; `create_jobs_for_library` creates MISSING_TRACK jobs.
+- Wired repo + analyzer in `Container`.
+
+Recommended refactors (non-user-visible)
+
+- `SearchDispatcher` should advance job state and store raw results in `job.extra` (Phase 6).
+- Connect acquisition providers from config on bootstrap (Phase 3).
+
+Next session goal
+
+Provider config hardening, Nicotine+ skeleton, search/scoring/download skeletons.
 
 ---
 

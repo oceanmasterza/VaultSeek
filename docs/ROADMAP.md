@@ -18,21 +18,30 @@ Public-facing roadmap for GitHub visitors. For day-to-day engineering progress, 
 
 ---
 
-## Phase 2 — Provider Framework
+## Phase 2 — Acquisition foundation
 
-**Status: In progress (skeleton complete)**
+**Status: Complete**
 
-- `AcquisitionProvider` protocol and normalized `SearchRequest` / `SearchResult` types
-- `ProviderManager` — sole gateway to external acquisition sources
-- Stub provider for wiring and tests
 - `AcquisitionJob` entity + deterministic state machine
-- `AcquisitionEngine` skeleton (in-memory)
+- `AcquisitionEngine` with SQLite persistence (`acquisition_jobs` table)
+- `MissingMediaAnalyzer` — gap detection vs MusicBrainz release tracklists
+- Automatic `AcquisitionJob` creation for missing tracks
+- `AcquisitionProvider` protocol, `ProviderManager`, stub provider
 
-**Next:** persist jobs, provider configuration UI, provider discovery.
+**Next:** provider configuration, Nicotine+ skeleton, search/scoring/download subsystems.
 
 ---
 
-## Phase 3 — Nicotine+ integration
+## Phase 3 — Provider configuration
+
+**Status: In progress**
+
+- Configurable enabled providers and connection settings
+- Bootstrap-time provider connect from `config.json`
+
+---
+
+## Phase 4 — Nicotine+ integration
 
 **Status: Planned**
 

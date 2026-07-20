@@ -416,3 +416,37 @@ trusted_folders = Table(
     Column("trusted_at", Text, nullable=False),
     Index("idx_trusted_folders_library", "library_id"),
 )
+
+# ---------------------------------------------------------------------------
+# Acquisition jobs (VaultSeek — see ADR-0017)
+# ---------------------------------------------------------------------------
+
+acquisition_jobs = Table(
+    "acquisition_jobs",
+    metadata,
+    Column("id", LargeBinary(16), primary_key=True),
+    Column("library_id", LargeBinary(16), ForeignKey("libraries.id"), nullable=False),
+    Column("job_type", Text, nullable=False),
+    Column("state", Text, nullable=False),
+    Column("artist", Text),
+    Column("album", Text),
+    Column("title", Text),
+    Column("year", Integer),
+    Column("mb_release_id", Text),
+    Column("preferred_codec", Text),
+    Column("preferred_bit_depth", Integer),
+    Column("preferred_country", Text),
+    Column("preferred_providers", Text, nullable=False, server_default=text("'[]'")),
+    Column("selected_result_id", Text),
+    Column("selected_provider_id", Text),
+    Column("retry_count", Integer, nullable=False, server_default=text("0")),
+    Column("priority", Integer, nullable=False, server_default=text("100")),
+    Column("progress", Float, nullable=False, server_default=text("0")),
+    Column("error_message", Text),
+    Column("history", Text, nullable=False, server_default=text("'[]'")),
+    Column("extra", Text, nullable=False, server_default=text("'{}'")),
+    Column("created_at", Text, nullable=False),
+    Column("updated_at", Text, nullable=False),
+    Index("idx_acquisition_jobs_library", "library_id", "state"),
+    Index("idx_acquisition_jobs_priority", "library_id", "priority", "created_at"),
+)

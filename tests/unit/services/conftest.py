@@ -24,6 +24,7 @@ from vaultseek.db.repositories.review_repo import ReviewRepository
 from vaultseek.db.repositories.rule_repo import RuleRepository
 from vaultseek.db.repositories.track_repo import TrackRepository
 from vaultseek.db.tables import libraries, metadata, tracks
+from vaultseek.db.tables import artists as artists_table
 from vaultseek.db.uuid_utils import generate_uuid7, uuid_to_blob
 from vaultseek.db.writer import DatabaseWriter
 from vaultseek.services.job_queue_service import JobQueueService
@@ -69,6 +70,22 @@ def library_id(engine: Engine) -> UUID:
             )
         )
     return lib_id
+
+
+@pytest.fixture
+def artist_id(engine: Engine) -> UUID:
+    art_id = generate_uuid7()
+    with engine.begin() as conn:
+        conn.execute(
+            insert(artists_table).values(
+                id=uuid_to_blob(art_id),
+                name="Test Artist",
+                sort_name="Artist, Test",
+                created_at="2026-07-15T00:00:00",
+                updated_at="2026-07-15T00:00:00",
+            )
+        )
+    return art_id
 
 
 @pytest.fixture
