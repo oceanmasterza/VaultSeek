@@ -18,23 +18,29 @@ Heritage MusicVault pipeline docs live under [docs/architecture/](docs/architect
 
 ## GitHub Project Board
 
-Work is tracked on the [VaultSeek project board](https://github.com/users/oceanmasterza/projects) (owner: `oceanmasterza`).
+Work is tracked on the **VaultSeek** project board (owner: `oceanmasterza`).
 
-Columns: **Ideas** → **Architecture Ready** → **Ready for Development** → **In Progress** → **Testing** → **Completed**
+Columns (**Stage** field): **Ideas** → **Architecture Ready** → **Ready for Development** → **In Progress** → **Testing** → **Completed**
 
-If you cannot access the board, open an issue describing your proposal and reference the relevant doc section.
+### One-time setup (maintainers)
 
-### Manual board setup (maintainers)
-
-If `gh project` fails (missing `project` scope):
+`gh` needs the `project` scope (not included in default repo auth):
 
 ```powershell
-gh auth refresh -s project
-gh project list --owner oceanmasterza
-gh project create --owner oceanmasterza --title "VaultSeek" --format json
+gh auth refresh -h github.com -s project,read:project
 ```
 
-Then in GitHub → Projects → VaultSeek → **Settings** → add the six columns above and link the repo under **Manage access**.
+Complete the browser device login at https://github.com/login/device when prompted.
+
+Then from the repo root:
+
+```powershell
+.\scripts\setup-github-project.ps1
+```
+
+This creates the project (if missing), links `oceanmasterza/VaultSeek`, and adds the **Stage** single-select field with the six columns above. If the board view still shows default Status columns, open the project → board view → **Group by** → **Stage**.
+
+If you cannot access the board, open an issue describing your proposal and reference the relevant doc section.
 
 ## Development Setup
 
