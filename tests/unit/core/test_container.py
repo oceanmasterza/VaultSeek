@@ -35,6 +35,7 @@ from vaultseek.services.metadata_arbitrator import MetadataArbitrator
 from vaultseek.services.operation_orchestrator import OperationOrchestrator
 from vaultseek.services.provider_manager import ProviderManager
 from vaultseek.services.acquisition_engine import AcquisitionEngine
+from vaultseek.services.acquisition_workflow import AcquisitionWorkflow
 from vaultseek.services.import_pipeline import ImportPipeline
 from vaultseek.services.verification_engine import VerificationEngine
 from vaultseek.services.report_service import ReportService
@@ -154,6 +155,7 @@ def test_bootstrap_wires_the_phase_6_metadata_stack(
     assert isinstance(container.acquisition_engine, AcquisitionEngine)
     assert isinstance(container.verification_engine, VerificationEngine)
     assert isinstance(container.import_pipeline, ImportPipeline)
+    assert isinstance(container.acquisition_workflow, AcquisitionWorkflow)
     assert isinstance(container.metadata_arbitrator, MetadataArbitrator)
     assert isinstance(container.metadata_worker, MetadataWorker)
     assert isinstance(container.review_queue, ReviewQueueService)

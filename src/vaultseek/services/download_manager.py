@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from pathlib import Path
 from uuid import UUID
 
 from vaultseek.models.entities.acquisition_job import AcquisitionJobState
@@ -49,6 +50,84 @@ class DownloadManager:
         if handle is None:
             return None
         return self._providers.get_status(handle)
+
+    def complete(
+        self,
+        job_id: UUID,
+        local_paths: list[Path] | tuple[Path, ...] | None = None,
+    ) -> DownloadStatus | None:
+        """Persist paths and advance DOWNLOADING → VERIFYING when ready.
+
+        If ``local_paths`` is omitted, uses paths from the latest provider status.
+        Failed provider status advances to DOWNLOAD_FAILED.
+        """
+        job = self._engine.get(job_id)
+        if job is None:
+            raise KeyError(f"AcquisitionJob {job_id} not found")
+        if job.state is not AcquisitionJobState.DOWNLOADING:
+            raise ValueError(
+                f"AcquisitionJob {job_id} must be DOWNLOADING "
+                f"(current: {job.state.value})"
+            )
+
+        status = self.poll(job_id)
+        if local_paths is not None:
+            paths = [Path(p) for p in local_paths]
+        elif status is not None and status.local_paths:
+            paths = list(status.local_paths)
+        else:
+            paths = []
+
+        # Explicit paths allow completing even when provider status is stub/failed.
+        if local_paths is not None and paths:
+            self._engine.update_extra(job_id, {"local_paths": [str(p) for p in paths]})
+            self._engine.advance(
+                job_id,
+                AcquisitionJobState.VERIFYING,
+                note=f"{len(paths)} file(s)",
+            )
+            self._handles.pop(job_id, None)
+            return status or DownloadStatus(
+                download_id="manual",
+                state="completed",
+                progress=1.0,
+                local_paths=tuple(paths),
+            )
+
+        if status is not None and status.state == "failed":
+            self._engine.advance(
+                job_id,
+                AcquisitionJobState.DOWNLOAD_FAILED,
+                note=status.message or "download failed",
+            )
+            self._handles.pop(job_id, None)
+            return status
+
+        if status is not None and status.state == "cancelled":
+            self._engine.cancel(job_id)
+            self._handles.pop(job_id, None)
+            return status
+
+        if status is not None and status.state == "completed":
+            if not paths:
+                self._engine.advance(
+                    job_id,
+                    AcquisitionJobState.DOWNLOAD_FAILED,
+                    note="completed without local_paths",
+                )
+                self._handles.pop(job_id, None)
+                return status
+            self._engine.update_extra(job_id, {"local_paths": [str(p) for p in paths]})
+            self._engine.advance(
+                job_id,
+                AcquisitionJobState.VERIFYING,
+                note=f"{len(paths)} file(s)",
+            )
+            self._handles.pop(job_id, None)
+            return status
+
+        # Still in progress — no state change.
+        return status
 
     def cancel(self, job_id: UUID) -> bool:
         handle = self._handles.pop(job_id, None)

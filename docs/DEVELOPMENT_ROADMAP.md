@@ -6,7 +6,7 @@ Version: 1.1
 
 Status: Active development
 
-Overall Progress: 32%
+Overall Progress: 34%
 
 ---
 
@@ -795,6 +795,11 @@ Recommended refactors (non-user-visible)
 - Persist `local_paths` on `AcquisitionJob.extra` when downloads complete.
 - Replace fingerprint/duplicate stubs with FingerprintWorker + DuplicateMatcher.
 - Hand off ImportPipeline to OrganizerWorker / ArtworkWorker / MediaServerWorker.
+
+Also added
+
+- `DownloadManager.complete` persists `local_paths` and advances to VERIFYING.
+- `AcquisitionWorkflow.finish_download` chains verify→import.
 
 Next session goal
 
