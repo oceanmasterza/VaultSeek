@@ -66,6 +66,7 @@ from vaultseek.plugins.builtin.subsonic import SubsonicPlugin
 from vaultseek.plugins.manager import PluginManager
 from vaultseek.services.acquisition_bootstrap import connect_acquisition_providers
 from vaultseek.services.acquisition_engine import AcquisitionEngine
+from vaultseek.services.acquisition_runner import AcquisitionRunner
 from vaultseek.services.acquisition_workflow import AcquisitionWorkflow
 from vaultseek.services.download_manager import DownloadManager
 from vaultseek.services.import_pipeline import ImportPipeline
@@ -134,6 +135,7 @@ class Container:
     verification_engine: VerificationEngine
     import_pipeline: ImportPipeline
     acquisition_workflow: AcquisitionWorkflow
+    acquisition_runner: AcquisitionRunner
     missing_media_analyzer: MissingMediaAnalyzer | None
     metadata_arbitrator: MetadataArbitrator
     scanner_worker: ScannerWorker
@@ -272,6 +274,14 @@ class Container:
             download_manager,
             verification_engine,
             import_pipeline,
+        )
+        acquisition_runner = AcquisitionRunner(
+            acquisition_engine,
+            search_dispatcher,
+            scoring_engine,
+            download_manager,
+            acquisition_workflow,
+            auto_acquire_threshold=config.acquisition.auto_acquire_threshold,
         )
         metadata_arbitrator = MetadataArbitrator(
             plugin_manager.get_metadata_providers(),
@@ -435,6 +445,7 @@ class Container:
             verification_engine=verification_engine,
             import_pipeline=import_pipeline,
             acquisition_workflow=acquisition_workflow,
+            acquisition_runner=acquisition_runner,
             missing_media_analyzer=missing_media_analyzer,
             metadata_arbitrator=metadata_arbitrator,
             scanner_worker=scanner_worker,

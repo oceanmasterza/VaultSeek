@@ -18,7 +18,7 @@ from typing import Any
 
 from vaultseek.core.exceptions import ConfigError, ConfigMigrationError, ConfigVersionError
 
-CURRENT_SCHEMA_VERSION = 8
+CURRENT_SCHEMA_VERSION = 9
 
 
 @dataclass(frozen=True)
@@ -28,6 +28,9 @@ class NicotinePlusConfig:
     enabled: bool = False
     host: str = "127.0.0.1"
     port: int = 22024
+    transport: str = "socket"  # socket | http
+    api_port: int = 12339
+    api_token: str = ""
     username: str = ""
     password: str = ""
 
@@ -40,6 +43,7 @@ class AcquisitionConfig:
     provider_order: tuple[str, ...] = ("nicotine_plus", "stub")
     search_timeout_seconds: float = 30.0
     auto_queue_jobs: bool = False
+    auto_acquire_threshold: float = 0.90
     nicotine_plus: NicotinePlusConfig = field(default_factory=NicotinePlusConfig)
 
 
@@ -213,6 +217,20 @@ def _migrate_v7_to_v8(raw: dict[str, Any]) -> dict[str, Any]:
     return migrated
 
 
+def _migrate_v8_to_v9(raw: dict[str, Any]) -> dict[str, Any]:
+    migrated = dict(raw)
+    migrated["schema_version"] = 9
+    acq = dict(migrated.get("acquisition") or asdict(AcquisitionConfig()))
+    acq.setdefault("auto_acquire_threshold", 0.90)
+    nicotine = dict(acq.get("nicotine_plus") or asdict(NicotinePlusConfig()))
+    nicotine.setdefault("transport", "socket")
+    nicotine.setdefault("api_port", 12339)
+    nicotine.setdefault("api_token", "")
+    acq["nicotine_plus"] = nicotine
+    migrated["acquisition"] = acq
+    return migrated
+
+
 _MIGRATIONS: dict[int, Callable[[dict[str, Any]], dict[str, Any]]] = {
     1: _migrate_v1_to_v2,
     2: _migrate_v2_to_v3,
@@ -221,6 +239,7 @@ _MIGRATIONS: dict[int, Callable[[dict[str, Any]], dict[str, Any]]] = {
     5: _migrate_v5_to_v6,
     6: _migrate_v6_to_v7,
     7: _migrate_v7_to_v8,
+    8: _migrate_v8_to_v9,
 }
 
 

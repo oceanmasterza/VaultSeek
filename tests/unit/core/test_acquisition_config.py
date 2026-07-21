@@ -64,6 +64,26 @@ def test_acquisition_config_round_trips(tmp_path: Path) -> None:
     assert loaded.acquisition.nicotine_plus.port == 22025
 
 
+def test_migrating_v8_config_adds_auto_acquire_and_http_fields(tmp_path: Path) -> None:
+    config_path = tmp_path / "config.json"
+    v8_document = default_config().to_dict()
+    v8_document["schema_version"] = 8
+    v8_document["acquisition"].pop("auto_acquire_threshold", None)
+    nicotine = dict(v8_document["acquisition"]["nicotine_plus"])
+    nicotine.pop("transport", None)
+    nicotine.pop("api_port", None)
+    nicotine.pop("api_token", None)
+    v8_document["acquisition"]["nicotine_plus"] = nicotine
+    config_path.write_text(json.dumps(v8_document), encoding="utf-8")
+
+    config = load_config(config_path)
+
+    assert config.schema_version == CURRENT_SCHEMA_VERSION
+    assert config.acquisition.auto_acquire_threshold == 0.90
+    assert config.acquisition.nicotine_plus.transport == "socket"
+    assert config.acquisition.nicotine_plus.api_port == 12339
+
+
 def test_connect_acquisition_providers_connects_enabled_stub() -> None:
     manager = ProviderManager([StubAcquisitionProvider(), NicotinePlusProvider()])
     connect_acquisition_providers(AcquisitionConfig(enabled_providers=("stub",)), manager)

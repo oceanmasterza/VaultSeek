@@ -2,7 +2,7 @@
 
 Public-facing roadmap for GitHub visitors. For day-to-day engineering progress, see [DEVELOPMENT_ROADMAP.md](DEVELOPMENT_ROADMAP.md) (internal AI development notebook).
 
-**Last updated:** 2026-07-20
+**Last updated:** 2026-07-21
 
 ---
 
@@ -41,13 +41,14 @@ Public-facing roadmap for GitHub visitors. For day-to-day engineering progress, 
 
 ## Phase 4 — Nicotine+ integration
 
-**Status: Transport ready (companion plugin next)**
+**Status: HTTP adapter + UI wiring**
 
-First real acquisition provider — communicates with an installed Nicotine+ client (not raw Soulseek protocol). Nicotine+ has no official RPC; VaultSeek uses a documented NDJSON socket protocol.
+First real acquisition provider — communicates with an installed Nicotine+ client (not raw Soulseek protocol). Nicotine+ has no official RPC; VaultSeek uses a documented NDJSON socket protocol or the community HTTP API.
 
 - Connection probe and graceful failure when Nicotine+ is offline ✅
 - `NicotinePlusRpcClient` + `FakeRpcClient` + `LocalSocketRpcClient` ✅
-- Live search / download via a Nicotine+ companion plugin (or HTTP adapter to community `api-nicotine-plus`) — **next**
+- `HttpApiRpcClient` for api-nicotine-plus ✅
+- VaultSeek NDJSON companion plugin — **optional next**
 - Completion hand-off to Verification Pipeline ✅
 
 Nicotine+ is the **first** provider, not the architecture.
@@ -66,8 +67,10 @@ Nicotine+ is the **first** provider, not the architecture.
 | Download Manager | ✅ skeleton |
 | Verification Engine | ✅ path / tags / hash / fingerprint checks |
 | Import Pipeline | ✅ Incoming stage + scan enqueue (organize/artwork via existing pipeline) |
+| Acquisition UI | ✅ wishlist + progress page |
+| Auto-acquire threshold | ✅ configurable (default 90%) |
 
-User-facing: wishlist, confidence %, auto-acquire above threshold (e.g. 90%) — planned.
+User-facing: richer result picker, scheduled automation — planned.
 
 ---
 

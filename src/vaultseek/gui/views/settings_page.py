@@ -33,6 +33,7 @@ from vaultseek.models.entities.job import JobType
 from vaultseek.models.entities.library import Library
 from vaultseek.models.entities.media_server_state import MediaServerState
 from vaultseek.models.entities.track import LibraryZone
+from vaultseek.services.acquisition_bootstrap import connect_acquisition_providers
 from vaultseek.services.library_reset import reset_library_processing
 
 
@@ -142,6 +143,46 @@ class SettingsPage(QWidget):
         reset_btns.addStretch(1)
         reset_layout.addLayout(reset_btns)
         layout.addWidget(reset_box)
+
+        acq_box = QGroupBox("Acquisition")
+        acq_form = QFormLayout(acq_box)
+        self._acq_threshold = QDoubleSpinBox()
+        self._acq_threshold.setRange(0.0, 1.0)
+        self._acq_threshold.setSingleStep(0.05)
+        self._acq_threshold.setValue(0.90)
+        self._acq_threshold.setToolTip(
+            "Search results at or above this score auto-download during Auto-acquire."
+        )
+        self._nicotine_enabled = QCheckBox("Enable Nicotine+ provider")
+        self._nicotine_transport = QComboBox()
+        self._nicotine_transport.addItem("VaultSeek NDJSON socket", "socket")
+        self._nicotine_transport.addItem("HTTP (api-nicotine-plus)", "http")
+        self._nicotine_host = QLineEdit("127.0.0.1")
+        self._nicotine_port = QSpinBox()
+        self._nicotine_port.setRange(1, 65535)
+        self._nicotine_port.setValue(22024)
+        self._nicotine_api_port = QSpinBox()
+        self._nicotine_api_port.setRange(1024, 65535)
+        self._nicotine_api_port.setValue(12339)
+        self._nicotine_api_token = QLineEdit()
+        self._nicotine_api_token.setEchoMode(QLineEdit.EchoMode.Password)
+        self._nicotine_api_token.setPlaceholderText("api-nicotine-plus token (optional)")
+        acq_form.addRow("Auto-acquire threshold", self._acq_threshold)
+        acq_form.addRow(self._nicotine_enabled)
+        acq_form.addRow("Nicotine+ transport", self._nicotine_transport)
+        acq_form.addRow("Nicotine+ host", self._nicotine_host)
+        acq_form.addRow("NDJSON port", self._nicotine_port)
+        acq_form.addRow("HTTP API port", self._nicotine_api_port)
+        acq_form.addRow("HTTP API token", self._nicotine_api_token)
+        acq_help = QLabel(
+            "HTTP mode talks to the community api-nicotine-plus plugin inside Nicotine+. "
+            "Socket mode expects a VaultSeek NDJSON companion on the NDJSON port. "
+            "Restart VaultSeek after saving acquisition settings."
+        )
+        acq_help.setWordWrap(True)
+        acq_help.setProperty("muted", True)
+        acq_form.addRow(acq_help)
+        layout.addWidget(acq_box)
 
         prefs = QGroupBox("Application")
         prefs_form = QFormLayout(prefs)
@@ -274,6 +315,15 @@ class SettingsPage(QWidget):
         self._fingerprint_mode.setCurrentIndex(mode_index if mode_index >= 0 else 0)
         self._fingerprint_sample_min.setValue(config.metadata.fingerprint_sample_min)
         self._sync_fingerprint_sample_enabled()
+        self._acq_threshold.setValue(config.acquisition.auto_acquire_threshold)
+        nicotine = config.acquisition.nicotine_plus
+        self._nicotine_enabled.setChecked(nicotine.enabled)
+        transport_index = self._nicotine_transport.findData(nicotine.transport)
+        self._nicotine_transport.setCurrentIndex(transport_index if transport_index >= 0 else 0)
+        self._nicotine_host.setText(nicotine.host)
+        self._nicotine_port.setValue(nicotine.port)
+        self._nicotine_api_port.setValue(nicotine.api_port)
+        self._nicotine_api_token.setText(nicotine.api_token)
 
         if self._editing_id is None:
             self._clear_library_form()
@@ -504,20 +554,42 @@ class SettingsPage(QWidget):
     def _save_preferences(self) -> None:
         from dataclasses import replace as dc_replace
 
+        from vaultseek.core.config import AcquisitionConfig, NicotinePlusConfig
+
         metadata = dc_replace(
             self._container.config.metadata,
             acoustid_api_key=self._acoustid_key.text().strip(),
             fingerprint_mode=str(self._fingerprint_mode.currentData() or "all"),
             fingerprint_sample_min=int(self._fingerprint_sample_min.value()),
         )
+        acquisition = AcquisitionConfig(
+            enabled_providers=self._container.config.acquisition.enabled_providers,
+            provider_order=self._container.config.acquisition.provider_order,
+            search_timeout_seconds=self._container.config.acquisition.search_timeout_seconds,
+            auto_queue_jobs=self._container.config.acquisition.auto_queue_jobs,
+            auto_acquire_threshold=float(self._acq_threshold.value()),
+            nicotine_plus=NicotinePlusConfig(
+                enabled=self._nicotine_enabled.isChecked(),
+                host=self._nicotine_host.text().strip() or "127.0.0.1",
+                port=int(self._nicotine_port.value()),
+                transport=str(self._nicotine_transport.currentData() or "socket"),
+                api_port=int(self._nicotine_api_port.value()),
+                api_token=self._nicotine_api_token.text().strip(),
+            ),
+        )
         updated = replace(
             self._container.config,
             log_level=self._log_level.currentText(),
             theme=self._theme.currentText(),
             metadata=metadata,
+            acquisition=acquisition,
         )
         save_config(updated, self._container.paths.config_file)
         self._container.config = updated
+        connect_acquisition_providers(acquisition, self._container.provider_manager)
+        self._container.acquisition_runner.set_auto_acquire_threshold(
+            acquisition.auto_acquire_threshold
+        )
         self.preferences_saved.emit(updated.theme)
         QMessageBox.information(
             self,

@@ -15,6 +15,7 @@ from vaultseek.models.interfaces.acquisition import (
 )
 from vaultseek.plugins.builtin.nicotine_plus import (
     FakeRpcClient,
+    HttpApiRpcClient,
     LocalSocketRpcClient,
     NicotinePlusProvider,
     RpcSearchHit,
@@ -117,6 +118,24 @@ def test_fake_rpc_client_completes_download(tmp_path: Path) -> None:
 
     assert status.state == "completed"
     assert status.local_paths == (audio,)
+
+
+def test_provider_uses_http_transport_when_configured() -> None:
+    provider = NicotinePlusProvider(connect_timeout_seconds=0.2)
+    with patch.object(HttpApiRpcClient, "probe", return_value=True):
+        ok = provider.connect(
+            AcquisitionProviderConfig(
+                provider_id="nicotine_plus",
+                enabled=True,
+                settings={
+                    "host": "127.0.0.1",
+                    "transport": "http",
+                    "api_port": 12339,
+                },
+            )
+        )
+    assert ok is True
+    assert isinstance(provider.rpc_client, HttpApiRpcClient)
 
 
 def test_local_socket_rpc_round_trip() -> None:

@@ -1,5 +1,5 @@
 {
-  "schema_version": 8,
+  "schema_version": 9,
   "log_level": "INFO",
   "theme": "dark",
   "pipeline": {
@@ -33,10 +33,14 @@
     "provider_order": ["nicotine_plus", "stub"],
     "search_timeout_seconds": 30.0,
     "auto_queue_jobs": false,
+    "auto_acquire_threshold": 0.90,
     "nicotine_plus": {
       "enabled": false,
       "host": "127.0.0.1",
       "port": 22024,
+      "transport": "socket",
+      "api_port": 12339,
+      "api_token": "",
       "username": "",
       "password": ""
     }

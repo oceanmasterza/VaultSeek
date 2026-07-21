@@ -15,7 +15,10 @@ def connect_acquisition_providers(
 ) -> None:
     """Connect enabled acquisition providers using application config."""
     settings_by_id = {
-        "nicotine_plus": asdict(config.nicotine_plus),
+        "nicotine_plus": {
+            **asdict(config.nicotine_plus),
+            "api_token": config.nicotine_plus.api_token or config.nicotine_plus.password,
+        },
         "stub": {},
     }
     enabled = set(config.enabled_providers)

@@ -47,15 +47,18 @@ VaultSeek-specific foundation:
 - **Missing Media Analyzer** — MusicBrainz tracklist gap detection + job creation
 - **Provider Framework** — config-driven providers, `ProviderManager`, stub + Nicotine+
 - **SearchDispatcher / ScoringEngine / DownloadManager** — acquisition pipeline skeletons
-- **Nicotine+ RPC** — NDJSON `LocalSocketRpcClient` + `FakeRpcClient` (graceful offline)
+- **AcquisitionRunner** — search, score, auto-acquire above threshold, poll downloads
+- **Acquisition UI** — wishlist page with missing-media scan and job controls
+- **HttpApiRpcClient** — api-nicotine-plus HTTP adapter (port 12339)
 - **VerificationEngine** — path, tags, content-hash / fingerprint duplicate checks
 - **ImportPipeline** — stage into Incoming and enqueue scan (organize/artwork/media-server chain)
 - Planning docs, ADRs, architectural update (`ARCHITECTURAL_UPDATE_001`)
 
 ### In development
 
-- Nicotine+ companion plugin (or HTTP adapter to community API) for live search/download
-- Public acquisition UI (wishlist, job progress, recommendations)
+- VaultSeek NDJSON Nicotine+ companion plugin (socket transport)
+- Scheduled acquisition automation
+- Acquisition history / retry policies
 
 ### Planned
 

@@ -6,7 +6,7 @@ Version: 1.1
 
 Status: Active development
 
-Overall Progress: 42%
+Overall Progress: 48%
 
 ---
 
@@ -40,8 +40,7 @@ Sprint 3
 
 Current Goal
 
-Companion Nicotine+ NDJSON plugin (or HTTP api-nicotine-plus adapter);
-wishlist / acquisition UI; auto-acquire above threshold.
+Scheduled automation, richer acquisition result picker, optional NDJSON companion plugin.
 ---
 
 # Vision Statement
@@ -836,7 +835,31 @@ Recommended refactors (non-user-visible)
 
 Next session goal
 
-Companion plugin / HTTP adapter; acquisition UI; auto-acquire threshold.
+Scheduled automation; NDJSON companion plugin; richer result picker UI.
+
+
+---
+
+## 2026-07-21 — HTTP adapter, Acquisition UI, auto-acquire
+
+Summary
+
+- `HttpApiRpcClient` for community api-nicotine-plus (search/download/status).
+- `AcquisitionRunner`: search → score → auto-acquire threshold → poll downloads.
+- Acquisition page in GUI (wishlist, scan missing, auto-acquire, manual top pick).
+- Settings: auto-acquire threshold + Nicotine+ transport (socket/http).
+- Config schema v9 (`auto_acquire_threshold`, `transport`, `api_port`, `api_token`).
+- 601 tests passing.
+
+Recommended refactors (non-user-visible)
+
+- Background acquisition scheduler (not just GUI timer polling).
+- Result-picker dialog for WAITING_FOR_USER jobs.
+- Ship VaultSeek NDJSON Nicotine+ companion plugin.
+
+Next session goal
+
+Automation scheduler; companion plugin; acquisition history reports.
 
 
 ---

@@ -1,4 +1,4 @@
-"""Nicotine+ acquisition provider — LocalSocketRpcClient-backed (Phase 4)."""
+"""Nicotine+ acquisition provider — socket or HTTP RPC transports."""
 
 from __future__ import annotations
 
@@ -13,6 +13,7 @@ from vaultseek.models.interfaces.acquisition import (
     SearchRequest,
     SearchResult,
 )
+from vaultseek.plugins.builtin.nicotine_plus.http_api_rpc import HttpApiRpcClient
 from vaultseek.plugins.builtin.nicotine_plus.rpc import (
     FakeRpcClient,
     LocalSocketRpcClient,
@@ -24,8 +25,8 @@ from vaultseek.plugins.builtin.nicotine_plus.rpc import (
 class NicotinePlusProvider:
     """Provider that probes Nicotine+ availability and delegates to an RPC client.
 
-    Default transport is :class:`LocalSocketRpcClient` (VaultSeek NDJSON).
-    Tests inject :class:`FakeRpcClient`.
+  Default transport is :class:`LocalSocketRpcClient` (VaultSeek NDJSON).
+  Set ``transport=http`` in config for api-nicotine-plus on port 12339.
     """
 
     provider_id = "nicotine_plus"
@@ -71,21 +72,37 @@ class NicotinePlusProvider:
         settings = dict(config.settings)
         host = str(settings.get("host") or "127.0.0.1")
         port = int(settings.get("port") or 22024)
+        transport = str(settings.get("transport") or "socket").casefold()
+        api_port = int(settings.get("api_port") or 12339)
+        api_token = str(settings.get("api_token") or settings.get("password") or "")
         self._settings = settings
 
         if not self._injected:
-            self._rpc = LocalSocketRpcClient(
-                host=host,
-                port=port,
-                timeout_seconds=self._connect_timeout,
-            )
+            if transport == "http":
+                self._rpc = HttpApiRpcClient(
+                    host=host,
+                    port=api_port,
+                    api_token=api_token,
+                    timeout_seconds=self._connect_timeout,
+                )
+            else:
+                self._rpc = LocalSocketRpcClient(
+                    host=host,
+                    port=port,
+                    timeout_seconds=self._connect_timeout,
+                )
         elif isinstance(self._rpc, LocalSocketRpcClient):
             self._rpc.configure(host, port, timeout_seconds=self._connect_timeout)
+        elif isinstance(self._rpc, HttpApiRpcClient):
+            self._rpc.configure(host, api_port, api_token=api_token, timeout_seconds=self._connect_timeout)
 
-        # FakeRpcClient does not need a live peer.
         if isinstance(self._rpc, FakeRpcClient):
             self._connected = True
             return True
+
+        if isinstance(self._rpc, HttpApiRpcClient):
+            self._connected = self._rpc.probe()
+            return self._connected
 
         self._connected = self._probe_host(host, port)
         return self._connected

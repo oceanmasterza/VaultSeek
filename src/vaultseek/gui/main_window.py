@@ -25,6 +25,7 @@ from vaultseek import __version__
 from vaultseek.core.container import Container
 from vaultseek.gui.bridge.qt_event_bridge import QtEventBridge
 from vaultseek.gui.theme import apply_theme
+from vaultseek.gui.views.acquisition_page import AcquisitionPage
 from vaultseek.gui.views.albums_page import AlbumsPage
 from vaultseek.gui.views.artwork_page import ArtworkPage
 from vaultseek.gui.views.artists_page import ArtistsPage
@@ -50,6 +51,7 @@ _NAV = (
     ("Albums", "albums"),
     ("Artwork", "artwork"),
     ("Duplicates", "duplicates"),
+    ("Acquisition", "acquisition"),
     ("Jobs", "jobs"),
     ("Reports", "reports"),
     ("Rules", "rules"),
@@ -110,6 +112,7 @@ class MainWindow(QMainWindow):
         self._artwork_page = ArtworkPage(container)
         self._jobs_page = JobsPage(container)
         self._duplicates_page = DuplicatesPage(container)
+        self._acquisition_page = AcquisitionPage(container)
         self._rules_page = RulesPage(container)
         self._settings_page = SettingsPage(container)
         self._settings_page.library_saved.connect(self._on_library_saved)
@@ -124,6 +127,7 @@ class MainWindow(QMainWindow):
             "artists": self._artists_page,
             "albums": self._albums_page,
             "duplicates": self._duplicates_page,
+            "acquisition": self._acquisition_page,
             "jobs": self._jobs_page,
             "artwork": self._artwork_page,
             "reports": StubPage(
@@ -391,6 +395,8 @@ class MainWindow(QMainWindow):
             self._artwork_page.refresh()
         elif key == "duplicates":
             self._duplicates_page.refresh()
+        elif key == "acquisition":
+            self._acquisition_page.refresh()
         elif key == "rules":
             self._rules_page.refresh()
         elif key == "settings":
@@ -410,6 +416,7 @@ class MainWindow(QMainWindow):
             self._review_page,
             self._jobs_page,
             self._duplicates_page,
+            self._acquisition_page,
             self._rules_page,
             self._settings_page,
         ):
@@ -453,10 +460,15 @@ class MainWindow(QMainWindow):
             f"{stats.failed} failed · Review: {review}"
         )
         self._update_review_badge()
+        self._container.acquisition_runner.poll_active_jobs(self._library_id)
         # Keep Dashboard live while it is visible (status-bar cadence).
         row = self._nav.currentRow()
-        if self._nav_keys and 0 <= row < len(self._nav_keys) and self._nav_keys[row] == "dashboard":
-            self._dashboard_page.refresh()
+        if self._nav_keys and 0 <= row < len(self._nav_keys):
+            key = self._nav_keys[row]
+            if key == "dashboard":
+                self._dashboard_page.refresh()
+            elif key == "acquisition":
+                self._acquisition_page.poll_downloads()
 
     def closeEvent(self, event: QCloseEvent) -> None:  # noqa: N802 - Qt naming
         self._timer.stop()
