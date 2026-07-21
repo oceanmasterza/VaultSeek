@@ -19,6 +19,7 @@ _FAILED_STATES = frozenset(
         AcquisitionJobState.IMPORT_FAILED,
     }
 )
+_NEEDS_CHOICE_STATES = frozenset({AcquisitionJobState.WAITING_FOR_USER})
 
 
 def review_type_for_state(state: AcquisitionJobState) -> ReviewType | None:
@@ -27,6 +28,8 @@ def review_type_for_state(state: AcquisitionJobState) -> ReviewType | None:
         return ReviewType.ACQUISITION_NO_RESULTS
     if state in _FAILED_STATES:
         return ReviewType.ACQUISITION_FAILED
+    if state in _NEEDS_CHOICE_STATES:
+        return ReviewType.ACQUISITION_NEEDS_CHOICE
     return None
 
 
@@ -65,6 +68,12 @@ def park_acquisition_failure(
         description = (
             f"Search returned nothing for {label}. {note} "
             "Check Nicotine+ / Soulseek connectivity, or try different search terms."
+        )
+    elif review_type is ReviewType.ACQUISITION_NEEDS_CHOICE:
+        title = f"Acquisition needs your pick: {label}"
+        description = (
+            f"{label} — best match is below the auto-acquire threshold. {note} "
+            "Open Acquisition → Pick result to choose a download."
         )
     else:
         title = f"Acquisition failed: {label}"

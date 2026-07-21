@@ -41,6 +41,7 @@ _ATTENTION_STATES: tuple[AcquisitionJobState, ...] = (
     AcquisitionJobState.DOWNLOAD_FAILED,
     AcquisitionJobState.VERIFICATION_FAILED,
     AcquisitionJobState.IMPORT_FAILED,
+    AcquisitionJobState.WAITING_FOR_USER,
 )
 
 _AUTO_ACQUIRE_STATES: tuple[AcquisitionJobState, ...] = (

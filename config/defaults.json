@@ -32,7 +32,7 @@
     "enabled_providers": ["stub"],
     "provider_order": ["nicotine_plus", "stub"],
     "search_timeout_seconds": 30.0,
-    "auto_queue_jobs": false,
+    "auto_queue_jobs": true,
     "auto_acquire_threshold": 0.90,
     "nicotine_plus": {
       "enabled": false,

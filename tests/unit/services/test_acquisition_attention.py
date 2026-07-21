@@ -176,6 +176,59 @@ def test_download_failed_parks_acquisition_failed(
     assert pending[0].status is ReviewStatus.PENDING
 
 
+def test_waiting_for_user_creates_needs_choice_review(
+    engine: Engine, library_id: UUID
+) -> None:
+    class _OneHitProvider(StubAcquisitionProvider):
+        provider_id = "onehit"
+        display_name = "OneHit"
+
+        def search(self, request: SearchRequest) -> list[SearchResult]:
+            return [
+                SearchResult(
+                    provider_id="onehit",
+                    result_id="r1",
+                    display_name="weak match",
+                    artist=request.artist,
+                    album=request.album,
+                    title=request.title,
+                )
+            ]
+
+    manager = ProviderManager([_OneHitProvider()])
+    manager.connect(AcquisitionProviderConfig(provider_id="onehit", enabled=True))
+    reviews = _review_queue(engine)
+    acq = AcquisitionEngine(manager, AcquisitionJobRepository(engine))
+    search = SearchDispatcher(manager, acq)
+    downloads = DownloadManager(manager, acq)
+    workflow = AcquisitionWorkflow(
+        acq, downloads, VerificationEngine(acq), ImportPipeline(acq)
+    )
+    runner = AcquisitionRunner(
+        acq,
+        search,
+        ScoringEngine(),
+        downloads,
+        workflow,
+        auto_acquire_threshold=0.99,
+        review_queue=reviews,
+    )
+    job = acq.create_job(
+        library_id=library_id,
+        job_type=AcquisitionJobType.MISSING_TRACK,
+        artist="Artist",
+        album="Album",
+        title="Song",
+    )
+
+    outcome = runner.try_auto_acquire(job.id)
+
+    assert outcome.state is AcquisitionJobState.WAITING_FOR_USER
+    pending = reviews.get_pending(library_id)
+    assert len(pending) == 1
+    assert pending[0].review_type is ReviewType.ACQUISITION_NEEDS_CHOICE
+
+
 def test_bootstrap_wires_review_into_runner(tmp_path: Path) -> None:
     container = bootstrap(base_dir_override=tmp_path, console_logging=False)
     try:

@@ -168,6 +168,11 @@ class AcquisitionRunner:
                 best_score,
                 self._threshold,
             )
+            loaded = self._engine.get(job_id)
+            self._park_attention(
+                loaded,
+                message=f"best score {best_score:.0%} below threshold {self._threshold:.0%}",
+            )
             return RunnerOutcome(
                 job_id,
                 AcquisitionJobState.WAITING_FOR_USER,

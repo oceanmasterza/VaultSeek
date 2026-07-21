@@ -182,9 +182,9 @@ class DashboardPage(QWidget):
         pipe_title = QLabel("Processing pipeline")
         pipe_title.setProperty("panelTitle", True)
         pipe_help = QLabel(
-            "Each file moves left → right: Discover → Hash → Fingerprint → Identify → "
-            "your Review gate → Duplicates / Rules → Organize → Artwork → Acquiring → Sync. "
-            "Numbers are items waiting or in progress at that stage."
+            "Left → right: Acquiring (wishlist / downloads) → Discover → Hash → "
+            "Fingerprint → Identify → your Review gate → Duplicates / Rules → "
+            "Organize → Artwork → Sync. Numbers are items waiting or in progress."
         )
         pipe_help.setWordWrap(True)
         pipe_help.setProperty("muted", True)

@@ -156,6 +156,12 @@ class SettingsPage(QWidget):
         self._acq_threshold.setToolTip(
             "Search results at or above this score auto-download during Auto-acquire."
         )
+        self._auto_queue_jobs = QCheckBox("Auto-queue jobs created by Scan for missing")
+        self._auto_queue_jobs.setToolTip(
+            "When enabled, missing-media scan jobs are queued so background automation "
+            "can search and download. When disabled, jobs stay Created until you "
+            "Auto-acquire selected on the Acquisition page."
+        )
         self._nicotine_enabled = QCheckBox("Enable Nicotine+ provider")
         self._nicotine_transport = QComboBox()
         self._nicotine_transport.addItem("VaultSeek NDJSON socket", "socket")
@@ -171,6 +177,7 @@ class SettingsPage(QWidget):
         self._nicotine_api_token.setEchoMode(QLineEdit.EchoMode.Password)
         self._nicotine_api_token.setPlaceholderText("api-nicotine-plus token (optional)")
         acq_form.addRow("Auto-acquire threshold", self._acq_threshold)
+        acq_form.addRow(self._auto_queue_jobs)
         acq_form.addRow(self._nicotine_enabled)
         acq_form.addRow("Nicotine+ transport", self._nicotine_transport)
         acq_form.addRow("Nicotine+ host", self._nicotine_host)
@@ -188,7 +195,8 @@ class SettingsPage(QWidget):
         acq_help = QLabel(
             "HTTP mode talks to the community api-nicotine-plus plugin inside Nicotine+. "
             "Socket mode expects a VaultSeek NDJSON companion on the NDJSON port. "
-            "Restart VaultSeek after saving acquisition settings."
+            "Restart VaultSeek after saving acquisition settings. "
+            "Enable Nicotine+ (and keep it connected) or searches return no results."
         )
         acq_help.setWordWrap(True)
         acq_help.setProperty("muted", True)
@@ -327,6 +335,7 @@ class SettingsPage(QWidget):
         self._fingerprint_sample_min.setValue(config.metadata.fingerprint_sample_min)
         self._sync_fingerprint_sample_enabled()
         self._acq_threshold.setValue(config.acquisition.auto_acquire_threshold)
+        self._auto_queue_jobs.setChecked(config.acquisition.auto_queue_jobs)
         nicotine = config.acquisition.nicotine_plus
         self._nicotine_enabled.setChecked(nicotine.enabled)
         transport_index = self._nicotine_transport.findData(nicotine.transport)
@@ -577,7 +586,7 @@ class SettingsPage(QWidget):
             enabled_providers=self._container.config.acquisition.enabled_providers,
             provider_order=self._container.config.acquisition.provider_order,
             search_timeout_seconds=self._container.config.acquisition.search_timeout_seconds,
-            auto_queue_jobs=self._container.config.acquisition.auto_queue_jobs,
+            auto_queue_jobs=self._auto_queue_jobs.isChecked(),
             auto_acquire_threshold=float(self._acq_threshold.value()),
             nicotine_plus=NicotinePlusConfig(
                 enabled=self._nicotine_enabled.isChecked(),

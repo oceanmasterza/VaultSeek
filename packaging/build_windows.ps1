@@ -54,7 +54,13 @@ if (-not $SkipInstaller) {
     }
     if ($iscc) {
         Write-Host "==> Inno Setup installer"
-        & $iscc.Source packaging\installer.iss
+        $isccPath = if ($iscc.PSObject.Properties.Name -contains "Source" -and $iscc.Source) {
+            $iscc.Source
+        }
+        else {
+            $iscc.FullName
+        }
+        & $isccPath packaging\installer.iss
         if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
         Write-Host "Installer: packaging\output\VaultSeek-Setup.exe"
     }

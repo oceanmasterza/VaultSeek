@@ -42,7 +42,7 @@ class AcquisitionConfig:
     enabled_providers: tuple[str, ...] = ("stub",)
     provider_order: tuple[str, ...] = ("nicotine_plus", "stub")
     search_timeout_seconds: float = 30.0
-    auto_queue_jobs: bool = False
+    auto_queue_jobs: bool = True
     auto_acquire_threshold: float = 0.90
     nicotine_plus: NicotinePlusConfig = field(default_factory=NicotinePlusConfig)
 
@@ -222,6 +222,7 @@ def _migrate_v8_to_v9(raw: dict[str, Any]) -> dict[str, Any]:
     migrated["schema_version"] = 9
     acq = dict(migrated.get("acquisition") or asdict(AcquisitionConfig()))
     acq.setdefault("auto_acquire_threshold", 0.90)
+    acq.setdefault("auto_queue_jobs", True)
     nicotine = dict(acq.get("nicotine_plus") or asdict(NicotinePlusConfig()))
     nicotine.setdefault("transport", "socket")
     nicotine.setdefault("api_port", 12339)
