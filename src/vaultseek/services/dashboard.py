@@ -15,6 +15,8 @@ from vaultseek.models.entities.job import Job, JobStatus, JobType
 from vaultseek.models.entities.track import LibraryZone
 
 # Left-to-right processing journey (Beets / MusicBrainz Picard mental model).
+# Third element is a JobQueue JobType value, or None for non-job stages
+# (review gate, acquisition engine).
 PIPELINE_STAGES: tuple[tuple[str, str, str | None], ...] = (
     ("scan", "Discover", JobType.SCAN_DIRECTORY.value),
     ("hash", "Hash", JobType.HASH_FILE.value),
@@ -25,6 +27,7 @@ PIPELINE_STAGES: tuple[tuple[str, str, str | None], ...] = (
     ("rules", "Rules", JobType.EVALUATE_RULES.value),
     ("organize", "Organize", JobType.ORGANIZE_FILE.value),
     ("artwork", "Artwork", JobType.FETCH_ARTWORK.value),
+    ("acquire", "Acquiring", None),  # AcquisitionJob engine — not JobQueue
     ("sync", "Sync", JobType.SYNC_MEDIA_SERVER.value),
 )
 
@@ -109,11 +112,16 @@ def build_dashboard_snapshot(
         library_id, statuses=(JobStatus.RUNNING,)
     )
     backlog = stats.by_type  # pending + running
+    acquisition = _acquisition_stats(container, library_id)
 
     stage_backlogs: list[int] = []
-    for _key, _label, job_type in PIPELINE_STAGES:
-        if job_type is None:
+    for key, _label, job_type in PIPELINE_STAGES:
+        if key == "review":
             stage_backlogs.append(review_total)
+        elif key == "acquire":
+            stage_backlogs.append(acquisition.in_progress + acquisition.waiting_for_user)
+        elif job_type is None:
+            stage_backlogs.append(0)
         else:
             stage_backlogs.append(int(backlog.get(job_type, 0)))
     bottleneck_idx = (
@@ -124,9 +132,15 @@ def build_dashboard_snapshot(
 
     stages: list[PipelineStageStat] = []
     for index, (key, label, job_type) in enumerate(PIPELINE_STAGES):
-        if job_type is None:
+        if key == "review":
             running = 0
             stage_backlog = review_total
+        elif key == "acquire":
+            running = acquisition.in_progress
+            stage_backlog = acquisition.in_progress + acquisition.waiting_for_user
+        elif job_type is None:
+            running = 0
+            stage_backlog = 0
         else:
             running = int(running_by_type.get(job_type, 0))
             stage_backlog = int(backlog.get(job_type, 0))
@@ -152,7 +166,6 @@ def build_dashboard_snapshot(
         )
     )
     top_failures = tuple(container.job_repo.summarize_failures(library_id, limit=8))
-    acquisition = _acquisition_stats(container, library_id)
 
     track_count = int(summary["track_count"])
     insight = _insight(

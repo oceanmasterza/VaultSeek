@@ -71,6 +71,31 @@ class ReviewRepository:
             row = conn.execute(statement).first()
         return _from_row(row) if row is not None else None
 
+    def find_pending_for_acquisition_job(
+        self,
+        *,
+        library_id: UUID,
+        acquisition_job_id: UUID,
+        review_type: ReviewType | None = None,
+    ) -> ReviewItem | None:
+        """Return a pending item whose payload references ``acquisition_job_id``."""
+        statement = (
+            select(review_items)
+            .where(review_items.c.library_id == uuid_to_blob(library_id))
+            .where(review_items.c.status == ReviewStatus.PENDING.value)
+        )
+        if review_type is not None:
+            statement = statement.where(review_items.c.review_type == review_type.value)
+        target = str(acquisition_job_id)
+        with self._engine.connect() as conn:
+            rows = conn.execute(statement).all()
+        for row in rows:
+            item = _from_row(row)
+            payload = item.payload or {}
+            if str(payload.get("acquisition_job_id") or "") == target:
+                return item
+        return None
+
     def list_pending_for_track(self, track_id: UUID) -> list[ReviewItem]:
         """All pending items attached to this track (any review type)."""
         statement = (

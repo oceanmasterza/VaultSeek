@@ -87,29 +87,47 @@ class ReviewQueueService:
 
     def create_item(self, item: ReviewItemCreate, *, now: datetime | None = None) -> UUID:
         """Insert a pending review item, or refresh an existing pending one
-        for the same ``(track_id, review_type)`` (idempotent re-identify)."""
+        for the same ``(track_id, review_type)`` (idempotent re-identify).
+
+        Acquisition failures without a track also dedupe on
+        ``payload.acquisition_job_id``.
+        """
         created_at = _resolve_now(now)
+        existing: ReviewItem | None = None
         if item.track_id is not None:
             existing = self._reviews.find_pending(
                 track_id=item.track_id, review_type=item.review_type
             )
-            if existing is not None:
-                self._reviews.update_pending_content(
-                    existing.id,
-                    title=item.title,
-                    description=item.description,
-                    confidence=item.confidence,
-                    payload=item.payload,
-                )
-                self._events.publish(
-                    ReviewItemAddedEvent(
-                        review_id=existing.id,
+        if existing is None:
+            job_id_raw = (item.payload or {}).get("acquisition_job_id")
+            if job_id_raw:
+                try:
+                    job_uuid = UUID(str(job_id_raw))
+                except ValueError:
+                    job_uuid = None
+                if job_uuid is not None:
+                    existing = self._reviews.find_pending_for_acquisition_job(
                         library_id=item.library_id,
+                        acquisition_job_id=job_uuid,
                         review_type=item.review_type,
-                        track_id=item.track_id,
                     )
+        if existing is not None:
+            self._reviews.update_pending_content(
+                existing.id,
+                title=item.title,
+                description=item.description,
+                confidence=item.confidence,
+                payload=item.payload,
+            )
+            self._events.publish(
+                ReviewItemAddedEvent(
+                    review_id=existing.id,
+                    library_id=item.library_id,
+                    review_type=item.review_type,
+                    track_id=item.track_id,
                 )
-                return existing.id
+            )
+            return existing.id
 
         review_id = generate_uuid7()
         self._reviews.create(

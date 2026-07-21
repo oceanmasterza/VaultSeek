@@ -46,6 +46,8 @@ def test_review_type_covers_every_documented_trigger() -> None:
         "artwork_low_res",
         "low_quality",
         "rule_action",
+        "acquisition_failed",
+        "acquisition_no_results",
     }
 
     assert {member.value for member in ReviewType} == expected

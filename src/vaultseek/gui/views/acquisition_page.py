@@ -167,6 +167,32 @@ class AcquisitionPage(QWidget):
         rows = {index.row() for index in self._table.selectedIndexes()}
         return [self._job_ids[row] for row in sorted(rows) if 0 <= row < len(self._job_ids)]
 
+    def _auto_acquire_selected(self) -> None:
+        selected = self._selected_ids()
+        if not selected:
+            QMessageBox.information(self, "Acquisition", "Select one or more jobs first.")
+            return
+        connected = self._container.provider_manager.connected_provider_ids()
+        if not connected:
+            QMessageBox.warning(
+                self,
+                "Acquisition",
+                "No acquisition providers are connected.\n\n"
+                "Enable Nicotine+ in Settings → Acquisition and confirm Nicotine+ "
+                "(and its API / proxy) is running. Failures also appear under "
+                "Dashboard → Attention needed.",
+            )
+        outcomes: list[str] = []
+        for job_id in selected:
+            try:
+                outcome = self._container.acquisition_runner.try_auto_acquire(job_id)
+                detail = outcome.message or outcome.state.value
+                outcomes.append(f"{outcome.state.value}: {detail}")
+            except (KeyError, ValueError) as exc:
+                outcomes.append(f"error — {exc}")
+        QMessageBox.information(self, "Acquisition", "\n".join(outcomes[:12]))
+        self.refresh()
+
     def _scan_missing(self) -> None:
         if self._library_id is None:
             QMessageBox.warning(self, "Acquisition", "Select a library first.")
@@ -179,31 +205,32 @@ class AcquisitionPage(QWidget):
                 "Missing Media Analyzer is unavailable (MusicBrainz provider required).",
             )
             return
+        auto_queue = self._container.config.acquisition.auto_queue_jobs
         created = analyzer.create_jobs_for_library(
             self._container.acquisition_engine,
             self._library_id,
-            auto_queue=self._container.config.acquisition.auto_queue_jobs,
+            auto_queue=auto_queue,
         )
+        connected = self._container.provider_manager.connected_provider_ids()
+        extra = ""
+        if created and not connected:
+            extra = (
+                "\n\nWarning: no acquisition providers are connected — "
+                "searches will fail until Nicotine+ is online. "
+                "Check Dashboard → Attention needed after auto-acquire runs."
+            )
+        elif created and auto_queue:
+            extra = "\n\nJobs were queued; background automation will search shortly."
+        elif created:
+            extra = (
+                "\n\nJobs are created but not queued "
+                "(enable auto_queue_jobs in Settings, or use Auto-acquire selected)."
+            )
         QMessageBox.information(
             self,
             "Acquisition",
-            f"Created {len(created)} missing-track job(s).",
+            f"Created {len(created)} missing-track job(s).{extra}",
         )
-        self.refresh()
-
-    def _auto_acquire_selected(self) -> None:
-        selected = self._selected_ids()
-        if not selected:
-            QMessageBox.information(self, "Acquisition", "Select one or more jobs first.")
-            return
-        outcomes: list[str] = []
-        for job_id in selected:
-            try:
-                outcome = self._container.acquisition_runner.try_auto_acquire(job_id)
-                outcomes.append(f"{job_id}: {outcome.state.value}")
-            except (KeyError, ValueError) as exc:
-                outcomes.append(f"{job_id}: error — {exc}")
-        QMessageBox.information(self, "Acquisition", "\n".join(outcomes[:12]))
         self.refresh()
 
     def _acquire_top_selected(self) -> None:

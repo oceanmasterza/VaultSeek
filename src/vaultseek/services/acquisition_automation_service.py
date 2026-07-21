@@ -25,10 +25,19 @@ from vaultseek.core.event_bus import EventBus
 from vaultseek.db.repositories.acquisition_job_repo import AcquisitionJobRepository
 from vaultseek.db.repositories.library_repo import LibraryRepository
 from vaultseek.models.entities.acquisition_job import AcquisitionJobState
+from vaultseek.services.acquisition_attention import park_if_attention_needed
 from vaultseek.services.acquisition_engine import AcquisitionEngine
 from vaultseek.services.acquisition_runner import AcquisitionRunner
+from vaultseek.services.review_queue_service import ReviewQueueService
 
 _FAILURE_STATES: tuple[AcquisitionJobState, ...] = (
+    AcquisitionJobState.DOWNLOAD_FAILED,
+    AcquisitionJobState.VERIFICATION_FAILED,
+    AcquisitionJobState.IMPORT_FAILED,
+)
+
+_ATTENTION_STATES: tuple[AcquisitionJobState, ...] = (
+    AcquisitionJobState.NO_RESULTS,
     AcquisitionJobState.DOWNLOAD_FAILED,
     AcquisitionJobState.VERIFICATION_FAILED,
     AcquisitionJobState.IMPORT_FAILED,
@@ -61,6 +70,7 @@ class AcquisitionAutomationService:
         pipeline_config: PipelineConfig,
         event_bus: EventBus,
         automation_config: AcquisitionAutomationConfig | None = None,
+        review_queue: ReviewQueueService | None = None,
     ) -> None:
         self._libraries = library_repo
         self._jobs = acquisition_job_repo
@@ -69,6 +79,7 @@ class AcquisitionAutomationService:
         self._pipeline = pipeline_config
         self._event_bus = event_bus
         self._cfg = automation_config or AcquisitionAutomationConfig()
+        self._reviews = review_queue
 
         self._stop = threading.Event()
         self._thread: threading.Thread | None = None
@@ -116,6 +127,9 @@ class AcquisitionAutomationService:
         # 3) Auto-acquire for jobs that are eligible and unsupervised.
         self._auto_acquire(library_id)
 
+        # 4) Surface stuck failures under Attention needed.
+        self._park_attention_for_failures(library_id)
+
     def _auto_acquire(self, library_id: UUID) -> None:
         # Keep it bounded to avoid long loops if many jobs exist.
         processed = 0
@@ -134,6 +148,22 @@ class AcquisitionAutomationService:
                         "Auto-acquire failed for acquisition job {}",
                         job.id,
                     )
+                    loaded = self._engine.get(job.id)
+                    park_if_attention_needed(
+                        self._reviews,
+                        loaded,
+                        message="auto-acquire raised an unexpected error",
+                    )
+
+    def _park_attention_for_failures(self, library_id: UUID) -> None:
+        for state in _ATTENTION_STATES:
+            for job in self._jobs.list_by_library(library_id=library_id, state=state):
+                park_if_attention_needed(
+                    self._reviews,
+                    job,
+                    message=job.error_message or "",
+                    provider_offline=bool(job.extra.get("provider_offline")),
+                )
 
     def _schedule_retries(self, library_id: UUID) -> None:
         # Failures → retry scheduled (increment retry_count once, atomically).

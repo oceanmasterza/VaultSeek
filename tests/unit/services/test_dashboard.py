@@ -91,6 +91,7 @@ def test_dashboard_snapshot_with_tracks_and_confidence(tmp_path: Path) -> None:
         assert snap.confidence["unscored"] == 1
         assert snap.confidence["flagged"] == 1
         assert len(snap.stages) == len(PIPELINE_STAGES)
+        assert any(stage.key == "acquire" for stage in snap.stages)
         assert snap.tracks_by_zone[LibraryZone.STAGING.value] == 1
         assert snap.insight
         assert "Force rescan" in snap.last_scan_summary or "none yet" in snap.last_scan_summary
@@ -150,6 +151,48 @@ def test_dashboard_acquisition_summary(tmp_path: Path) -> None:
         assert snap.acquisition.waiting_for_user == 1
         assert snap.acquisition.failed == 1
         assert "awaiting your pick" in snap.insight or "Acquisition" in snap.insight
+        acquire = next(stage for stage in snap.stages if stage.key == "acquire")
+        assert acquire.backlog == 1  # waiting_for_user only (failed NO_RESULTS not in backlog formula)
+        assert acquire.running == 0
+        assert acquire.is_active is True
+    finally:
+        container.close()
+
+
+def test_dashboard_acquiring_stage_counts_in_progress(tmp_path: Path) -> None:
+    from vaultseek.models.entities.acquisition_job import AcquisitionJobState, AcquisitionJobType
+
+    container = bootstrap(base_dir_override=tmp_path, console_logging=False)
+    try:
+        now = datetime.now(UTC)
+        library_id = generate_uuid7()
+        container.library_repo.upsert(
+            Library(
+                id=library_id,
+                name="Acq Progress",
+                incoming_path=str(tmp_path / "in"),
+                staging_path=str(tmp_path / "st"),
+                library_path=str(tmp_path / "lib"),
+                archive_path=str(tmp_path / "ar"),
+                created_at=now,
+                updated_at=now,
+            )
+        )
+        job = container.acquisition_engine.create_job(
+            library_id=library_id,
+            job_type=AcquisitionJobType.MISSING_TRACK,
+            artist="A",
+            album="B",
+            title="C",
+        )
+        container.acquisition_engine.queue(job.id)
+        container.acquisition_engine.advance(job.id, AcquisitionJobState.SEARCHING)
+
+        snap = build_dashboard_snapshot(container, library_id)
+        acquire = next(stage for stage in snap.stages if stage.key == "acquire")
+        assert acquire.running == 1
+        assert acquire.backlog == 1
+        assert acquire.label == "Acquiring"
     finally:
         container.close()
 

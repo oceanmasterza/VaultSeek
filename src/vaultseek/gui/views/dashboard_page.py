@@ -5,10 +5,12 @@ from __future__ import annotations
 from uuid import UUID
 
 from PySide6.QtCore import Qt, Signal
+from PySide6.QtGui import QFont, QTextCursor
 from PySide6.QtWidgets import (
     QFrame,
     QHBoxLayout,
     QLabel,
+    QPlainTextEdit,
     QProgressBar,
     QPushButton,
     QScrollArea,
@@ -19,6 +21,7 @@ from PySide6.QtWidgets import (
 )
 
 from vaultseek.core.container import Container
+from vaultseek.core.logging import get_live_log_buffer
 from vaultseek.gui.widgets.pipeline_flow import PipelineFlowWidget
 from vaultseek.models.entities.track import LibraryZone
 from vaultseek.services.dashboard import DashboardSnapshot, build_dashboard_snapshot
@@ -180,7 +183,7 @@ class DashboardPage(QWidget):
         pipe_title.setProperty("panelTitle", True)
         pipe_help = QLabel(
             "Each file moves left → right: Discover → Hash → Fingerprint → Identify → "
-            "your Review gate → Duplicates / Rules → Organize → Artwork → Sync. "
+            "your Review gate → Duplicates / Rules → Organize → Artwork → Acquiring → Sync. "
             "Numbers are items waiting or in progress at that stage."
         )
         pipe_help.setWordWrap(True)
@@ -287,22 +290,9 @@ class DashboardPage(QWidget):
         fail_layout.addWidget(self._failure_summary)
         layout.addWidget(fail_box)
 
-        # Live jobs
+        # Recent failures + live activity log
         live = QHBoxLayout()
         live.setSpacing(12)
-
-        running_box = QFrame()
-        running_box.setProperty("dashPanel", True)
-        running_layout = QVBoxLayout(running_box)
-        running_layout.addWidget(self._panel_title("Running now"))
-        self._running_table = QTableWidget(0, 3)
-        self._running_table.setHorizontalHeaderLabels(["Type", "Attempts", "Started"])
-        self._running_table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
-        self._running_table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
-        self._running_table.horizontalHeader().setStretchLastSection(True)
-        self._running_table.setMaximumHeight(180)
-        running_layout.addWidget(self._running_table)
-        live.addWidget(running_box, stretch=1)
 
         failed_box = QFrame()
         failed_box.setProperty("dashPanel", True)
@@ -316,6 +306,29 @@ class DashboardPage(QWidget):
         self._failed_table.setMaximumHeight(180)
         failed_layout.addWidget(self._failed_table)
         live.addWidget(failed_box, stretch=1)
+
+        log_box = QFrame()
+        log_box.setProperty("dashPanel", True)
+        log_layout = QVBoxLayout(log_box)
+        log_layout.addWidget(self._panel_title("Live activity"))
+        log_help = QLabel(
+            "Recent app log lines (scan, search, acquire). Full history is still in the log folder."
+        )
+        log_help.setWordWrap(True)
+        log_help.setProperty("muted", True)
+        log_layout.addWidget(log_help)
+        self._live_log = QPlainTextEdit()
+        self._live_log.setReadOnly(True)
+        self._live_log.setMaximumBlockCount(400)
+        self._live_log.setMinimumHeight(160)
+        self._live_log.setMaximumHeight(220)
+        mono = QFont("Consolas")
+        mono.setStyleHint(QFont.StyleHint.Monospace)
+        mono.setPointSize(9)
+        self._live_log.setFont(mono)
+        self._live_log.setPlaceholderText("Waiting for activity…")
+        log_layout.addWidget(self._live_log)
+        live.addWidget(log_box, stretch=2)
         layout.addLayout(live)
 
         layout.addStretch(1)
@@ -333,6 +346,20 @@ class DashboardPage(QWidget):
     def refresh(self) -> None:
         snap = build_dashboard_snapshot(self._container, self._library_id)
         self._apply(snap)
+        self._refresh_live_log()
+
+    def _refresh_live_log(self) -> None:
+        text = get_live_log_buffer().text()
+        # Avoid resetting scroll when content is unchanged.
+        if self._live_log.toPlainText() == text:
+            return
+        at_bottom = (
+            self._live_log.verticalScrollBar().value()
+            >= self._live_log.verticalScrollBar().maximum() - 4
+        )
+        self._live_log.setPlainText(text)
+        if at_bottom or not text:
+            self._live_log.moveCursor(QTextCursor.MoveOperation.End)
 
     def _apply(self, snap: DashboardSnapshot) -> None:
         if not snap.has_library:
@@ -348,13 +375,13 @@ class DashboardPage(QWidget):
             ):
                 card.set_value("—")
             self._pipeline.set_stages(())
-            self._running_table.setRowCount(0)
             self._failed_table.setRowCount(0)
             self._review_detail.setText("Select or create a library in Settings.")
             self._failure_summary.setText("No failed jobs.")
             self._last_scan.setText("")
             self._processing_report.setText("")
             self._acquisition_summary.setText("No acquisition jobs yet.")
+            self._refresh_live_log()
             return
 
         self._heading.setText(f"Dashboard — {snap.library_name}")
@@ -415,7 +442,6 @@ class DashboardPage(QWidget):
         else:
             self._failure_summary.setText("No failed jobs.")
 
-        self._fill_jobs(self._running_table, snap.running_job_rows, kind="running")
         self._fill_jobs(self._failed_table, snap.failed_job_rows, kind="failed")
 
     def _apply_acquisition_summary(self, snap: DashboardSnapshot) -> None:

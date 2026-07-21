@@ -58,8 +58,9 @@ Protocol details live in `src/vaultseek/plugins/builtin/nicotine_plus/rpc.py` (`
 | Jobs stuck in `downloading` | Download folder permissions; Nicotine+ download queue; automation service running |
 | Socket transport fails | Proxy script running; firewall not blocking localhost |
 | Auto-acquire never starts | Score below threshold in Settings; job in `waiting_for_user` needs manual pick |
+| Search / download fails silently | Check **Dashboard → Attention needed** — `acquisition_no_results` / `acquisition_failed` review items are created for NO_RESULTS, provider offline, and download/verify/import failures |
 
-Acquisition jobs and states are visible on the **Acquisition** page. Background automation (`AcquisitionAutomationService`) polls downloads and schedules retries with exponential backoff.
+Acquisition jobs and states are visible on the **Acquisition** page. Background automation (`AcquisitionAutomationService`) polls downloads and schedules retries with exponential backoff. User-visible acquire failures also appear under **Dashboard → Attention needed**.
 
 ---
 

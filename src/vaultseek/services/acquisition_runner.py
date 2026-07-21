@@ -6,11 +6,15 @@ from dataclasses import dataclass
 from typing import Any
 from uuid import UUID
 
+from loguru import logger
+
 from vaultseek.models.entities.acquisition_job import AcquisitionJob, AcquisitionJobState
 from vaultseek.models.interfaces.acquisition import SearchResult
+from vaultseek.services.acquisition_attention import park_if_attention_needed
 from vaultseek.services.acquisition_engine import AcquisitionEngine
 from vaultseek.services.acquisition_workflow import AcquisitionWorkflow
 from vaultseek.services.download_manager import DownloadManager
+from vaultseek.services.review_queue_service import ReviewQueueService
 from vaultseek.services.scoring_engine import ScoringEngine
 from vaultseek.services.search_dispatcher import SearchDispatcher
 
@@ -38,6 +42,7 @@ class AcquisitionRunner:
         acquisition_workflow: AcquisitionWorkflow,
         *,
         auto_acquire_threshold: float = 0.90,
+        review_queue: ReviewQueueService | None = None,
     ) -> None:
         self._engine = acquisition_engine
         self._search = search_dispatcher
@@ -45,6 +50,7 @@ class AcquisitionRunner:
         self._downloads = download_manager
         self._workflow = acquisition_workflow
         self._threshold = auto_acquire_threshold
+        self._reviews = review_queue
 
     @property
     def auto_acquire_threshold(self) -> float:
@@ -66,7 +72,15 @@ class AcquisitionRunner:
         assert job is not None
 
         if job.state is AcquisitionJobState.NO_RESULTS or not results:
-            return RunnerOutcome(job_id, AcquisitionJobState.NO_RESULTS, "no provider results")
+            provider_offline = bool(job.extra.get("provider_offline"))
+            message = (
+                "no acquisition providers connected"
+                if provider_offline
+                else "no provider results"
+            )
+            logger.warning("Acquisition job {}: {}", job_id, message)
+            self._park_attention(job, message=message, provider_offline=provider_offline)
+            return RunnerOutcome(job_id, AcquisitionJobState.NO_RESULTS, message)
 
         self._engine.advance(job_id, AcquisitionJobState.SCORING, note=f"{len(results)} hit(s)")
         job = self._engine.get(job_id)
@@ -136,6 +150,9 @@ class AcquisitionRunner:
         scored = _load_scored(job)
         if not scored:
             self._engine.advance(job_id, AcquisitionJobState.NO_RESULTS, note="nothing to score")
+            job = self._engine.get(job_id)
+            assert job is not None
+            self._park_attention(job, message="no scored results")
             return RunnerOutcome(job_id, AcquisitionJobState.NO_RESULTS, "no scored results")
 
         best_result, best_score = scored[0]
@@ -144,6 +161,12 @@ class AcquisitionRunner:
                 job_id,
                 AcquisitionJobState.WAITING_FOR_USER,
                 note=f"best={best_score:.2f}<{self._threshold:.2f}",
+            )
+            logger.info(
+                "Acquisition job {}: best score {:.0%} below auto-acquire threshold {:.0%}",
+                job_id,
+                best_score,
+                self._threshold,
             )
             return RunnerOutcome(
                 job_id,
@@ -195,6 +218,7 @@ class AcquisitionRunner:
         if handle is None:
             loaded = self._engine.get(job_id)
             assert loaded is not None
+            self._park_attention(loaded, message="download start failed")
             return RunnerOutcome(job_id, loaded.state, "download start failed")
 
         self._engine.update_extra(
@@ -211,6 +235,7 @@ class AcquisitionRunner:
             self._workflow.finish_download(job_id, status.local_paths, auto_import=auto_import)
             loaded = self._engine.get(job_id)
             assert loaded is not None
+            self._park_attention(loaded)
             return RunnerOutcome(job_id, loaded.state, "download completed immediately")
 
         loaded = self._engine.get(job_id)
@@ -258,11 +283,29 @@ class AcquisitionRunner:
                     list(status.local_paths) if status.local_paths else None,
                     auto_import=auto_import,
                 )
+                loaded = self._engine.get(job.id)
+                self._park_attention(loaded)
                 updated += 1
             elif status.state in ("failed", "cancelled"):
                 self._downloads.complete(job.id)
+                loaded = self._engine.get(job.id)
+                self._park_attention(loaded, message=status.message or status.state)
                 updated += 1
         return updated
+
+    def _park_attention(
+        self,
+        job: AcquisitionJob | None,
+        *,
+        message: str = "",
+        provider_offline: bool = False,
+    ) -> None:
+        park_if_attention_needed(
+            self._reviews,
+            job,
+            message=message,
+            provider_offline=provider_offline,
+        )
 
 
 def _result_to_dict(result: SearchResult) -> dict[str, Any]:

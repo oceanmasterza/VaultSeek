@@ -19,7 +19,7 @@ python packaging/fetch_vendor.py
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
 Write-Host "==> PyInstaller onedir"
-pyinstaller packaging/vaultseek.spec --noconfirm
+python -m PyInstaller packaging/vaultseek.spec --noconfirm
 if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
 
 $fpcalc = $null
@@ -41,8 +41,16 @@ Write-Host "Verified bundled $fpcalc"
 if (-not $SkipInstaller) {
     $iscc = Get-Command iscc -ErrorAction SilentlyContinue
     if (-not $iscc) {
-        $guess = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
-        if (Test-Path $guess) { $iscc = Get-Item $guess }
+        foreach ($guess in @(
+                "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe",
+                "${env:ProgramFiles}\Inno Setup 6\ISCC.exe",
+                "${env:LOCALAPPDATA}\Programs\Inno Setup 6\ISCC.exe"
+            )) {
+            if (Test-Path $guess) {
+                $iscc = Get-Item $guess
+                break
+            }
+        }
     }
     if ($iscc) {
         Write-Host "==> Inno Setup installer"

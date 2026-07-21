@@ -19,6 +19,18 @@ Third-party binaries are declared in
 To upgrade a helper later: bump the versioned URL + hashes in the
 manifest, re-run `fetch_vendor.py`, rebuild.
 
+## Prerequisites
+
+**Inno Setup 6** (recommended for the Windows installer — faster unpack, proper
+wizard, Start Menu uninstall entry):
+
+```powershell
+winget install --id JRSoftware.InnoSetup
+```
+
+If Inno Setup is not installed, `build_windows.ps1` falls back to the Python
+one-file installer (`build_setup_exe.py`).
+
 ## Offline build (recommended)
 
 ```powershell
@@ -30,7 +42,7 @@ Or step by step:
 
 ```powershell
 python packaging/fetch_vendor.py
-pyinstaller packaging/vaultseek.spec --noconfirm
+python -m PyInstaller packaging/vaultseek.spec --noconfirm
 # Installer (Inno if ISCC is installed; otherwise Python Setup.exe):
 python packaging/build_setup_exe.py
 # or: ISCC packaging\installer.iss

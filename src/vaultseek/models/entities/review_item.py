@@ -26,6 +26,8 @@ class ReviewType(StrEnum):
     ARTWORK_LOW_RES = "artwork_low_res"
     LOW_QUALITY = "low_quality"
     RULE_ACTION = "rule_action"
+    ACQUISITION_FAILED = "acquisition_failed"
+    ACQUISITION_NO_RESULTS = "acquisition_no_results"
 
 
 class ReviewStatus(StrEnum):

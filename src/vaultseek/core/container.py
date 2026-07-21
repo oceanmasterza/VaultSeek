@@ -284,6 +284,7 @@ class Container:
             download_manager,
             acquisition_workflow,
             auto_acquire_threshold=config.acquisition.auto_acquire_threshold,
+            review_queue=review_queue,
         )
         acquisition_automation_service = AcquisitionAutomationService(
             library_repo=library_repo,
@@ -292,6 +293,7 @@ class Container:
             acquisition_runner=acquisition_runner,
             pipeline_config=config.pipeline,
             event_bus=event_bus,
+            review_queue=review_queue,
         )
         metadata_arbitrator = MetadataArbitrator(
             plugin_manager.get_metadata_providers(),

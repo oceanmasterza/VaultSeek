@@ -26,6 +26,16 @@ class ProviderManager:
     def list_providers(self) -> list[AcquisitionProvider]:
         return list(self._providers.values())
 
+    def connected_provider_ids(self) -> tuple[str, ...]:
+        """Ids of providers that successfully connected."""
+        return tuple(sorted(self._connected))
+
+    def has_connected_search_providers(
+        self, *, provider_ids: Sequence[str] | None = None
+    ) -> bool:
+        """True when at least one connected provider can search."""
+        return any(p.capabilities.search for p in self._iter_active(provider_ids))
+
     def get(self, provider_id: str) -> AcquisitionProvider | None:
         return self._providers.get(provider_id)
 
