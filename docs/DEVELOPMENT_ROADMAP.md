@@ -32,15 +32,15 @@ Project State
 
 Current Phase
 
-Phase 4 transport + Phases 9–10 verification/import hand-off
+Phase 6 automation + polish (reports, dashboard acquisition summary)
 
 Current Sprint
 
-Sprint 3
+Sprint 4
 
 Current Goal
 
-Scheduled automation, richer acquisition result picker, optional NDJSON companion plugin.
+Documentation sync, automation hardening, UX polish (dashboard/reports).
 ---
 
 # Vision Statement
@@ -855,13 +855,13 @@ Summary
 
 Recommended refactors (non-user-visible)
 
-- Background acquisition scheduler (auto-acquire + verify/import polling).
-- Retry policies + acquisition history fields in the Acquisition UI.
-- NDJSON socket companion via `scripts/nicotine_plus_ndjson_proxy.py`.
+- Dashboard acquisition job counts on the main status/dashboard pages.
+- Dedicated acquisition reports view (beyond last-note column).
+- Settings "Test connection" for Nicotine+ provider.
 
 Next session goal
 
-Acquisition reports and smarter user-driven result selection.
+Acquisition reports and dashboard polish.
 
 
 ---

@@ -34,7 +34,7 @@ Public-facing roadmap for GitHub visitors. For day-to-day engineering progress, 
 
 **Status: Complete**
 
-- `AcquisitionConfig` (schema v8) — enabled providers, order, Nicotine+ settings
+- `AcquisitionConfig` (schema v9) — enabled providers, order, auto-acquire threshold, Nicotine+ settings
 - Bootstrap-time provider connect from `config.json`
 
 ---
@@ -76,13 +76,14 @@ User-facing: result picker, background scheduled automation, and retry/history U
 
 ## Phase 6 — Automation
 
-**Status: Partially wired**
+**Status: Core wired**
 
-- Minimal-intervention workflows (“detect missing album → acquire → verify → import”)
-- Scheduled re-scans for library completeness
-- Failed-job retry policies ✅
-- Media server refresh after import
-- Processing reports and richer acquisition history UI
+- Minimal-intervention workflows (“detect missing album → acquire → verify → import”) ✅
+- Background auto-acquire + download polling (`AcquisitionAutomationService`) ✅
+- Failed-job retry policies with exponential backoff ✅
+- Scheduled re-scans for library completeness (partial — missing-media scan manual)
+- Media server refresh after import (deferred until import requests it)
+- Processing reports and richer acquisition history UI (partial — last-note column in UI)
 
 ---
 

@@ -14,20 +14,19 @@ It is intentionally conservative: it never attempts to auto-acquire jobs in
 from __future__ import annotations
 
 import threading
-import time
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
-from typing import Iterable
 from uuid import UUID
+
+from loguru import logger
 
 from vaultseek.core.config import PipelineConfig
 from vaultseek.core.event_bus import EventBus
 from vaultseek.db.repositories.acquisition_job_repo import AcquisitionJobRepository
 from vaultseek.db.repositories.library_repo import LibraryRepository
-from vaultseek.models.entities.acquisition_job import AcquisitionJob, AcquisitionJobState
+from vaultseek.models.entities.acquisition_job import AcquisitionJobState
 from vaultseek.services.acquisition_engine import AcquisitionEngine
 from vaultseek.services.acquisition_runner import AcquisitionRunner
-
 
 _FAILURE_STATES: tuple[AcquisitionJobState, ...] = (
     AcquisitionJobState.DOWNLOAD_FAILED,
@@ -38,7 +37,6 @@ _FAILURE_STATES: tuple[AcquisitionJobState, ...] = (
 _AUTO_ACQUIRE_STATES: tuple[AcquisitionJobState, ...] = (
     AcquisitionJobState.CREATED,
     AcquisitionJobState.QUEUED,
-    AcquisitionJobState.COLLECTING_RESULTS,
     AcquisitionJobState.SCORING,
 )
 
@@ -92,8 +90,7 @@ class AcquisitionAutomationService:
             try:
                 self._tick_all_libraries()
             except Exception:
-                # Never crash the app due to automation issues.
-                pass
+                logger.exception("Acquisition automation loop tick failed")
             self._stop.wait(self._cfg.poll_interval_seconds)
 
     def _tick_all_libraries(self) -> None:
@@ -101,7 +98,13 @@ class AcquisitionAutomationService:
         for library in libraries:
             if self._stop.is_set():
                 return
-            self._tick_library(library.id)
+            try:
+                self._tick_library(library.id)
+            except Exception:
+                logger.exception(
+                    "Acquisition automation tick failed for library {}",
+                    library.id,
+                )
 
     def _tick_library(self, library_id: UUID) -> None:
         # 1) Retry policy first — it may move jobs back to queued.
@@ -125,21 +128,21 @@ class AcquisitionAutomationService:
                     return
                 processed += 1
                 try:
-                    self._runner.try_auto_acquire(job.id)
+                    self._runner.try_auto_acquire_if_ready(job.id)
                 except Exception:
-                    # If the job errors, it will likely move to a failed state
-                    # via the normal acquisition pipeline.
-                    continue
+                    logger.exception(
+                        "Auto-acquire failed for acquisition job {}",
+                        job.id,
+                    )
 
     def _schedule_retries(self, library_id: UUID) -> None:
-        # Failures → retry scheduled (increment retry_count once).
+        # Failures → retry scheduled (increment retry_count once, atomically).
         for state in _FAILURE_STATES:
             jobs = self._jobs.list_by_library(library_id=library_id, state=state)
             for job in jobs:
                 if job.retry_count >= self._cfg.max_retries:
                     continue
-                self._engine.increment_retry_count(job.id, note=f"auto retry from {state.value}")
-                self._engine.advance(job.id, AcquisitionJobState.RETRY_SCHEDULED, note="scheduled")
+                self._engine.schedule_retry(job.id, note=f"auto retry from {state.value}")
 
         # RETRY_SCHEDULED → QUEUED when enough delay elapsed.
         scheduled = self._jobs.list_by_library(
@@ -158,4 +161,3 @@ class AcquisitionAutomationService:
         base = float(self._pipeline.retry_base_delay_seconds)
         capped = float(self._pipeline.retry_max_delay_seconds)
         return min(base * (2 ** (attempt - 1)), capped)
-

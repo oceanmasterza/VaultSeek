@@ -33,9 +33,9 @@ VaultSeek reuses MusicVault’s library pipeline (fingerprint, identify, organis
 Inherited from the MusicVault fork (working today):
 
 - Watch folder / scan Incoming, hash, fingerprint, identify
-- Multi-provider metadata (MusicBrainz, AcoustID, Discogs, local tags, filename parser)
+- Multi-provider metadata (MusicBrainz, AcoustID, local tags, filename parser)
 - Review queue, rules engine, organize into Library
-- Artwork (embedded, Cover Art Archive, Discogs)
+- Artwork (embedded, Cover Art Archive)
 - Browse UI (Library, Artists, Albums, Artwork)
 - Media server rescan (Navidrome, Jellyfin, Plex, Emby, Subsonic, Ampache, Koel, Funkwhale, Lyrion)
 - Duplicate detection, rollback, operation history
@@ -46,26 +46,31 @@ VaultSeek-specific foundation:
 - **AcquisitionEngine** — create, queue, cancel, advance with DB persistence
 - **Missing Media Analyzer** — MusicBrainz tracklist gap detection + job creation
 - **Provider Framework** — config-driven providers, `ProviderManager`, stub + Nicotine+
-- **SearchDispatcher / ScoringEngine / DownloadManager** — acquisition pipeline skeletons
+- **SearchDispatcher / ScoringEngine / DownloadManager** — acquisition pipeline
 - **AcquisitionRunner** — search, score, auto-acquire above threshold, poll downloads
-- **Acquisition UI** — wishlist page with missing-media scan and job controls
+- **AcquisitionAutomationService** — background auto-acquire, download polling, retry backoff
+- **Acquisition UI** — wishlist page with missing-media scan, result picker, retries/history column
+- **LocalSocketRpcClient** — NDJSON socket protocol for Nicotine+ (port 22024)
 - **HttpApiRpcClient** — api-nicotine-plus HTTP adapter (port 12339)
+- **NDJSON proxy** — `scripts/nicotine_plus_ndjson_proxy.py` (socket → HTTP bridge)
 - **VerificationEngine** — path, tags, content-hash / fingerprint duplicate checks
 - **ImportPipeline** — stage into Incoming and enqueue scan (organize/artwork/media-server chain)
 - Planning docs, ADRs, architectural update (`ARCHITECTURAL_UPDATE_001`)
 
 ### In development
 
-- NDJSON socket companion (via `scripts/nicotine_plus_ndjson_proxy.py`) for socket transport
-- Scheduled acquisition automation
-- Acquisition history / retry policies
+- Quality-upgrade AcquisitionJobs
+- Dashboard acquisition job summary
+- Reports viewer UI (currently stub page)
+- Plugin manager UI (currently stub page)
 
 ### Planned
 
-- Auto-select above confidence threshold + retries/history for downloads
-- Quality-upgrade AcquisitionJobs
 - Additional providers (local archive, SMB, Lidarr, native Soulseek, …)
+- Discogs metadata/artwork provider (schema columns exist; provider deferred)
 - Shared `MusicVault.Core` library extraction
+- Persist verification digests on `AcquisitionJob.extra`
+- Nicotine+ in-process plugin (vs external proxy script)
 
 ---
 
@@ -145,7 +150,7 @@ See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) and [docs/ARCHITECTURAL_UPDATE_
 | Lint / types | ruff, black, mypy, import-linter |
 | Packaging | PyInstaller (Windows installer) |
 
-Metadata: MusicBrainz, AcoustID, Discogs. Artwork: Cover Art Archive, embedded tags, Discogs.
+Metadata: MusicBrainz, AcoustID. Artwork: Cover Art Archive, embedded tags. Discogs provider planned.
 
 Full reference: [docs/TECH_STACK.md](docs/TECH_STACK.md).
 
@@ -155,9 +160,9 @@ Full reference: [docs/TECH_STACK.md](docs/TECH_STACK.md).
 
 | | |
 |---|---|
-| **Maturity** | Early active development (post-fork, acquisition foundation) |
-| **Phase** | Phases 9–10 skeletons complete; live Nicotine+ next |
-| **Tests** | 585 unit/integration tests passing |
+| **Maturity** | Early active development (post-fork, acquisition pipeline wired) |
+| **Phase** | Phases 4–6 largely complete; Nicotine+ live + automation |
+| **Tests** | 604 unit/integration tests passing |
 | **Roadmap** | [docs/ROADMAP.md](docs/ROADMAP.md) (public) · [docs/DEVELOPMENT_ROADMAP.md](docs/DEVELOPMENT_ROADMAP.md) (internal / AI) · [Project board](https://github.com/users/oceanmasterza/projects/1) |
 
 ```powershell
@@ -183,6 +188,7 @@ Contributing: [CONTRIBUTING.md](CONTRIBUTING.md)
 | [docs/DEVELOPMENT_ROADMAP.md](docs/DEVELOPMENT_ROADMAP.md) | Internal engineering notebook |
 | [docs/AI_RULES.md](docs/AI_RULES.md) | AI pair-programming rules |
 | [docs/TECH_STACK.md](docs/TECH_STACK.md) | Stack and tooling reference |
+| [docs/NICOTINE_PLUS.md](docs/NICOTINE_PLUS.md) | Nicotine+ provider setup (HTTP vs socket) |
 | [docs/architecture/](docs/architecture/) | Detailed MusicVault-era design docs (being aligned) |
 
 ---

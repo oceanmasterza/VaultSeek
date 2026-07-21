@@ -460,15 +460,14 @@ class MainWindow(QMainWindow):
             f"{stats.failed} failed · Review: {review}"
         )
         self._update_review_badge()
-        self._container.acquisition_runner.poll_active_jobs(self._library_id)
-        # Keep Dashboard live while it is visible (status-bar cadence).
+        # Acquisition download polling runs in AcquisitionAutomationService.
         row = self._nav.currentRow()
         if self._nav_keys and 0 <= row < len(self._nav_keys):
             key = self._nav_keys[row]
             if key == "dashboard":
                 self._dashboard_page.refresh()
             elif key == "acquisition":
-                self._acquisition_page.poll_downloads()
+                self._acquisition_page.refresh()
 
     def closeEvent(self, event: QCloseEvent) -> None:  # noqa: N802 - Qt naming
         self._timer.stop()

@@ -13,6 +13,7 @@ Start here when onboarding or before architectural work.
 7. [DEVELOPMENT_ROADMAP.md](DEVELOPMENT_ROADMAP.md) — internal engineering notebook (AI sessions)
 8. [AI_RULES.md](AI_RULES.md) — coding and documentation rules
 9. [TECH_STACK.md](TECH_STACK.md) — languages, libraries, tooling
+10. [NICOTINE_PLUS.md](NICOTINE_PLUS.md) — Nicotine+ provider setup (HTTP vs socket)
 
 ## Terminology (use consistently)
 

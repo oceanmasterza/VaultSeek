@@ -200,6 +200,27 @@ class AcquisitionEngine:
         self._jobs.create(updated)
         return updated
 
+    def schedule_retry(self, job_id: UUID, *, note: str = "scheduled") -> AcquisitionJob:
+        """Increment retry_count and move to RETRY_SCHEDULED in one persistence step."""
+        job = self._jobs.get(job_id)
+        if job is None:
+            raise KeyError(f"AcquisitionJob {job_id} not found")
+
+        validate_transition(job.state, AcquisitionJobState.RETRY_SCHEDULED)
+        now = datetime.now(UTC)
+        entry = f"{now.isoformat()} {job.state.value} -> retry_scheduled"
+        if note:
+            entry = f"{entry}: {note}"
+        updated = replace(
+            job,
+            state=AcquisitionJobState.RETRY_SCHEDULED,
+            retry_count=job.retry_count + 1,
+            updated_at=now,
+            history=job.history + (entry,),
+        )
+        self._jobs.create(updated)
+        return updated
+
     def _transition(
 
         self,

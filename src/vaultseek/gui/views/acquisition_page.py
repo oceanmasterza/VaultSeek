@@ -39,9 +39,9 @@ class AcquisitionPage(QWidget):
         self._summary.setWordWrap(True)
         layout.addWidget(self._summary)
 
-        self._table = QTableWidget(0, 7)
+        self._table = QTableWidget(0, 8)
         self._table.setHorizontalHeaderLabels(
-            ["Artist", "Album", "Title", "State", "Score", "Retries", "Updated"]
+            ["Artist", "Album", "Title", "State", "Score", "Retries", "Updated", "Last note"]
         )
         self._table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
         self._table.setSelectionMode(QAbstractItemView.SelectionMode.ExtendedSelection)
@@ -131,9 +131,18 @@ class AcquisitionPage(QWidget):
             )
 
         self._table.setRowCount(len(rows))
-        for row_index, (job_id, artist, album, title, state, score, retries, updated, last_note) in enumerate(
-            rows
-        ):
+        for row_index, row in enumerate(rows):
+            (
+                job_id,
+                artist,
+                album,
+                title,
+                state,
+                score,
+                retries,
+                updated,
+                last_note,
+            ) = row
             self._job_ids.append(job_id)
             item_artist = QTableWidgetItem(artist)
             item_artist.setToolTip(last_note)
@@ -146,13 +155,13 @@ class AcquisitionPage(QWidget):
             self._table.setItem(row_index, 4, QTableWidgetItem(score))
             self._table.setItem(row_index, 5, QTableWidgetItem(retries))
             self._table.setItem(row_index, 6, QTableWidgetItem(updated))
+            note_item = QTableWidgetItem(last_note)
+            note_item.setToolTip(last_note)
+            self._table.setItem(row_index, 7, note_item)
 
     def poll_downloads(self) -> None:
-        """Called from the main window timer while this page may be visible."""
-        if self._library_id is None:
-            return
-        if self._container.acquisition_runner.poll_active_jobs(self._library_id) > 0:
-            self.refresh()
+        """Refresh job rows; download polling is handled by automation service."""
+        self.refresh()
 
     def _selected_ids(self) -> list[UUID]:
         rows = {index.row() for index in self._table.selectedIndexes()}
@@ -369,8 +378,10 @@ class _ResultPickerDialog(QDialog):
         self._table.setItem(row, 1, QTableWidgetItem(display_name))
         self._table.setItem(row, 2, QTableWidgetItem(provider_id))
         self._table.setItem(row, 3, QTableWidgetItem(format))
-        self._table.setItem(row, 4, QTableWidgetItem(str(bit_depth) if bit_depth is not None else ""))
-        self._table.setItem(row, 5, QTableWidgetItem(str(track_count) if track_count is not None else ""))
+        depth_text = str(bit_depth) if bit_depth is not None else ""
+        count_text = str(track_count) if track_count is not None else ""
+        self._table.setItem(row, 4, QTableWidgetItem(depth_text))
+        self._table.setItem(row, 5, QTableWidgetItem(count_text))
         self._table.setRowHeight(row, 22)
         # Store result id on the "Result" cell.
         self._table.item(row, 1).setData(256, result_id)  # Qt.UserRole

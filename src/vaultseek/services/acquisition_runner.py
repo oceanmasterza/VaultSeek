@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from pathlib import Path
 from typing import Any
 from uuid import UUID
 
@@ -102,6 +101,38 @@ class AcquisitionRunner:
         if job.state is AcquisitionJobState.NO_RESULTS:
             return outcome
 
+        return self._auto_acquire_from_scored(job_id, auto_import=auto_import, prior=outcome)
+
+    def try_auto_acquire_if_ready(
+        self,
+        job_id: UUID,
+        *,
+        auto_import: bool = True,
+    ) -> RunnerOutcome | None:
+        """Background-safe auto-acquire: search only when the job still needs it."""
+        job = self._engine.get(job_id)
+        if job is None:
+            raise KeyError(f"AcquisitionJob {job_id} not found")
+
+        if job.state in (AcquisitionJobState.CREATED, AcquisitionJobState.QUEUED):
+            return self.try_auto_acquire(job_id, auto_import=auto_import)
+
+        if job.state is AcquisitionJobState.SCORING:
+            return self._auto_acquire_from_scored(job_id, auto_import=auto_import)
+
+        return None
+
+    def _auto_acquire_from_scored(
+        self,
+        job_id: UUID,
+        *,
+        auto_import: bool = True,
+        prior: RunnerOutcome | None = None,
+    ) -> RunnerOutcome:
+        job = self._engine.get(job_id)
+        if job is None:
+            raise KeyError(f"AcquisitionJob {job_id} not found")
+
         scored = _load_scored(job)
         if not scored:
             self._engine.advance(job_id, AcquisitionJobState.NO_RESULTS, note="nothing to score")
@@ -122,7 +153,18 @@ class AcquisitionRunner:
                 scored_count=len(scored),
             )
 
-        return self.start_download(job_id, best_result, auto_import=auto_import, score=best_score)
+        outcome = self.start_download(
+            job_id, best_result, auto_import=auto_import, score=best_score
+        )
+        if prior is not None and prior.scored_count:
+            return RunnerOutcome(
+                outcome.job_id,
+                outcome.state,
+                outcome.message,
+                best_score=outcome.best_score,
+                scored_count=prior.scored_count,
+            )
+        return outcome
 
     def start_download(
         self,
@@ -140,11 +182,11 @@ class AcquisitionRunner:
             AcquisitionJobState.SCORING,
             AcquisitionJobState.WAITING_FOR_USER,
             AcquisitionJobState.COLLECTING_RESULTS,
+            AcquisitionJobState.DOWNLOADING,
         ):
-            if job.state is not AcquisitionJobState.DOWNLOADING:
-                raise ValueError(
-                    f"AcquisitionJob {job_id} cannot start download from {job.state.value}"
-                )
+            raise ValueError(
+                f"AcquisitionJob {job_id} cannot start download from {job.state.value}"
+            )
 
         if job.state is AcquisitionJobState.COLLECTING_RESULTS:
             self._engine.advance(job_id, AcquisitionJobState.SCORING)

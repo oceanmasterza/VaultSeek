@@ -9,6 +9,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **Acquisition Engine (Phases 4–6)** — end-to-end acquisition pipeline:
+  - `LocalSocketRpcClient` + documented NDJSON socket protocol for Nicotine+
+  - `HttpApiRpcClient` for [api-nicotine-plus](https://github.com/sjluke/api-nicotine-plus) (port 12339)
+  - NDJSON socket companion: `scripts/nicotine_plus_ndjson_proxy.py`
+  - `VerificationEngine` — path, tags, SHA-256 / fingerprint duplicate checks
+  - `ImportPipeline` — stage into Incoming and enqueue scan (organize/artwork chain)
+  - `AcquisitionRunner` — search, score, auto-acquire above threshold, poll downloads
+  - `AcquisitionAutomationService` — background auto-acquire, download polling, retry backoff
+  - **Acquisition UI** — wishlist page, missing-media scan, result picker, retries column
+  - Settings: auto-acquire threshold, Nicotine+ transport (socket/http), API port/token
+  - Config schema **v9** (`auto_acquire_threshold`, `transport`, `api_port`, `api_token`)
+  - `AcquisitionEngine.schedule_retry()` — atomic retry scheduling
+
+### Fixed
+
+- **Acquisition automation** — jobs in `scoring` no longer re-dispatch provider search every
+  poll cycle; retries increment once per failure via atomic `schedule_retry`
+- **GUI polling** — removed duplicate download polling from the main-window timer (automation
+  service owns polling; acquisition page refreshes display only)
+
+### Added
+
 - **Albums cover preview** — selecting an album shows its front cover on the
   right; sidebar order is Artists → Albums → Artwork.
 - **Media servers** — Emby, Ampache (Subsonic API), Koel, Funkwhale, and

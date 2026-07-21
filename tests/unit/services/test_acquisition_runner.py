@@ -120,6 +120,44 @@ def test_auto_acquire_waits_for_user_when_below_threshold(
     assert loaded.state is AcquisitionJobState.WAITING_FOR_USER
 
 
+def test_auto_acquire_if_ready_reuses_scoring_without_research(
+    engine: Engine, library_id: UUID
+) -> None:
+    searches = {"count": 0}
+
+    class _CountingProvider(_HighScoreProvider):
+        def search(self, request: SearchRequest) -> list[SearchResult]:
+            searches["count"] += 1
+            return super().search(request)
+
+    manager = ProviderManager([_CountingProvider()])
+    manager.connect(AcquisitionProviderConfig(provider_id="high", enabled=True))
+    acq = AcquisitionEngine(manager, AcquisitionJobRepository(engine))
+    search = SearchDispatcher(manager, acq)
+    downloads = DownloadManager(manager, acq)
+    verify = VerificationEngine(acq)
+    imports = ImportPipeline(acq)
+    workflow = AcquisitionWorkflow(acq, downloads, verify, imports)
+    runner = AcquisitionRunner(
+        acq, search, ScoringEngine(), downloads, workflow, auto_acquire_threshold=0.50
+    )
+    job = acq.create_job(
+        library_id=library_id,
+        job_type=AcquisitionJobType.MISSING_TRACK,
+        artist="Artist",
+        album="Album",
+        title="Song",
+        preferred_codec="FLAC",
+    )
+    runner.search_and_score(job.id)
+    assert searches["count"] == 1
+
+    outcome = runner.try_auto_acquire_if_ready(job.id)
+    assert outcome is not None
+    assert outcome.state is AcquisitionJobState.DOWNLOADING
+    assert searches["count"] == 1
+
+
 def test_poll_active_jobs_finishes_download(
     engine: Engine, library_id: UUID, tmp_path: Path
 ) -> None:
