@@ -1,17 +1,23 @@
-"""ImportPipeline — post-verification library intake wiring stubs.
+"""ImportPipeline — post-verification hand-off into the library pipeline.
 
-Reuses MusicVault organize / artwork / media-server workers in later phases.
-See docs/ARCHITECTURE.md (Import Pipeline).
+Stages verified files into the library Incoming zone and enqueues the
+existing scan → hash → identify → organize → artwork → media-server path
+via JobQueueService. See docs/ARCHITECTURE.md (Import Pipeline).
 """
 
 from __future__ import annotations
 
+import shutil
 from dataclasses import dataclass
 from pathlib import Path
 from uuid import UUID
 
+from vaultseek.db.repositories.library_repo import LibraryRepository
 from vaultseek.models.entities.acquisition_job import AcquisitionJobState
+from vaultseek.models.entities.job import JobType
+from vaultseek.models.entities.track import LibraryZone
 from vaultseek.services.acquisition_engine import AcquisitionEngine
+from vaultseek.services.job_queue_service import JobQueueService
 from vaultseek.services.verification_engine import VerificationResult
 
 
@@ -25,17 +31,23 @@ class ImportResult:
     steps_completed: tuple[str, ...] = ()
     failures: tuple[str, ...] = ()
     notes: tuple[str, ...] = ()
+    staged_paths: tuple[Path, ...] = ()
+    enqueued_job_ids: tuple[UUID, ...] = ()
 
 
 class ImportPipeline:
-    """Skeleton import pipeline — records paths and completes the job.
+    """Stage verified files into Incoming and enqueue scan / optional sync."""
 
-    Real organize / artwork / fingerprint / media-server refresh are deferred;
-    this wires AcquisitionJob IMPORTING → COMPLETED (or IMPORT_FAILED).
-    """
-
-    def __init__(self, acquisition_engine: AcquisitionEngine) -> None:
+    def __init__(
+        self,
+        acquisition_engine: AcquisitionEngine,
+        *,
+        library_repo: LibraryRepository | None = None,
+        job_queue: JobQueueService | None = None,
+    ) -> None:
         self._engine = acquisition_engine
+        self._libraries = library_repo
+        self._jobs = job_queue
 
     def run(
         self,
@@ -63,6 +75,8 @@ class ImportPipeline:
         steps: list[str] = []
         failures: list[str] = []
         notes: list[str] = []
+        staged: list[Path] = []
+        enqueued: list[UUID] = []
 
         if not paths:
             failures.append("no_local_paths")
@@ -72,25 +86,71 @@ class ImportPipeline:
                 if not path.exists() or not path.is_file():
                     failures.append(f"missing_file:{path.name}")
                 else:
-                    steps.append(f"staged:{path.name}")
+                    steps.append(f"verified_source:{path.name}")
 
-        # Wiring stubs for MusicVault pipeline stages.
-        steps.append("metadata_stub")
-        steps.append("artwork_stub")
-        steps.append("organize_stub")
-        steps.append("library_update_stub")
-        if refresh_media_servers:
-            steps.append("media_server_refresh_stub")
-            notes.append("media_server_refresh_deferred")
-        else:
-            notes.append("media_server_refresh_skipped")
+        if not failures and self._libraries is not None and self._jobs is not None:
+            library = self._libraries.get(job.library_id)
+            if library is None:
+                failures.append("library_not_found")
+            else:
+                incoming = Path(library.incoming_path)
+                dest_root = incoming / "vaultseek-acquisition" / str(job_id)
+                try:
+                    dest_root.mkdir(parents=True, exist_ok=True)
+                    for path in paths:
+                        dest = _unique_dest(dest_root, path.name)
+                        shutil.copy2(path, dest)
+                        staged.append(dest)
+                        steps.append(f"staged:{dest.name}")
+                    steps.append("incoming_staged")
+
+                    scan_id = self._jobs.enqueue(
+                        JobType.SCAN_DIRECTORY,
+                        job.library_id,
+                        {
+                            "directory": str(dest_root),
+                            "zone": LibraryZone.INCOMING.value,
+                        },
+                    )
+                    enqueued.append(scan_id)
+                    steps.append("scan_enqueued")
+                    notes.append(f"scan_job={scan_id}")
+
+                    # Artwork / organize run after scan→hash→identify (existing chain).
+                    steps.append("organize_handoff")
+                    steps.append("artwork_handoff")
+                    notes.append("organize_artwork_via_scan_pipeline")
+
+                    if refresh_media_servers:
+                        sync_id = self._jobs.enqueue(
+                            JobType.SYNC_MEDIA_SERVER,
+                            job.library_id,
+                            {},
+                        )
+                        enqueued.append(sync_id)
+                        steps.append("media_server_refresh_enqueued")
+                        notes.append(f"sync_job={sync_id}")
+                    else:
+                        notes.append("media_server_refresh_skipped")
+                except OSError as exc:
+                    failures.append(f"stage_failed:{exc}")
+        elif not failures:
+            # Skeleton path when container wiring is incomplete (unit tests).
+            steps.append("incoming_stage_deferred")
+            steps.append("organize_handoff_deferred")
+            steps.append("artwork_handoff_deferred")
+            if refresh_media_servers:
+                steps.append("media_server_refresh_deferred")
+                notes.append("media_server_refresh_deferred")
+            else:
+                notes.append("media_server_refresh_skipped")
 
         ok = not failures
         if ok:
             self._engine.advance(
                 job_id,
                 AcquisitionJobState.COMPLETED,
-                note=f"imported {len(paths)} file(s)",
+                note=f"imported {len(staged or paths)} file(s)",
             )
         else:
             self._engine.advance(
@@ -106,6 +166,8 @@ class ImportPipeline:
             steps_completed=tuple(steps),
             failures=tuple(failures),
             notes=tuple(notes),
+            staged_paths=tuple(staged),
+            enqueued_job_ids=tuple(enqueued),
         )
 
     def run_after_verification(self, verification: VerificationResult) -> ImportResult:
@@ -115,3 +177,17 @@ class ImportPipeline:
                 f"Refusing import for job {verification.job_id}: verification failed"
             )
         return self.run(verification.job_id, verification.local_paths)
+
+
+def _unique_dest(folder: Path, name: str) -> Path:
+    dest = folder / name
+    if not dest.exists():
+        return dest
+    stem = Path(name).stem
+    suffix = Path(name).suffix
+    index = 1
+    while True:
+        candidate = folder / f"{stem} ({index}){suffix}"
+        if not candidate.exists():
+            return candidate
+        index += 1

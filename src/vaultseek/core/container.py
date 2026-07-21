@@ -47,8 +47,8 @@ from vaultseek.models.services.organize_engine import OrganizeEngine
 from vaultseek.models.services.quality_scorer import DEFAULT_WEIGHTS, QualityScorer
 from vaultseek.plugins.builtin.acoustid import AcoustIdProvider
 from vaultseek.plugins.builtin.acquisition_stub import StubAcquisitionProvider
-from vaultseek.plugins.builtin.nicotine_plus import NicotinePlusProvider
 from vaultseek.plugins.builtin.ampache import AmpachePlugin
+from vaultseek.plugins.builtin.chromaprint.provider import ChromaprintFingerprintProvider
 from vaultseek.plugins.builtin.cover_art_archive import CoverArtArchiveProvider
 from vaultseek.plugins.builtin.embedded_art import EmbeddedArtProvider
 from vaultseek.plugins.builtin.emby import EmbyPlugin
@@ -60,6 +60,7 @@ from vaultseek.plugins.builtin.local_tags import LocalTagsProvider
 from vaultseek.plugins.builtin.lyrion import LyrionPlugin
 from vaultseek.plugins.builtin.musicbrainz import MusicBrainzProvider
 from vaultseek.plugins.builtin.navidrome import NavidromePlugin
+from vaultseek.plugins.builtin.nicotine_plus import NicotinePlusProvider
 from vaultseek.plugins.builtin.plex import PlexPlugin
 from vaultseek.plugins.builtin.subsonic import SubsonicPlugin
 from vaultseek.plugins.manager import PluginManager
@@ -247,8 +248,25 @@ class Container:
         )
         scoring_engine = ScoringEngine()
         download_manager = DownloadManager(provider_manager, acquisition_engine)
-        verification_engine = VerificationEngine(acquisition_engine)
-        import_pipeline = ImportPipeline(acquisition_engine)
+        local_tags = next(
+            (
+                provider
+                for provider in plugin_manager.get_metadata_providers()
+                if isinstance(provider, LocalTagsProvider)
+            ),
+            LocalTagsProvider(),
+        )
+        verification_engine = VerificationEngine(
+            acquisition_engine,
+            duplicate_repo=duplicate_repo,
+            tags_provider=local_tags,
+            fingerprint_provider=ChromaprintFingerprintProvider(),
+        )
+        import_pipeline = ImportPipeline(
+            acquisition_engine,
+            library_repo=library_repo,
+            job_queue=job_queue,
+        )
         acquisition_workflow = AcquisitionWorkflow(
             acquisition_engine,
             download_manager,

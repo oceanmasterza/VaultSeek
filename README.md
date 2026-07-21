@@ -45,15 +45,16 @@ VaultSeek-specific foundation:
 - **AcquisitionJob** entity and state machine (persisted to SQLite)
 - **AcquisitionEngine** — create, queue, cancel, advance with DB persistence
 - **Missing Media Analyzer** — MusicBrainz tracklist gap detection + job creation
-- **Provider Framework** — config-driven providers, `ProviderManager`, stub + Nicotine+ skeleton
+- **Provider Framework** — config-driven providers, `ProviderManager`, stub + Nicotine+
 - **SearchDispatcher / ScoringEngine / DownloadManager** — acquisition pipeline skeletons
-- **VerificationEngine / ImportPipeline** — mandatory verify→import wiring stubs
+- **Nicotine+ RPC** — NDJSON `LocalSocketRpcClient` + `FakeRpcClient` (graceful offline)
+- **VerificationEngine** — path, tags, content-hash / fingerprint duplicate checks
+- **ImportPipeline** — stage into Incoming and enqueue scan (organize/artwork/media-server chain)
 - Planning docs, ADRs, architectural update (`ARCHITECTURAL_UPDATE_001`)
 
 ### In development
 
-- Live Nicotine+ search and download (RPC)
-- Real fingerprint / duplicate verification (stubs in place)
+- Nicotine+ companion plugin (or HTTP adapter to community API) for live search/download
 - Public acquisition UI (wishlist, job progress, recommendations)
 
 ### Planned

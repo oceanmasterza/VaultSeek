@@ -1,4 +1,4 @@
-"""Nicotine+ acquisition provider — RPC-backed skeleton (Phase 4)."""
+"""Nicotine+ acquisition provider — LocalSocketRpcClient-backed (Phase 4)."""
 
 from __future__ import annotations
 
@@ -14,8 +14,9 @@ from vaultseek.models.interfaces.acquisition import (
     SearchResult,
 )
 from vaultseek.plugins.builtin.nicotine_plus.rpc import (
+    FakeRpcClient,
+    LocalSocketRpcClient,
     NicotinePlusRpcClient,
-    UnimplementedRpcClient,
     hits_to_search_results,
 )
 
@@ -23,8 +24,8 @@ from vaultseek.plugins.builtin.nicotine_plus.rpc import (
 class NicotinePlusProvider:
     """Provider that probes Nicotine+ availability and delegates to an RPC client.
 
-    Default RPC client is a no-op stub. Tests (and a future real transport)
-    inject a NicotinePlusRpcClient implementation.
+    Default transport is :class:`LocalSocketRpcClient` (VaultSeek NDJSON).
+    Tests inject :class:`FakeRpcClient`.
     """
 
     provider_id = "nicotine_plus"
@@ -37,7 +38,10 @@ class NicotinePlusProvider:
         rpc_client: NicotinePlusRpcClient | None = None,
     ) -> None:
         self._connect_timeout = connect_timeout_seconds
-        self._rpc: NicotinePlusRpcClient = rpc_client or UnimplementedRpcClient()
+        self._rpc: NicotinePlusRpcClient = rpc_client or LocalSocketRpcClient(
+            timeout_seconds=connect_timeout_seconds
+        )
+        self._injected = rpc_client is not None
         self._connected = False
         self._settings: dict[str, Any] = {}
 
@@ -56,8 +60,9 @@ class NicotinePlusProvider:
         return self._rpc
 
     def set_rpc_client(self, client: NicotinePlusRpcClient) -> None:
-        """Replace the RPC transport (tests / future real client)."""
+        """Replace the RPC transport (tests / alternate clients)."""
         self._rpc = client
+        self._injected = True
 
     def connect(self, config: AcquisitionProviderConfig) -> bool:
         if not config.enabled:
@@ -67,6 +72,21 @@ class NicotinePlusProvider:
         host = str(settings.get("host") or "127.0.0.1")
         port = int(settings.get("port") or 22024)
         self._settings = settings
+
+        if not self._injected:
+            self._rpc = LocalSocketRpcClient(
+                host=host,
+                port=port,
+                timeout_seconds=self._connect_timeout,
+            )
+        elif isinstance(self._rpc, LocalSocketRpcClient):
+            self._rpc.configure(host, port, timeout_seconds=self._connect_timeout)
+
+        # FakeRpcClient does not need a live peer.
+        if isinstance(self._rpc, FakeRpcClient):
+            self._connected = True
+            return True
+
         self._connected = self._probe_host(host, port)
         return self._connected
 

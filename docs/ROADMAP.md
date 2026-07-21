@@ -41,13 +41,14 @@ Public-facing roadmap for GitHub visitors. For day-to-day engineering progress, 
 
 ## Phase 4 — Nicotine+ integration
 
-**Status: Skeleton complete**
+**Status: Transport ready (companion plugin next)**
 
-First real acquisition provider — communicates with an installed Nicotine+ client (not raw Soulseek protocol).
+First real acquisition provider — communicates with an installed Nicotine+ client (not raw Soulseek protocol). Nicotine+ has no official RPC; VaultSeek uses a documented NDJSON socket protocol.
 
 - Connection probe and graceful failure when Nicotine+ is offline ✅
-- Live search / download RPC — **next**
-- Completion hand-off to Verification Pipeline — planned
+- `NicotinePlusRpcClient` + `FakeRpcClient` + `LocalSocketRpcClient` ✅
+- Live search / download via a Nicotine+ companion plugin (or HTTP adapter to community `api-nicotine-plus`) — **next**
+- Completion hand-off to Verification Pipeline ✅
 
 Nicotine+ is the **first** provider, not the architecture.
 
@@ -55,7 +56,7 @@ Nicotine+ is the **first** provider, not the architecture.
 
 ## Phase 5 — Acquisition Engine subsystems
 
-**Status: Skeletons complete**
+**Status: Wired (verify/import beyond stubs)**
 
 | Subsystem | Status |
 |-----------|--------|
@@ -63,8 +64,8 @@ Nicotine+ is the **first** provider, not the architecture.
 | Search Dispatcher | ✅ skeleton |
 | Scoring Engine | ✅ skeleton |
 | Download Manager | ✅ skeleton |
-| Verification Engine | ✅ skeleton |
-| Import Pipeline | ✅ skeleton (wiring stubs) |
+| Verification Engine | ✅ path / tags / hash / fingerprint checks |
+| Import Pipeline | ✅ Incoming stage + scan enqueue (organize/artwork via existing pipeline) |
 
 User-facing: wishlist, confidence %, auto-acquire above threshold (e.g. 90%) — planned.
 

@@ -1,8 +1,9 @@
-"""Built-in Nicotine+ acquisition provider (skeleton)."""
+"""Built-in Nicotine+ acquisition provider."""
 
 from vaultseek.plugins.builtin.nicotine_plus.provider import NicotinePlusProvider
 from vaultseek.plugins.builtin.nicotine_plus.rpc import (
     FakeRpcClient,
+    LocalSocketRpcClient,
     NicotinePlusRpcClient,
     RpcDownloadState,
     RpcSearchHit,
@@ -11,6 +12,7 @@ from vaultseek.plugins.builtin.nicotine_plus.rpc import (
 
 __all__ = [
     "FakeRpcClient",
+    "LocalSocketRpcClient",
     "NicotinePlusProvider",
     "NicotinePlusRpcClient",
     "RpcDownloadState",

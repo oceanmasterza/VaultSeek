@@ -6,7 +6,7 @@ Version: 1.1
 
 Status: Active development
 
-Overall Progress: 35%
+Overall Progress: 42%
 
 ---
 
@@ -32,7 +32,7 @@ Project State
 
 Current Phase
 
-Phase 9–10 skeletons complete — next: live Nicotine+ I/O
+Phase 4 transport + Phases 9–10 verification/import hand-off
 
 Current Sprint
 
@@ -40,8 +40,8 @@ Sprint 3
 
 Current Goal
 
-NicotinePlusRpcClient protocol + FakeRpcClient in place. Next: real TCP/JSON
-transport; fingerprint/duplicate verification; ImportPipeline organize hand-off.
+Companion Nicotine+ NDJSON plugin (or HTTP api-nicotine-plus adapter);
+wishlist / acquisition UI; auto-acquire above threshold.
 ---
 
 # Vision Statement
@@ -808,6 +808,35 @@ Also added NicotinePlusRpcClient / FakeRpcClient injection point.
 Next session goal
 
 Implement real Nicotine+ RPC transport; harden verification with fingerprints.
+
+
+---
+
+## 2026-07-20 — Nicotine+ NDJSON transport + verify/import hand-off
+
+Summary
+
+- Researched Nicotine+: no official TCP/JSON RPC; community `api-nicotine-plus`
+  is HTTP on 12339. VaultSeek defines a clear NDJSON socket protocol.
+- `LocalSocketRpcClient` (graceful offline) + working `FakeRpcClient` path.
+- `VerificationEngine`: SHA-256 duplicate checks via `DuplicateRepository`,
+  embedded tags via `LocalTagsProvider`, optional Chromaprint fingerprint
+  duplicate checks (soft-skip when fpcalc unavailable).
+- `ImportPipeline`: stages verified files into library Incoming and enqueues
+  `SCAN_DIRECTORY` (existing organize/artwork/media-server chain); optional
+  `SYNC_MEDIA_SERVER`.
+- Wired in `Container`.
+
+Recommended refactors (non-user-visible)
+
+- Ship or document a Nicotine+ companion plugin that speaks the NDJSON protocol
+  (or adapt `HttpApiRpcClient` to palaueb/api-nicotine-plus).
+- Persist verification digests on `AcquisitionJob.extra`.
+- Defer media-server sync until organize completes (today optional early enqueue).
+
+Next session goal
+
+Companion plugin / HTTP adapter; acquisition UI; auto-acquire threshold.
 
 
 ---
