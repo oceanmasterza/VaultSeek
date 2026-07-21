@@ -846,20 +846,22 @@ Summary
 
 - `HttpApiRpcClient` for community api-nicotine-plus (search/download/status).
 - `AcquisitionRunner`: search → score → auto-acquire threshold → poll downloads.
-- Acquisition page in GUI (wishlist, scan missing, auto-acquire, manual top pick).
+- Acquisition page in GUI (wishlist, scan missing, auto-acquire, manual top pick, result picker).
+- `AcquisitionAutomationService` background loop for auto-acquire + verify/import polling.
+- Retry scheduling for download/verification/import failures (exponential backoff).
 - Settings: auto-acquire threshold + Nicotine+ transport (socket/http).
 - Config schema v9 (`auto_acquire_threshold`, `transport`, `api_port`, `api_token`).
 - 601 tests passing.
 
 Recommended refactors (non-user-visible)
 
-- Background acquisition scheduler (not just GUI timer polling).
-- Result-picker dialog for WAITING_FOR_USER jobs.
-- Ship VaultSeek NDJSON Nicotine+ companion plugin.
+- Background acquisition scheduler (auto-acquire + verify/import polling).
+- Retry policies + acquisition history fields in the Acquisition UI.
+- NDJSON socket companion via `scripts/nicotine_plus_ndjson_proxy.py`.
 
 Next session goal
 
-Automation scheduler; companion plugin; acquisition history reports.
+Acquisition reports and smarter user-driven result selection.
 
 
 ---

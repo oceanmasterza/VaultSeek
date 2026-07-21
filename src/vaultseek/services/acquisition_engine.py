@@ -178,6 +178,28 @@ class AcquisitionEngine:
 
 
 
+    def increment_retry_count(
+        self,
+        job_id: UUID,
+        *,
+        note: str = "retry_count++",
+    ) -> AcquisitionJob:
+        """Increment retry_count without changing AcquisitionJobState."""
+        job = self._jobs.get(job_id)
+        if job is None:
+            raise KeyError(f"AcquisitionJob {job_id} not found")
+
+        now = datetime.now(UTC)
+        entry = f"{now.isoformat()} {note}"
+        updated = replace(
+            job,
+            retry_count=job.retry_count + 1,
+            updated_at=now,
+            history=job.history + (entry,),
+        )
+        self._jobs.create(updated)
+        return updated
+
     def _transition(
 
         self,

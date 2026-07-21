@@ -66,6 +66,7 @@ from vaultseek.plugins.builtin.subsonic import SubsonicPlugin
 from vaultseek.plugins.manager import PluginManager
 from vaultseek.services.acquisition_bootstrap import connect_acquisition_providers
 from vaultseek.services.acquisition_engine import AcquisitionEngine
+from vaultseek.services.acquisition_automation_service import AcquisitionAutomationService
 from vaultseek.services.acquisition_runner import AcquisitionRunner
 from vaultseek.services.acquisition_workflow import AcquisitionWorkflow
 from vaultseek.services.download_manager import DownloadManager
@@ -136,6 +137,7 @@ class Container:
     import_pipeline: ImportPipeline
     acquisition_workflow: AcquisitionWorkflow
     acquisition_runner: AcquisitionRunner
+    acquisition_automation_service: AcquisitionAutomationService
     missing_media_analyzer: MissingMediaAnalyzer | None
     metadata_arbitrator: MetadataArbitrator
     scanner_worker: ScannerWorker
@@ -283,6 +285,14 @@ class Container:
             acquisition_workflow,
             auto_acquire_threshold=config.acquisition.auto_acquire_threshold,
         )
+        acquisition_automation_service = AcquisitionAutomationService(
+            library_repo=library_repo,
+            acquisition_job_repo=acquisition_job_repo,
+            acquisition_engine=acquisition_engine,
+            acquisition_runner=acquisition_runner,
+            pipeline_config=config.pipeline,
+            event_bus=event_bus,
+        )
         metadata_arbitrator = MetadataArbitrator(
             plugin_manager.get_metadata_providers(),
             confidence_threshold=config.metadata.confidence_threshold,
@@ -408,6 +418,7 @@ class Container:
         dispatcher.recover()
         dispatcher.start()
         watch_folder.start()
+        acquisition_automation_service.start()
 
         return cls(
             paths=paths,
@@ -446,6 +457,7 @@ class Container:
             import_pipeline=import_pipeline,
             acquisition_workflow=acquisition_workflow,
             acquisition_runner=acquisition_runner,
+            acquisition_automation_service=acquisition_automation_service,
             missing_media_analyzer=missing_media_analyzer,
             metadata_arbitrator=metadata_arbitrator,
             scanner_worker=scanner_worker,
@@ -475,6 +487,7 @@ class Container:
         """
         self.watch_folder.stop()
         self.dispatcher.stop()
+        self.acquisition_automation_service.stop()
         self.database_writer.stop()
         self.engine.dispose()
 

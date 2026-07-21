@@ -48,7 +48,7 @@ First real acquisition provider — communicates with an installed Nicotine+ cli
 - Connection probe and graceful failure when Nicotine+ is offline ✅
 - `NicotinePlusRpcClient` + `FakeRpcClient` + `LocalSocketRpcClient` ✅
 - `HttpApiRpcClient` for api-nicotine-plus ✅
-- VaultSeek NDJSON companion plugin — **optional next**
+- NDJSON socket companion via proxy script ✅
 - Completion hand-off to Verification Pipeline ✅
 
 Nicotine+ is the **first** provider, not the architecture.
@@ -70,19 +70,19 @@ Nicotine+ is the **first** provider, not the architecture.
 | Acquisition UI | ✅ wishlist + progress page |
 | Auto-acquire threshold | ✅ configurable (default 90%) |
 
-User-facing: richer result picker, scheduled automation — planned.
+User-facing: result picker, background scheduled automation, and retry/history UI — wired ✅
 
 ---
 
 ## Phase 6 — Automation
 
-**Status: Planned**
+**Status: Partially wired**
 
 - Minimal-intervention workflows (“detect missing album → acquire → verify → import”)
 - Scheduled re-scans for library completeness
-- Failed-job retry policies
+- Failed-job retry policies ✅
 - Media server refresh after import
-- Processing reports and acquisition history UI
+- Processing reports and richer acquisition history UI
 
 ---
 

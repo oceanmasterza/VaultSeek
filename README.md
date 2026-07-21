@@ -56,7 +56,7 @@ VaultSeek-specific foundation:
 
 ### In development
 
-- VaultSeek NDJSON Nicotine+ companion plugin (socket transport)
+- NDJSON socket companion (via `scripts/nicotine_plus_ndjson_proxy.py`) for socket transport
 - Scheduled acquisition automation
 - Acquisition history / retry policies
 
