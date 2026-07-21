@@ -33,7 +33,10 @@ from vaultseek.models.entities.job import JobType
 from vaultseek.models.entities.library import Library
 from vaultseek.models.entities.media_server_state import MediaServerState
 from vaultseek.models.entities.track import LibraryZone
-from vaultseek.services.acquisition_bootstrap import connect_acquisition_providers
+from vaultseek.services.acquisition_bootstrap import (
+    connect_acquisition_providers,
+    probe_nicotine_plus_connection,
+)
 from vaultseek.services.library_reset import reset_library_processing
 
 
@@ -174,6 +177,14 @@ class SettingsPage(QWidget):
         acq_form.addRow("NDJSON port", self._nicotine_port)
         acq_form.addRow("HTTP API port", self._nicotine_api_port)
         acq_form.addRow("HTTP API token", self._nicotine_api_token)
+        test_conn = QPushButton("Test Nicotine+ connection")
+        test_conn.setProperty("secondary", True)
+        test_conn.setToolTip(
+            "Probe the current form values without saving. "
+            "HTTP mode checks api-nicotine-plus; socket mode checks the NDJSON port."
+        )
+        test_conn.clicked.connect(self._test_nicotine_connection)
+        acq_form.addRow(test_conn)
         acq_help = QLabel(
             "HTTP mode talks to the community api-nicotine-plus plugin inside Nicotine+. "
             "Socket mode expects a VaultSeek NDJSON companion on the NDJSON port. "
@@ -597,6 +608,19 @@ class SettingsPage(QWidget):
             "Preferences saved. Restart VaultSeek so fingerprinting and AcoustID "
             "settings take effect.",
         )
+
+    def _test_nicotine_connection(self) -> None:
+        result = probe_nicotine_plus_connection(
+            host=self._nicotine_host.text().strip() or "127.0.0.1",
+            port=int(self._nicotine_port.value()),
+            transport=str(self._nicotine_transport.currentData() or "socket"),
+            api_port=int(self._nicotine_api_port.value()),
+            api_token=self._nicotine_api_token.text().strip(),
+        )
+        if result.ok:
+            QMessageBox.information(self, "Nicotine+ connection", result.message)
+        else:
+            QMessageBox.warning(self, "Nicotine+ connection", result.message)
 
     def _save_media_server(self) -> None:
         if self._editing_id is None:

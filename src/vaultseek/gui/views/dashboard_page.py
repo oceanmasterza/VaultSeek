@@ -112,10 +112,17 @@ class DashboardPage(QWidget):
         actions = QHBoxLayout()
         self._btn_review = QPushButton("Open Review")
         self._btn_jobs = QPushButton("Open Jobs")
+        self._btn_acquisition = QPushButton("Open Acquisition")
         self._btn_library = QPushButton("Open Library")
         self._btn_scan = QPushButton("Scan Incoming")
         self._btn_force_scan = QPushButton("Force rescan")
-        for btn in (self._btn_jobs, self._btn_library, self._btn_scan, self._btn_force_scan):
+        for btn in (
+            self._btn_jobs,
+            self._btn_acquisition,
+            self._btn_library,
+            self._btn_scan,
+            self._btn_force_scan,
+        ):
             btn.setProperty("secondary", True)
         self._btn_scan.setToolTip(
             "Scan Incoming and only process new or changed files (size/mtime)."
@@ -126,11 +133,13 @@ class DashboardPage(QWidget):
         )
         self._btn_review.clicked.connect(lambda: self.navigate_requested.emit("review"))
         self._btn_jobs.clicked.connect(lambda: self.navigate_requested.emit("jobs"))
+        self._btn_acquisition.clicked.connect(lambda: self.navigate_requested.emit("acquisition"))
         self._btn_library.clicked.connect(lambda: self.navigate_requested.emit("library"))
         self._btn_scan.clicked.connect(lambda: self.navigate_requested.emit("scan"))
         self._btn_force_scan.clicked.connect(lambda: self.navigate_requested.emit("force_scan"))
         actions.addWidget(self._btn_review)
         actions.addWidget(self._btn_jobs)
+        actions.addWidget(self._btn_acquisition)
         actions.addWidget(self._btn_library)
         actions.addWidget(self._btn_scan)
         actions.addWidget(self._btn_force_scan)
@@ -146,6 +155,22 @@ class DashboardPage(QWidget):
         self._processing_report.setWordWrap(True)
         self._processing_report.setProperty("muted", True)
         layout.addWidget(self._processing_report)
+
+        acq_box = QFrame()
+        acq_box.setProperty("dashPanel", True)
+        acq_layout = QVBoxLayout(acq_box)
+        acq_layout.addWidget(self._panel_title("Acquisition"))
+        acq_help = QLabel(
+            "Wishlist jobs from missing-media scans. Auto-acquire runs in the background "
+            "when scores meet the threshold in Settings."
+        )
+        acq_help.setWordWrap(True)
+        acq_help.setProperty("muted", True)
+        acq_layout.addWidget(acq_help)
+        self._acquisition_summary = QLabel("No acquisition jobs yet.")
+        self._acquisition_summary.setWordWrap(True)
+        acq_layout.addWidget(self._acquisition_summary)
+        layout.addWidget(acq_box)
 
         # Pipeline
         pipe_box = QFrame()
@@ -329,12 +354,14 @@ class DashboardPage(QWidget):
             self._failure_summary.setText("No failed jobs.")
             self._last_scan.setText("")
             self._processing_report.setText("")
+            self._acquisition_summary.setText("No acquisition jobs yet.")
             return
 
         self._heading.setText(f"Dashboard — {snap.library_name}")
         self._insight.setText(snap.insight)
         self._last_scan.setText(snap.last_scan_summary)
         self._processing_report.setText(snap.processing_report)
+        self._apply_acquisition_summary(snap)
         self._kpi_tracks.set_value(str(snap.track_count))
         self._kpi_pending.set_value(str(snap.pending_jobs))
         self._kpi_running.set_value(str(snap.running_jobs))
@@ -390,6 +417,26 @@ class DashboardPage(QWidget):
 
         self._fill_jobs(self._running_table, snap.running_job_rows, kind="running")
         self._fill_jobs(self._failed_table, snap.failed_job_rows, kind="failed")
+
+    def _apply_acquisition_summary(self, snap: DashboardSnapshot) -> None:
+        acq = snap.acquisition
+        if acq.total == 0:
+            self._acquisition_summary.setText(
+                "No acquisition jobs yet. Use Acquisition → Scan for missing to create a wishlist."
+            )
+            return
+        parts = [
+            f"{acq.total} job(s) total",
+            f"{acq.active} active",
+            f"{acq.completed} completed",
+        ]
+        if acq.in_progress:
+            parts.append(f"{acq.in_progress} in progress")
+        if acq.waiting_for_user:
+            parts.append(f"{acq.waiting_for_user} awaiting your pick")
+        if acq.failed:
+            parts.append(f"{acq.failed} failed / no results")
+        self._acquisition_summary.setText(" · ".join(parts))
 
     def _fill_jobs(self, table: QTableWidget, jobs: tuple, *, kind: str) -> None:
         table.setRowCount(len(jobs))

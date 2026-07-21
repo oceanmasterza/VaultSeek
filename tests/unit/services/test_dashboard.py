@@ -100,6 +100,60 @@ def test_dashboard_snapshot_with_tracks_and_confidence(tmp_path: Path) -> None:
         container.close()
 
 
+def test_dashboard_acquisition_summary(tmp_path: Path) -> None:
+    from vaultseek.models.entities.acquisition_job import AcquisitionJobState, AcquisitionJobType
+
+    container = bootstrap(base_dir_override=tmp_path, console_logging=False)
+    try:
+        now = datetime.now(UTC)
+        library_id = generate_uuid7()
+        container.library_repo.upsert(
+            Library(
+                id=library_id,
+                name="Acq Lib",
+                incoming_path=str(tmp_path / "in"),
+                staging_path=str(tmp_path / "st"),
+                library_path=str(tmp_path / "lib"),
+                archive_path=str(tmp_path / "ar"),
+                created_at=now,
+                updated_at=now,
+            )
+        )
+        waiting = container.acquisition_engine.create_job(
+            library_id=library_id,
+            job_type=AcquisitionJobType.MISSING_TRACK,
+            artist="Artist",
+            album="Album",
+            title="Track A",
+        )
+        container.acquisition_engine.queue(waiting.id)
+        container.acquisition_engine.advance(waiting.id, AcquisitionJobState.SEARCHING)
+        container.acquisition_engine.advance(waiting.id, AcquisitionJobState.COLLECTING_RESULTS)
+        container.acquisition_engine.advance(waiting.id, AcquisitionJobState.SCORING)
+        container.acquisition_engine.advance(
+            waiting.id, AcquisitionJobState.WAITING_FOR_USER, note="below threshold"
+        )
+        failed = container.acquisition_engine.create_job(
+            library_id=library_id,
+            job_type=AcquisitionJobType.MISSING_TRACK,
+            artist="Artist",
+            album="Album",
+            title="Track B",
+        )
+        container.acquisition_engine.queue(failed.id)
+        container.acquisition_engine.advance(failed.id, AcquisitionJobState.SEARCHING)
+        container.acquisition_engine.advance(failed.id, AcquisitionJobState.NO_RESULTS)
+
+        snap = build_dashboard_snapshot(container, library_id)
+        assert snap.acquisition.total == 2
+        assert snap.acquisition.active == 2
+        assert snap.acquisition.waiting_for_user == 1
+        assert snap.acquisition.failed == 1
+        assert "awaiting your pick" in snap.insight or "Acquisition" in snap.insight
+    finally:
+        container.close()
+
+
 def test_dashboard_processing_report_tallies_wave_outcomes(tmp_path: Path) -> None:
     from vaultseek.models.entities.job import JobType
 

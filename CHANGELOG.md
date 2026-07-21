@@ -28,6 +28,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   poll cycle; retries increment once per failure via atomic `schedule_retry`
 - **GUI polling** — removed duplicate download polling from the main-window timer (automation
   service owns polling; acquisition page refreshes display only)
+- **Dashboard acquisition summary** — job counts panel and insight when jobs need attention
+- **Settings → Test Nicotine+ connection** — probe HTTP or socket transport without saving
 
 ### Added
 

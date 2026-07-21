@@ -10,6 +10,7 @@ from dataclasses import dataclass, field
 from uuid import UUID
 
 from vaultseek.core.container import Container
+from vaultseek.models.entities.acquisition_job import AcquisitionJobState
 from vaultseek.models.entities.job import Job, JobStatus, JobType
 from vaultseek.models.entities.track import LibraryZone
 
@@ -36,6 +37,18 @@ class PipelineStageStat:
     running: int
     is_active: bool  # backlog > 0 or running > 0
     is_bottleneck: bool
+
+
+@dataclass(frozen=True, slots=True)
+class AcquisitionDashboardStat:
+    """Acquisition job counts for the dashboard."""
+
+    total: int = 0
+    active: int = 0
+    waiting_for_user: int = 0
+    in_progress: int = 0
+    failed: int = 0
+    completed: int = 0
 
 
 @dataclass(frozen=True, slots=True)
@@ -67,6 +80,7 @@ class DashboardSnapshot:
     insight: str = ""
     last_scan_summary: str = ""
     processing_report: str = ""
+    acquisition: AcquisitionDashboardStat = field(default_factory=AcquisitionDashboardStat)
 
 
 def build_dashboard_snapshot(
@@ -138,6 +152,7 @@ def build_dashboard_snapshot(
         )
     )
     top_failures = tuple(container.job_repo.summarize_failures(library_id, limit=8))
+    acquisition = _acquisition_stats(container, library_id)
 
     track_count = int(summary["track_count"])
     insight = _insight(
@@ -150,6 +165,7 @@ def build_dashboard_snapshot(
         stages=stages,
         by_zone=by_zone,
         top_failures=top_failures,
+        acquisition=acquisition,
     )
 
     return DashboardSnapshot(
@@ -178,6 +194,45 @@ def build_dashboard_snapshot(
         insight=insight,
         last_scan_summary=last_scan_summary,
         processing_report=processing_report,
+        acquisition=acquisition,
+    )
+
+
+def _acquisition_stats(container: Container, library_id: UUID) -> AcquisitionDashboardStat:
+    jobs = container.acquisition_engine.list_jobs(library_id=library_id)
+    if not jobs:
+        return AcquisitionDashboardStat()
+
+    failed_states = {
+        AcquisitionJobState.DOWNLOAD_FAILED,
+        AcquisitionJobState.VERIFICATION_FAILED,
+        AcquisitionJobState.IMPORT_FAILED,
+        AcquisitionJobState.NO_RESULTS,
+    }
+    in_progress_states = {
+        AcquisitionJobState.DOWNLOADING,
+        AcquisitionJobState.VERIFYING,
+        AcquisitionJobState.IMPORTING,
+        AcquisitionJobState.SEARCHING,
+        AcquisitionJobState.COLLECTING_RESULTS,
+        AcquisitionJobState.SCORING,
+        AcquisitionJobState.QUEUED,
+        AcquisitionJobState.RETRY_SCHEDULED,
+    }
+
+    waiting = sum(1 for job in jobs if job.state is AcquisitionJobState.WAITING_FOR_USER)
+    failed = sum(1 for job in jobs if job.state in failed_states)
+    completed = sum(1 for job in jobs if job.state is AcquisitionJobState.COMPLETED)
+    in_progress = sum(1 for job in jobs if job.state in in_progress_states)
+    active = sum(1 for job in jobs if not job.is_terminal)
+
+    return AcquisitionDashboardStat(
+        total=len(jobs),
+        active=active,
+        waiting_for_user=waiting,
+        in_progress=in_progress,
+        failed=failed,
+        completed=completed,
     )
 
 
@@ -304,7 +359,24 @@ def _insight(
     stages: list[PipelineStageStat],
     by_zone: dict[str, int],
     top_failures: tuple[tuple[str, str, int], ...] = (),
+    acquisition: AcquisitionDashboardStat | None = None,
 ) -> str:
+    acq = acquisition or AcquisitionDashboardStat()
+    if acq.waiting_for_user:
+        return (
+            f"{acq.waiting_for_user} acquisition job(s) need your pick on the Acquisition page "
+            f"({acq.active} active overall)."
+        )
+    if acq.failed:
+        return (
+            f"{acq.failed} acquisition job(s) failed or found no results — "
+            "open Acquisition to retry or pick another source."
+        )
+    if acq.in_progress:
+        return (
+            f"Acquisition in progress: {acq.in_progress} job(s) searching or downloading. "
+            "Open Acquisition for details."
+        )
     if track_count == 0 and stats_pending == 0 and stats_running == 0:
         return (
             "No tracks yet. Drop files into Incoming and use File → Scan Incoming "

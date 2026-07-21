@@ -857,11 +857,10 @@ Recommended refactors (non-user-visible)
 
 - Dashboard acquisition job counts on the main status/dashboard pages.
 - Dedicated acquisition reports view (beyond last-note column).
-- Settings "Test connection" for Nicotine+ provider.
 
 Next session goal
 
-Acquisition reports and dashboard polish.
+Acquisition reports and richer history UI.
 
 
 ---
