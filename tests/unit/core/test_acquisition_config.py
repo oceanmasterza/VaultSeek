@@ -84,6 +84,19 @@ def test_migrating_v8_config_adds_auto_acquire_and_http_fields(tmp_path: Path) -
     assert config.acquisition.nicotine_plus.api_port == 12339
 
 
+def test_migrating_v9_config_enables_auto_queue_jobs(tmp_path: Path) -> None:
+    config_path = tmp_path / "config.json"
+    v9_document = default_config().to_dict()
+    v9_document["schema_version"] = 9
+    v9_document["acquisition"]["auto_queue_jobs"] = False
+    config_path.write_text(json.dumps(v9_document), encoding="utf-8")
+
+    config = load_config(config_path)
+
+    assert config.schema_version == CURRENT_SCHEMA_VERSION
+    assert config.acquisition.auto_queue_jobs is True
+
+
 def test_connect_acquisition_providers_connects_enabled_stub() -> None:
     manager = ProviderManager([StubAcquisitionProvider(), NicotinePlusProvider()])
     connect_acquisition_providers(AcquisitionConfig(enabled_providers=("stub",)), manager)

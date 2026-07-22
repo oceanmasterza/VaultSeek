@@ -16,11 +16,9 @@ from vaultseek.models.entities.track import LibraryZone
 
 # Left-to-right processing journey (Beets / MusicBrainz Picard mental model).
 # Third element is a JobQueue JobType value, or None for non-job stages
-# (review gate, acquisition engine). Acquiring is first: missing-media
-# search/download runs parallel to the library Job pipeline, but the strip
-# shows it before Discover so wishlist work is visible up front.
+# (review gate, acquisition engine).
 PIPELINE_STAGES: tuple[tuple[str, str, str | None], ...] = (
-    ("acquire", "Acquiring", None),  # AcquisitionJob engine — not JobQueue
+    ("acquire", "Acquiring", None),  # AcquisitionJob engine — before library Discover
     ("scan", "Discover", JobType.SCAN_DIRECTORY.value),
     ("hash", "Hash", JobType.HASH_FILE.value),
     ("fingerprint", "Fingerprint", JobType.FINGERPRINT_FILE.value),

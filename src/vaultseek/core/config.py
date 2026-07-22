@@ -18,7 +18,7 @@ from typing import Any
 
 from vaultseek.core.exceptions import ConfigError, ConfigMigrationError, ConfigVersionError
 
-CURRENT_SCHEMA_VERSION = 9
+CURRENT_SCHEMA_VERSION = 10
 
 
 @dataclass(frozen=True)
@@ -232,6 +232,16 @@ def _migrate_v8_to_v9(raw: dict[str, Any]) -> dict[str, Any]:
     return migrated
 
 
+def _migrate_v9_to_v10(raw: dict[str, Any]) -> dict[str, Any]:
+    """Turn on auto_queue_jobs — Settings now exposes the toggle; docs default is on."""
+    migrated = dict(raw)
+    migrated["schema_version"] = 10
+    acq = dict(migrated.get("acquisition") or asdict(AcquisitionConfig()))
+    acq["auto_queue_jobs"] = True
+    migrated["acquisition"] = acq
+    return migrated
+
+
 _MIGRATIONS: dict[int, Callable[[dict[str, Any]], dict[str, Any]]] = {
     1: _migrate_v1_to_v2,
     2: _migrate_v2_to_v3,
@@ -241,6 +251,7 @@ _MIGRATIONS: dict[int, Callable[[dict[str, Any]], dict[str, Any]]] = {
     6: _migrate_v6_to_v7,
     7: _migrate_v7_to_v8,
     8: _migrate_v8_to_v9,
+    9: _migrate_v9_to_v10,
 }
 
 

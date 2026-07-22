@@ -33,7 +33,6 @@ _LIVE_FORMAT = "{time:HH:mm:ss} | {level: <7} | {message}"
 
 _ROTATION = "10 MB"
 _RETENTION = 5
-_LIVE_LOG_CAPACITY = 400
 
 _live_buffer: LiveLogBuffer | None = None
 
@@ -41,9 +40,9 @@ _live_buffer: LiveLogBuffer | None = None
 class LiveLogBuffer:
     """Thread-safe ring buffer of recent log lines for the Dashboard."""
 
-    def __init__(self, capacity: int = _LIVE_LOG_CAPACITY) -> None:
-        self._capacity = max(1, capacity)
-        self._lines: deque[str] = deque(maxlen=self._capacity)
+    def __init__(self, maxlen: int = 400, *, capacity: int | None = None) -> None:
+        size = capacity if capacity is not None else maxlen
+        self._lines: deque[str] = deque(maxlen=max(1, size))
         self._lock = threading.Lock()
         self._generation = 0
 
@@ -55,17 +54,16 @@ class LiveLogBuffer:
             self._lines.append(text)
             self._generation += 1
 
-    def lines(self) -> tuple[str, ...]:
-        with self._lock:
-            return tuple(self._lines)
-
-    def text(self) -> str:
-        return "\n".join(self.lines())
-
     def snapshot(self) -> tuple[int, tuple[str, ...]]:
         """Return ``(generation, lines)`` for cheap UI change detection."""
         with self._lock:
             return self._generation, tuple(self._lines)
+
+    def lines(self) -> tuple[str, ...]:
+        return self.snapshot()[1]
+
+    def text(self) -> str:
+        return "\n".join(self.lines())
 
     def clear(self) -> None:
         with self._lock:
