@@ -45,7 +45,7 @@ from vaultseek.models.interfaces.metadata import MetadataProvider
 from vaultseek.models.services.duplicate_matcher import DuplicateMatcher
 from vaultseek.models.services.organize_engine import OrganizeEngine
 from vaultseek.models.services.quality_scorer import DEFAULT_WEIGHTS, QualityScorer
-from vaultseek.plugins.builtin.acoustid import AcoustIdProvider
+from vaultseek.plugins.builtin.acoustid import AcoustIdProvider, AcoustIdProviderPool, build_acoustid_endpoints
 from vaultseek.plugins.builtin.acquisition_stub import StubAcquisitionProvider
 from vaultseek.plugins.builtin.ampache import AmpachePlugin
 from vaultseek.plugins.builtin.chromaprint.provider import ChromaprintFingerprintProvider
@@ -503,7 +503,17 @@ def _build_metadata_providers(metadata: MetadataConfig) -> list[MetadataProvider
     providers: list[MetadataProvider] = []
     if "acoustid" in enabled:
         api_key = metadata.acoustid_api_key or os.environ.get("VAULTSEEK_ACOUSTID_API_KEY", "")
-        providers.append(AcoustIdProvider(api_key=api_key or None))
+        endpoints = build_acoustid_endpoints(
+            api_key=api_key,
+            endpoints=metadata.acoustid_endpoints,
+        )
+        if endpoints:
+            if len(endpoints) == 1:
+                providers.append(endpoints[0])
+            else:
+                providers.append(AcoustIdProviderPool(endpoints))
+        else:
+            providers.append(AcoustIdProvider(api_key=None))
     if "musicbrainz" in enabled:
         providers.append(MusicBrainzProvider())
     if "local_tags" in enabled:

@@ -106,7 +106,9 @@ class MissingMediaAnalyzer:
         )
         return jobs
 
-    def analyze_album(self, library_id: UUID, album_id: UUID) -> list[MediaGap]:
+    def analyze_album(
+        self, library_id: UUID, album_id: UUID, *, log: bool = True
+    ) -> list[MediaGap]:
         """Compare one library album against its MusicBrainz release tracklist."""
         album = self._albums.get(album_id)
         if album is None or not album.mbid:
@@ -130,10 +132,10 @@ class MissingMediaAnalyzer:
             },
             library_track_count=len(library_tracks),
         )
-        _log_album_gap_summary(album.title, tracklist.track_count, gaps)
+        _log_album_gap_summary(album.title, tracklist.track_count, gaps, log=log)
         return gaps
 
-    def analyze_library(self, library_id: UUID) -> list[MediaGap]:
+    def analyze_library(self, library_id: UUID, *, log: bool = True) -> list[MediaGap]:
         """Scan albums linked to ``library_id`` and return all detected gaps."""
         gaps: list[MediaGap] = []
         albums_scanned = 0
@@ -142,7 +144,7 @@ class MissingMediaAnalyzer:
             if not row.mbid:
                 continue
             albums_scanned += 1
-            album_gaps = self.analyze_album(library_id, row.album_id)
+            album_gaps = self.analyze_album(library_id, row.album_id, log=log)
             if not any(gap.kind is MediaGapKind.MISSING_TRACK for gap in album_gaps):
                 complete_albums += 1
             gaps.extend(album_gaps)
@@ -150,24 +152,31 @@ class MissingMediaAnalyzer:
         track_gaps = [gap for gap in gaps if gap.kind is MediaGapKind.MISSING_TRACK]
         incomplete_albums = albums_scanned - complete_albums
         if albums_scanned == 0:
-            logger.info("Missing-media scan: no MusicBrainz-linked albums in library")
+            if log:
+                logger.info("Missing-media scan: no MusicBrainz-linked albums in library")
         elif not track_gaps:
-            logger.info(
-                "Missing-media scan complete: {} album(s) checked — all have expected tracks",
-                albums_scanned,
-            )
+            if log:
+                logger.info(
+                    "Missing-media scan complete: {} album(s) checked — all have expected tracks",
+                    albums_scanned,
+                )
         else:
-            logger.info(
-                "Missing-media scan complete: {} missing track(s) across {} album(s) "
-                "({} album(s) complete)",
-                len(track_gaps),
-                incomplete_albums,
-                complete_albums,
-            )
+            if log:
+                logger.info(
+                    "Missing-media scan complete: {} missing track(s) across {} album(s) "
+                    "({} album(s) complete)",
+                    len(track_gaps),
+                    incomplete_albums,
+                    complete_albums,
+                )
         return gaps
 
 
-def _log_album_gap_summary(album_title: str, official_count: int, gaps: list[MediaGap]) -> None:
+def _log_album_gap_summary(
+    album_title: str, official_count: int, gaps: list[MediaGap], *, log: bool = True
+) -> None:
+    if not log:
+        return
     track_gaps = [gap for gap in gaps if gap.kind is MediaGapKind.MISSING_TRACK]
     if not track_gaps:
         logger.info(

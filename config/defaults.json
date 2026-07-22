@@ -1,5 +1,5 @@
 {
-  "schema_version": 10,
+  "schema_version": 11,
   "log_level": "INFO",
   "theme": "dark",
   "pipeline": {
@@ -17,6 +17,7 @@
     "provider_order": ["acoustid", "musicbrainz", "local_tags", "filename_parser"],
     "enabled_providers": ["acoustid", "musicbrainz", "local_tags", "filename_parser"],
     "acoustid_api_key": "",
+    "acoustid_endpoints": [],
     "fingerprint_mode": "all",
     "fingerprint_sample_min": 3
   },

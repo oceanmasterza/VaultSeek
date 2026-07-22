@@ -18,7 +18,16 @@ from typing import Any
 
 from vaultseek.core.exceptions import ConfigError, ConfigMigrationError, ConfigVersionError
 
-CURRENT_SCHEMA_VERSION = 10
+CURRENT_SCHEMA_VERSION = 11
+
+
+@dataclass(frozen=True)
+class AcoustIdEndpointConfig:
+    """One AcoustID application key with optional HTTP proxy."""
+
+    api_key: str = ""
+    proxy_url: str = ""
+    label: str = ""
 
 
 @dataclass(frozen=True)
@@ -115,6 +124,8 @@ class MetadataConfig:
         "filename_parser",
     )
     acoustid_api_key: str = ""
+    # Up to several keys, each with its own proxy — 3 req/s per endpoint.
+    acoustid_endpoints: tuple[AcoustIdEndpointConfig, ...] = ()
     # "all" = Chromaprint every file. "sample" = fingerprint until an album
     # folder is confirmed, then trust remaining siblings by tags/filenames.
     fingerprint_mode: str = "all"
@@ -143,6 +154,9 @@ class AppConfig:
                 value = metadata.get(key)
                 if isinstance(value, tuple):
                     metadata[key] = list(value)
+            endpoints = metadata.get("acoustid_endpoints")
+            if isinstance(endpoints, tuple):
+                metadata["acoustid_endpoints"] = list(endpoints)
         acquisition = data.get("acquisition")
         if isinstance(acquisition, dict):
             for key in ("enabled_providers", "provider_order"):
@@ -242,6 +256,20 @@ def _migrate_v9_to_v10(raw: dict[str, Any]) -> dict[str, Any]:
     return migrated
 
 
+def _migrate_v10_to_v11(raw: dict[str, Any]) -> dict[str, Any]:
+    """Preserve legacy single AcoustID key as the first pooled endpoint."""
+    migrated = dict(raw)
+    migrated["schema_version"] = 11
+    metadata = dict(migrated.get("metadata") or asdict(MetadataConfig()))
+    endpoints = list(metadata.get("acoustid_endpoints") or [])
+    legacy_key = str(metadata.get("acoustid_api_key") or "").strip()
+    if legacy_key and not endpoints:
+        endpoints = [{"api_key": legacy_key, "proxy_url": "", "label": "Primary"}]
+    metadata["acoustid_endpoints"] = endpoints
+    migrated["metadata"] = metadata
+    return migrated
+
+
 _MIGRATIONS: dict[int, Callable[[dict[str, Any]], dict[str, Any]]] = {
     1: _migrate_v1_to_v2,
     2: _migrate_v2_to_v3,
@@ -252,6 +280,7 @@ _MIGRATIONS: dict[int, Callable[[dict[str, Any]], dict[str, Any]]] = {
     7: _migrate_v7_to_v8,
     8: _migrate_v8_to_v9,
     9: _migrate_v9_to_v10,
+    10: _migrate_v10_to_v11,
 }
 
 
@@ -298,6 +327,15 @@ def _from_dict(raw: dict[str, Any]) -> AppConfig:
             coerced["provider_order"] = tuple(coerced["provider_order"])
         if "enabled_providers" in coerced and isinstance(coerced["enabled_providers"], list):
             coerced["enabled_providers"] = tuple(coerced["enabled_providers"])
+        if "acoustid_endpoints" in coerced and isinstance(coerced["acoustid_endpoints"], list):
+            endpoint_fields = set(AcoustIdEndpointConfig.__dataclass_fields__)
+            coerced["acoustid_endpoints"] = tuple(
+                AcoustIdEndpointConfig(
+                    **{k: v for k, v in item.items() if k in endpoint_fields}
+                )
+                for item in coerced["acoustid_endpoints"]
+                if isinstance(item, dict)
+            )
         filtered["metadata"] = MetadataConfig(**coerced)
 
     watch_raw = filtered.get("watch")

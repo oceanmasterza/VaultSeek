@@ -6,19 +6,21 @@ repositories directly beyond the container façade.
 
 from __future__ import annotations
 
+import time
 from dataclasses import dataclass, field
+from datetime import UTC, datetime
 from uuid import UUID
 
 from vaultseek.core.container import Container
 from vaultseek.models.entities.acquisition_job import AcquisitionJobState
 from vaultseek.models.entities.job import Job, JobStatus, JobType
 from vaultseek.models.entities.track import LibraryZone
+from vaultseek.services.missing_media_analyzer import MediaGapKind
 
 # Left-to-right processing journey (Beets / MusicBrainz Picard mental model).
-# Third element is a JobQueue JobType value, or None for non-job stages
-# (review gate, acquisition engine).
+# Discover → identify the library first; Acquiring (missing-media downloads) comes
+# after the collection is understood, before media-server sync.
 PIPELINE_STAGES: tuple[tuple[str, str, str | None], ...] = (
-    ("acquire", "Acquiring", None),  # AcquisitionJob engine — before library Discover
     ("scan", "Discover", JobType.SCAN_DIRECTORY.value),
     ("hash", "Hash", JobType.HASH_FILE.value),
     ("fingerprint", "Fingerprint", JobType.FINGERPRINT_FILE.value),
@@ -28,8 +30,14 @@ PIPELINE_STAGES: tuple[tuple[str, str, str | None], ...] = (
     ("rules", "Rules", JobType.EVALUATE_RULES.value),
     ("organize", "Organize", JobType.ORGANIZE_FILE.value),
     ("artwork", "Artwork", JobType.FETCH_ARTWORK.value),
+    ("acquire", "Acquiring", None),  # wishlist / Soulseek — after library is identified
     ("sync", "Sync", JobType.SYNC_MEDIA_SERVER.value),
 )
+
+
+# Avoid MusicBrainz lookups on every 2s dashboard poll.
+_MISSING_MEDIA_CACHE: dict[UUID, tuple[float, MissingMediaDashboardStat]] = {}
+_MISSING_MEDIA_CACHE_TTL_SECONDS = 120.0
 
 
 @dataclass(frozen=True, slots=True)
@@ -43,6 +51,17 @@ class PipelineStageStat:
 
 
 @dataclass(frozen=True, slots=True)
+class MissingMediaDashboardStat:
+    """MusicBrainz gap detection (independent of wishlist jobs)."""
+
+    available: bool = False
+    albums_scanned: int = 0
+    missing_tracks: int = 0
+    incomplete_albums: int = 0
+    complete_albums: int = 0
+
+
+@dataclass(frozen=True, slots=True)
 class AcquisitionDashboardStat:
     """Acquisition job counts for the dashboard."""
 
@@ -52,6 +71,8 @@ class AcquisitionDashboardStat:
     in_progress: int = 0
     failed: int = 0
     completed: int = 0
+    completed_today: int = 0
+    queued: int = 0
 
 
 @dataclass(frozen=True, slots=True)
@@ -84,6 +105,7 @@ class DashboardSnapshot:
     last_scan_summary: str = ""
     processing_report: str = ""
     acquisition: AcquisitionDashboardStat = field(default_factory=AcquisitionDashboardStat)
+    missing_media: MissingMediaDashboardStat = field(default_factory=MissingMediaDashboardStat)
 
 
 def build_dashboard_snapshot(
@@ -113,6 +135,7 @@ def build_dashboard_snapshot(
     )
     backlog = stats.by_type  # pending + running
     acquisition = _acquisition_stats(container, library_id)
+    missing_media = _missing_media_stats(container, library_id)
 
     stage_backlogs: list[int] = []
     for key, _label, job_type in PIPELINE_STAGES:
@@ -179,6 +202,7 @@ def build_dashboard_snapshot(
         by_zone=by_zone,
         top_failures=top_failures,
         acquisition=acquisition,
+        missing_media=missing_media,
     )
 
     return DashboardSnapshot(
@@ -208,6 +232,7 @@ def build_dashboard_snapshot(
         last_scan_summary=last_scan_summary,
         processing_report=processing_report,
         acquisition=acquisition,
+        missing_media=missing_media,
     )
 
 
@@ -229,14 +254,24 @@ def _acquisition_stats(container: Container, library_id: UUID) -> AcquisitionDas
         AcquisitionJobState.SEARCHING,
         AcquisitionJobState.COLLECTING_RESULTS,
         AcquisitionJobState.SCORING,
-        AcquisitionJobState.QUEUED,
         AcquisitionJobState.RETRY_SCHEDULED,
     }
+    queued_states = {
+        AcquisitionJobState.CREATED,
+        AcquisitionJobState.QUEUED,
+    }
 
+    start_of_today = datetime.now(UTC).replace(hour=0, minute=0, second=0, microsecond=0)
     waiting = sum(1 for job in jobs if job.state is AcquisitionJobState.WAITING_FOR_USER)
     failed = sum(1 for job in jobs if job.state in failed_states)
     completed = sum(1 for job in jobs if job.state is AcquisitionJobState.COMPLETED)
+    completed_today = sum(
+        1
+        for job in jobs
+        if job.state is AcquisitionJobState.COMPLETED and job.updated_at >= start_of_today
+    )
     in_progress = sum(1 for job in jobs if job.state in in_progress_states)
+    queued = sum(1 for job in jobs if job.state in queued_states)
     active = sum(1 for job in jobs if not job.is_terminal)
 
     return AcquisitionDashboardStat(
@@ -246,7 +281,44 @@ def _acquisition_stats(container: Container, library_id: UUID) -> AcquisitionDas
         in_progress=in_progress,
         failed=failed,
         completed=completed,
+        completed_today=completed_today,
+        queued=queued,
     )
+
+
+def _missing_media_stats(container: Container, library_id: UUID) -> MissingMediaDashboardStat:
+    now = time.monotonic()
+    cached = _MISSING_MEDIA_CACHE.get(library_id)
+    if cached is not None and now - cached[0] < _MISSING_MEDIA_CACHE_TTL_SECONDS:
+        return cached[1]
+
+    analyzer = container.missing_media_analyzer
+    if analyzer is None:
+        stat = MissingMediaDashboardStat(available=False)
+        _MISSING_MEDIA_CACHE[library_id] = (now, stat)
+        return stat
+
+    gaps = analyzer.analyze_library(library_id, log=False)
+    track_gaps = [gap for gap in gaps if gap.kind is MediaGapKind.MISSING_TRACK]
+    albums_with_gaps: set[str] = {gap.album_title for gap in track_gaps}
+    albums_scanned = 0
+    complete_albums = 0
+    for row in container.album_repo.list_for_library(library_id):
+        if not row.mbid:
+            continue
+        albums_scanned += 1
+        if row.title not in albums_with_gaps:
+            complete_albums += 1
+
+    stat = MissingMediaDashboardStat(
+        available=True,
+        albums_scanned=albums_scanned,
+        missing_tracks=len(track_gaps),
+        incomplete_albums=len(albums_with_gaps),
+        complete_albums=complete_albums,
+    )
+    _MISSING_MEDIA_CACHE[library_id] = (now, stat)
+    return stat
 
 
 def _latest_scan_summary(container: Container, library_id: UUID) -> str:
@@ -373,8 +445,16 @@ def _insight(
     by_zone: dict[str, int],
     top_failures: tuple[tuple[str, str, int], ...] = (),
     acquisition: AcquisitionDashboardStat | None = None,
+    missing_media: MissingMediaDashboardStat | None = None,
 ) -> str:
     acq = acquisition or AcquisitionDashboardStat()
+    gaps = missing_media or MissingMediaDashboardStat()
+    if gaps.available and gaps.missing_tracks and acq.total == 0:
+        return (
+            f"{gaps.missing_tracks} missing track(s) detected across "
+            f"{gaps.incomplete_albums} album(s) — open Acquisition → Scan for missing "
+            "to create download jobs."
+        )
     if acq.waiting_for_user:
         return (
             f"{acq.waiting_for_user} acquisition job(s) need your pick "

@@ -209,27 +209,38 @@ class SettingsPage(QWidget):
         self._log_level.addItems(["DEBUG", "INFO", "WARNING", "ERROR"])
         self._theme = QComboBox()
         self._theme.addItems(["dark", "light"])
-        self._acoustid_key = QLineEdit()
-        self._acoustid_key.setPlaceholderText("Paste AcoustID application key")
-        self._acoustid_key.setEchoMode(QLineEdit.EchoMode.Password)
-        self._acoustid_key.setToolTip(
-            "Required only for tracks that tags/MusicBrainz cannot identify. "
-            "Lookups are rate-limited to 3/sec. Register at "
-            "https://acoustid.org/new-applications (application key, not user key). "
-            "Restart VaultSeek after saving."
-        )
-        prefs_form.addRow("Log level", self._log_level)
-        prefs_form.addRow("Theme", self._theme)
-        prefs_form.addRow("AcoustID API key", self._acoustid_key)
+        self._acoustid_rows: list[tuple[QLineEdit, QLineEdit, QLineEdit]] = []
+        acoustid_box = QGroupBox("AcoustID accounts (fingerprint lookups)")
+        acoustid_form = QFormLayout(acoustid_box)
+        for index in range(3):
+            label = QLineEdit()
+            label.setPlaceholderText(f"Account {index + 1}")
+            key = QLineEdit()
+            key.setPlaceholderText("Application API key")
+            key.setEchoMode(QLineEdit.EchoMode.Password)
+            proxy = QLineEdit()
+            proxy.setPlaceholderText("http://user:pass@host:port (optional)")
+            proxy.setToolTip(
+                "HTTP(S) proxy for this AcoustID key. Use a different proxy per account "
+                "so each gets its own 3 requests/sec limit."
+            )
+            self._acoustid_rows.append((label, key, proxy))
+            acoustid_form.addRow(f"Label {index + 1}", label)
+            acoustid_form.addRow(f"API key {index + 1}", key)
+            acoustid_form.addRow(f"Proxy {index + 1}", proxy)
         acoustid_help = QLabel(
-            "Most tagged files use embedded tags + MusicBrainz only. AcoustID "
-            "(fingerprint) runs only when that is not enough, at most 3 requests/sec. "
-            "Key: https://acoustid.org/new-applications"
+            "Each AcoustID application key allows ~3 fingerprint lookups/sec (per key + IP). "
+            "Add up to 3 keys with separate proxies for ~9/sec combined. "
+            "Register keys at https://acoustid.org/new-applications. Restart after saving."
         )
         acoustid_help.setWordWrap(True)
         acoustid_help.setProperty("muted", True)
         acoustid_help.setOpenExternalLinks(True)
-        prefs_form.addRow(acoustid_help)
+        acoustid_form.addRow(acoustid_help)
+        prefs_form.addRow(acoustid_box)
+
+        prefs_form.addRow("Log level", self._log_level)
+        prefs_form.addRow("Theme", self._theme)
 
         self._fingerprint_mode = QComboBox()
         self._fingerprint_mode.addItem("Fingerprint every song", "all")
@@ -329,7 +340,23 @@ class SettingsPage(QWidget):
         config = self._container.config
         self._log_level.setCurrentText(config.log_level)
         self._theme.setCurrentText(config.theme)
-        self._acoustid_key.setText(config.metadata.acoustid_api_key or "")
+        from vaultseek.core.config import AcoustIdEndpointConfig
+
+        endpoints = list(config.metadata.acoustid_endpoints)
+        if not endpoints and config.metadata.acoustid_api_key:
+            endpoints = [
+                AcoustIdEndpointConfig(
+                    api_key=config.metadata.acoustid_api_key,
+                    label="Primary",
+                )
+            ]
+        while len(endpoints) < 3:
+            endpoints.append(AcoustIdEndpointConfig())
+        for row, endpoint in zip(self._acoustid_rows, endpoints[:3], strict=True):
+            label_edit, key_edit, proxy_edit = row
+            label_edit.setText(endpoint.label)
+            key_edit.setText(endpoint.api_key)
+            proxy_edit.setText(endpoint.proxy_url)
         mode_index = self._fingerprint_mode.findData(config.metadata.fingerprint_mode)
         self._fingerprint_mode.setCurrentIndex(mode_index if mode_index >= 0 else 0)
         self._fingerprint_sample_min.setValue(config.metadata.fingerprint_sample_min)
@@ -574,11 +601,26 @@ class SettingsPage(QWidget):
     def _save_preferences(self) -> None:
         from dataclasses import replace as dc_replace
 
-        from vaultseek.core.config import AcquisitionConfig, NicotinePlusConfig
+        from vaultseek.core.config import AcquisitionConfig, AcoustIdEndpointConfig, NicotinePlusConfig
+
+        endpoint_rows: list[AcoustIdEndpointConfig] = []
+        for index, (label_edit, key_edit, proxy_edit) in enumerate(self._acoustid_rows, start=1):
+            api_key = key_edit.text().strip()
+            if not api_key:
+                continue
+            endpoint_rows.append(
+                AcoustIdEndpointConfig(
+                    api_key=api_key,
+                    proxy_url=proxy_edit.text().strip(),
+                    label=label_edit.text().strip() or f"Account {index}",
+                )
+            )
+        primary_key = endpoint_rows[0].api_key if endpoint_rows else ""
 
         metadata = dc_replace(
             self._container.config.metadata,
-            acoustid_api_key=self._acoustid_key.text().strip(),
+            acoustid_api_key=primary_key,
+            acoustid_endpoints=tuple(endpoint_rows),
             fingerprint_mode=str(self._fingerprint_mode.currentData() or "all"),
             fingerprint_sample_min=int(self._fingerprint_sample_min.value()),
         )

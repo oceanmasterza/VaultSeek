@@ -85,31 +85,70 @@ class DashboardPage(QWidget):
         self._insight.setProperty("insight", True)
         layout.addWidget(self._insight)
 
-        # KPI row
-        kpi_row = QHBoxLayout()
-        kpi_row.setSpacing(10)
+        def _section_title(text: str) -> QLabel:
+            label = QLabel(text)
+            label.setProperty("panelTitle", True)
+            return label
+
+        # Pipeline queue — work waiting/running in the library job queue *right now*
+        layout.addWidget(_section_title("Library pipeline — queue right now"))
+        pipeline_kpi = QHBoxLayout()
+        pipeline_kpi.setSpacing(10)
+        self._kpi_pending = _KpiCard("Pending")
+        self._kpi_pending.setToolTip(
+            "Library pipeline jobs waiting to start (scan, hash, fingerprint, identify, …)."
+        )
+        self._kpi_running = _KpiCard("Running")
+        self._kpi_running.setToolTip("Library pipeline jobs actively processing right now.")
+        self._kpi_failed = _KpiCard("Failed")
+        self._kpi_failed.setToolTip("Library pipeline jobs that failed and need retry or cleanup.")
+        for card in (self._kpi_pending, self._kpi_running, self._kpi_failed):
+            pipeline_kpi.addWidget(card)
+        layout.addLayout(pipeline_kpi)
+
+        # Totals — collection size and throughput (not the live queue)
+        layout.addWidget(_section_title("Totals"))
+        totals_kpi = QHBoxLayout()
+        totals_kpi.setSpacing(10)
         self._kpi_tracks = _KpiCard("Tracks in collection")
         self._kpi_tracks.setToolTip(
             "Cumulative catalog size for this library. New scans add tracks; "
             "they do not replace earlier totals."
         )
-        self._kpi_pending = _KpiCard("Jobs pending")
-        self._kpi_pending.setToolTip("Work waiting in the queue right now (current backlog).")
-        self._kpi_running = _KpiCard("Jobs running")
-        self._kpi_failed = _KpiCard("Jobs failed")
+        self._kpi_done = _KpiCard("Pipeline done today")
+        self._kpi_done.setToolTip(
+            "Library pipeline jobs finished since midnight (scan, identify, artwork, …)."
+        )
         self._kpi_review = _KpiCard("Awaiting review")
-        self._kpi_done = _KpiCard("Completed today")
-        self._kpi_done.setToolTip("Jobs finished since midnight (rolling day counter).")
+        self._kpi_review.setToolTip("Review items waiting for your decision.")
+        for card in (self._kpi_tracks, self._kpi_done, self._kpi_review):
+            totals_kpi.addWidget(card)
+        layout.addLayout(totals_kpi)
+
+        # Acquisition — separate from library pipeline (Soulseek wishlist)
+        layout.addWidget(_section_title("Acquisition — wishlist downloads"))
+        acq_kpi = QHBoxLayout()
+        acq_kpi.setSpacing(10)
+        self._kpi_missing = _KpiCard("Missing tracks")
+        self._kpi_missing.setToolTip(
+            "Tracks missing vs MusicBrainz release tracklists (detected gaps, not yet queued)."
+        )
+        self._kpi_acq_active = _KpiCard("Wishlist active")
+        self._kpi_acq_active.setToolTip(
+            "Acquisition jobs not yet finished (queued, searching, downloading, …)."
+        )
+        self._kpi_acq_today = _KpiCard("Acquired today")
+        self._kpi_acq_today.setToolTip("Missing tracks successfully downloaded and imported today.")
+        self._kpi_acq_total = _KpiCard("Acquired all-time")
+        self._kpi_acq_total.setToolTip("Total acquisition jobs completed for this library.")
         for card in (
-            self._kpi_tracks,
-            self._kpi_pending,
-            self._kpi_running,
-            self._kpi_failed,
-            self._kpi_review,
-            self._kpi_done,
+            self._kpi_missing,
+            self._kpi_acq_active,
+            self._kpi_acq_today,
+            self._kpi_acq_total,
         ):
-            kpi_row.addWidget(card)
-        layout.addLayout(kpi_row)
+            acq_kpi.addWidget(card)
+        layout.addLayout(acq_kpi)
 
         # Quick actions
         actions = QHBoxLayout()
@@ -164,8 +203,9 @@ class DashboardPage(QWidget):
         acq_layout = QVBoxLayout(acq_box)
         acq_layout.addWidget(self._panel_title("Acquisition"))
         acq_help = QLabel(
-            "Wishlist jobs from missing-media scans. Auto-acquire runs in the background "
-            "when scores meet the threshold in Settings."
+            "Compares your library to MusicBrainz tracklists. "
+            "“Missing tracks” shows gaps; wishlist jobs are created on Acquisition → Scan for missing. "
+            "Auto-acquire downloads when scores meet the threshold in Settings."
         )
         acq_help.setWordWrap(True)
         acq_help.setProperty("muted", True)
@@ -182,9 +222,9 @@ class DashboardPage(QWidget):
         pipe_title = QLabel("Processing pipeline")
         pipe_title.setProperty("panelTitle", True)
         pipe_help = QLabel(
-            "Left → right: Acquiring (wishlist / missing media) → Discover → Hash → "
-            "Fingerprint → Identify → Review → Duplicates / Rules → Organize → Artwork → Sync. "
-            "Acquiring counts come from acquisition jobs, not the library job queue."
+            "Left → right: Discover → Hash → Fingerprint → Identify → Review → "
+            "Duplicates / Rules → Organize → Artwork → Acquiring (wishlist) → Sync. "
+            "Identify the library before acquiring missing tracks."
         )
         pipe_help.setWordWrap(True)
         pipe_help.setProperty("muted", True)
@@ -372,6 +412,10 @@ class DashboardPage(QWidget):
                 self._kpi_failed,
                 self._kpi_review,
                 self._kpi_done,
+                self._kpi_missing,
+                self._kpi_acq_active,
+                self._kpi_acq_today,
+                self._kpi_acq_total,
             ):
                 card.set_value("—")
             self._pipeline.set_stages(())
@@ -389,12 +433,21 @@ class DashboardPage(QWidget):
         self._last_scan.setText(snap.last_scan_summary)
         self._processing_report.setText(snap.processing_report)
         self._apply_acquisition_summary(snap)
-        self._kpi_tracks.set_value(str(snap.track_count))
         self._kpi_pending.set_value(str(snap.pending_jobs))
         self._kpi_running.set_value(str(snap.running_jobs))
         self._kpi_failed.set_value(str(snap.failed_jobs))
-        self._kpi_review.set_value(str(snap.review_pending))
+        self._kpi_tracks.set_value(str(snap.track_count))
         self._kpi_done.set_value(str(snap.completed_today))
+        self._kpi_review.set_value(str(snap.review_pending))
+        gaps = snap.missing_media
+        if gaps.available:
+            self._kpi_missing.set_value(str(gaps.missing_tracks))
+        else:
+            self._kpi_missing.set_value("—")
+        acq = snap.acquisition
+        self._kpi_acq_active.set_value(str(acq.active))
+        self._kpi_acq_today.set_value(str(acq.completed_today))
+        self._kpi_acq_total.set_value(str(acq.completed))
 
         self._pipeline.set_stages(snap.stages)
 
@@ -445,24 +498,59 @@ class DashboardPage(QWidget):
         self._fill_jobs(self._failed_table, snap.failed_job_rows, kind="failed")
 
     def _apply_acquisition_summary(self, snap: DashboardSnapshot) -> None:
+        gaps = snap.missing_media
         acq = snap.acquisition
-        if acq.total == 0:
-            self._acquisition_summary.setText(
-                "No acquisition jobs yet. Use Acquisition → Scan for missing to create a wishlist."
+        lines: list[str] = []
+
+        if not gaps.available:
+            lines.append(
+                "Missing-track detection unavailable (MusicBrainz provider required)."
             )
-            return
-        parts = [
-            f"{acq.total} job(s) total",
-            f"{acq.active} active",
-            f"{acq.completed} completed",
-        ]
-        if acq.in_progress:
-            parts.append(f"{acq.in_progress} in progress")
-        if acq.waiting_for_user:
-            parts.append(f"{acq.waiting_for_user} awaiting your pick")
-        if acq.failed:
-            parts.append(f"{acq.failed} failed / no results")
-        self._acquisition_summary.setText(" · ".join(parts))
+        elif gaps.albums_scanned == 0:
+            lines.append(
+                "No albums linked to MusicBrainz yet — identify albums first so gaps can be detected."
+            )
+        elif gaps.missing_tracks:
+            lines.append(
+                f"Detected: {gaps.missing_tracks} missing track(s) across "
+                f"{gaps.incomplete_albums} incomplete album(s) "
+                f"({gaps.complete_albums}/{gaps.albums_scanned} albums complete vs MusicBrainz)."
+            )
+        else:
+            lines.append(
+                f"All {gaps.albums_scanned} MusicBrainz-linked album(s) have expected tracks."
+            )
+
+        if acq.total == 0:
+            if gaps.missing_tracks:
+                lines.append(
+                    "No wishlist jobs yet — open Acquisition → Scan for missing to queue downloads."
+                )
+            elif gaps.available and gaps.albums_scanned:
+                lines.append("No wishlist jobs — nothing missing to acquire.")
+            else:
+                lines.append(
+                    "No wishlist jobs yet. Use Acquisition → Scan for missing after albums are identified."
+                )
+        else:
+            wishlist_parts = [
+                f"{acq.total} wishlist job(s)",
+                f"{acq.active} active",
+                f"{acq.completed} acquired all-time",
+            ]
+            if acq.completed_today:
+                wishlist_parts.append(f"{acq.completed_today} acquired today")
+            if acq.queued:
+                wishlist_parts.append(f"{acq.queued} queued")
+            if acq.in_progress:
+                wishlist_parts.append(f"{acq.in_progress} in progress")
+            if acq.waiting_for_user:
+                wishlist_parts.append(f"{acq.waiting_for_user} awaiting your pick")
+            if acq.failed:
+                wishlist_parts.append(f"{acq.failed} failed / no results")
+            lines.append("Wishlist: " + " · ".join(wishlist_parts))
+
+        self._acquisition_summary.setText("\n".join(lines))
 
     def _fill_jobs(self, table: QTableWidget, jobs: tuple, *, kind: str) -> None:
         table.setRowCount(len(jobs))

@@ -193,17 +193,19 @@ def test_dashboard_acquiring_stage_counts_in_progress(tmp_path: Path) -> None:
         assert acquire.running == 1
         assert acquire.backlog == 1
         assert acquire.label == "Acquiring"
-        assert snap.stages[0].key == "acquire"
-        assert snap.stages[0].label == "Acquiring"
+        assert snap.stages[0].key == "scan"
+        assert snap.stages[0].label == "Discover"
     finally:
         container.close()
 
 
-def test_dashboard_acquiring_is_first_pipeline_stage() -> None:
-    assert PIPELINE_STAGES[0][0] == "acquire"
-    assert PIPELINE_STAGES[0][1] == "Acquiring"
-    assert PIPELINE_STAGES[0][2] is None
-    assert PIPELINE_STAGES[1][0] == "scan"
+def test_dashboard_pipeline_order() -> None:
+    assert PIPELINE_STAGES[0][0] == "scan"
+    assert PIPELINE_STAGES[0][1] == "Discover"
+    acquire_index = next(i for i, stage in enumerate(PIPELINE_STAGES) if stage[0] == "acquire")
+    sync_index = next(i for i, stage in enumerate(PIPELINE_STAGES) if stage[0] == "sync")
+    assert acquire_index < sync_index
+    assert PIPELINE_STAGES[acquire_index][1] == "Acquiring"
 
 
 def test_dashboard_processing_report_tallies_wave_outcomes(tmp_path: Path) -> None:

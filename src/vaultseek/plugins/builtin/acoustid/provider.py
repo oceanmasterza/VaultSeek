@@ -32,11 +32,17 @@ class AcoustIdProvider:
         self,
         *,
         api_key: str | None = None,
+        proxy_url: str | None = None,
+        label: str = "",
         session: requests.Session | None = None,
         timeout_seconds: float = 10.0,
     ) -> None:
         self._api_key = (api_key or "").strip()
+        self._label = (label or "").strip() or "AcoustID"
         self._session = session or requests.Session()
+        if proxy_url and str(proxy_url).strip():
+            proxy = str(proxy_url).strip()
+            self._session.proxies.update({"http": proxy, "https": proxy})
         self._timeout = timeout_seconds
         self._rate_lock = threading.Lock()
         self._last_request_at = 0.0
@@ -47,6 +53,10 @@ class AcoustIdProvider:
                 "AcoustID API key is empty — fingerprint identification is disabled. "
                 "Add a free application key in Settings (https://acoustid.org/new-applications)."
             )
+
+    @property
+    def label(self) -> str:
+        return self._label
 
     def lookup_by_fingerprint(self, fingerprint: bytes, duration: float) -> ProviderResult | None:
         if not self._api_key:
