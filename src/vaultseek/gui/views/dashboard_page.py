@@ -26,6 +26,23 @@ from vaultseek.gui.widgets.pipeline_flow import PipelineFlowWidget
 from vaultseek.models.entities.track import LibraryZone
 from vaultseek.services.dashboard import DashboardSnapshot, build_dashboard_snapshot
 
+_TEXT_SELECT = (
+    Qt.TextInteractionFlag.TextSelectableByMouse
+    | Qt.TextInteractionFlag.TextSelectableByKeyboard
+)
+
+
+def _selectable_label(text: str = "", *, muted: bool = False, insight: bool = False) -> QLabel:
+    label = QLabel(text)
+    label.setWordWrap(True)
+    label.setTextInteractionFlags(_TEXT_SELECT)
+    label.setFocusPolicy(Qt.FocusPolicy.ClickFocus)
+    if muted:
+        label.setProperty("muted", True)
+    if insight:
+        label.setProperty("insight", True)
+    return label
+
 
 class _KpiCard(QFrame):
     def __init__(self, title: str, parent: QWidget | None = None) -> None:
@@ -38,6 +55,9 @@ class _KpiCard(QFrame):
         self._value.setProperty("kpiValue", True)
         self._title = QLabel(title)
         self._title.setProperty("muted", True)
+        self._title.setTextInteractionFlags(_TEXT_SELECT)
+        self._value.setTextInteractionFlags(_TEXT_SELECT)
+        self._value.setFocusPolicy(Qt.FocusPolicy.ClickFocus)
         layout.addWidget(self._value)
         layout.addWidget(self._title)
 
@@ -80,14 +100,14 @@ class DashboardPage(QWidget):
         header.addWidget(refresh)
         layout.addLayout(header)
 
-        self._insight = QLabel("")
-        self._insight.setWordWrap(True)
-        self._insight.setProperty("insight", True)
+        self._insight = _selectable_label(insight=True)
         layout.addWidget(self._insight)
 
         def _section_title(text: str) -> QLabel:
             label = QLabel(text)
             label.setProperty("panelTitle", True)
+            label.setTextInteractionFlags(_TEXT_SELECT)
+            label.setFocusPolicy(Qt.FocusPolicy.ClickFocus)
             return label
 
         # Pipeline queue — work waiting/running in the library job queue *right now*
@@ -188,30 +208,24 @@ class DashboardPage(QWidget):
         actions.addStretch(1)
         layout.addLayout(actions)
 
-        self._last_scan = QLabel("")
-        self._last_scan.setWordWrap(True)
-        self._last_scan.setProperty("muted", True)
+        self._last_scan = _selectable_label(muted=True)
         layout.addWidget(self._last_scan)
 
-        self._processing_report = QLabel("")
-        self._processing_report.setWordWrap(True)
-        self._processing_report.setProperty("muted", True)
+        self._processing_report = _selectable_label(muted=True)
         layout.addWidget(self._processing_report)
 
         acq_box = QFrame()
         acq_box.setProperty("dashPanel", True)
         acq_layout = QVBoxLayout(acq_box)
         acq_layout.addWidget(self._panel_title("Acquisition"))
-        acq_help = QLabel(
+        acq_help = _selectable_label(
             "Compares your library to MusicBrainz tracklists. "
-            "“Missing tracks” shows gaps; wishlist jobs are created on Acquisition → Scan for missing. "
-            "Auto-acquire downloads when scores meet the threshold in Settings."
+            "“Missing tracks” updates when you run Acquisition → Scan for missing. "
+            "Auto-acquire downloads when scores meet the threshold in Settings.",
+            muted=True,
         )
-        acq_help.setWordWrap(True)
-        acq_help.setProperty("muted", True)
         acq_layout.addWidget(acq_help)
-        self._acquisition_summary = QLabel("No acquisition jobs yet.")
-        self._acquisition_summary.setWordWrap(True)
+        self._acquisition_summary = _selectable_label()
         acq_layout.addWidget(self._acquisition_summary)
         layout.addWidget(acq_box)
 
@@ -221,13 +235,12 @@ class DashboardPage(QWidget):
         pipe_layout = QVBoxLayout(pipe_box)
         pipe_title = QLabel("Processing pipeline")
         pipe_title.setProperty("panelTitle", True)
-        pipe_help = QLabel(
+        pipe_help = _selectable_label(
             "Left → right: Discover → Hash → Fingerprint → Identify → Review → "
             "Duplicates / Rules → Organize → Artwork → Acquiring (wishlist) → Sync. "
-            "Identify the library before acquiring missing tracks."
+            "Identify the library before acquiring missing tracks.",
+            muted=True,
         )
-        pipe_help.setWordWrap(True)
-        pipe_help.setProperty("muted", True)
         self._pipeline = PipelineFlowWidget()
         pipe_layout.addWidget(pipe_title)
         pipe_layout.addWidget(pipe_help)
@@ -242,13 +255,12 @@ class DashboardPage(QWidget):
         zone_box.setProperty("dashPanel", True)
         zone_layout = QVBoxLayout(zone_box)
         zone_layout.addWidget(self._panel_title("Collection by zone"))
-        zone_help = QLabel(
+        zone_help = _selectable_label(
             "Totals for the whole library — each new Incoming scan adds to these, "
             "it does not reset them. Use Settings → Reset processing to clear queues "
-            "(or catalog records) without creating a new library."
+            "(or catalog records) without creating a new library.",
+            muted=True,
         )
-        zone_help.setWordWrap(True)
-        zone_help.setProperty("muted", True)
         zone_layout.addWidget(zone_help)
         self._zone_bars: dict[str, tuple[QLabel, QProgressBar, QLabel]] = {}
         for zone in LibraryZone:
@@ -271,8 +283,7 @@ class DashboardPage(QWidget):
         conf_box.setProperty("dashPanel", True)
         conf_layout = QVBoxLayout(conf_box)
         conf_layout.addWidget(self._panel_title("Identification confidence"))
-        self._avg_conf = QLabel("Average: —")
-        self._avg_conf.setProperty("muted", True)
+        self._avg_conf = _selectable_label("Average: —", muted=True)
         conf_layout.addWidget(self._avg_conf)
         self._conf_bars: dict[str, tuple[QLabel, QProgressBar, QLabel]] = {}
         for key, title in (
@@ -295,12 +306,11 @@ class DashboardPage(QWidget):
             row.addWidget(count)
             conf_layout.addLayout(row)
             self._conf_bars[key] = (label, bar, count)
-        conf_note = QLabel(
+        conf_note = _selectable_label(
             "High ≥ auto-approve threshold. Flagged tracks need a human decision "
-            "even if some fields look strong."
+            "even if some fields look strong.",
+            muted=True,
         )
-        conf_note.setWordWrap(True)
-        conf_note.setProperty("muted", True)
         conf_layout.addWidget(conf_note)
         mid.addWidget(conf_box, stretch=1)
         layout.addLayout(mid)
@@ -310,8 +320,7 @@ class DashboardPage(QWidget):
         review_box.setProperty("dashPanel", True)
         review_layout = QVBoxLayout(review_box)
         review_layout.addWidget(self._panel_title("Attention needed"))
-        self._review_detail = QLabel("No pending review items.")
-        self._review_detail.setWordWrap(True)
+        self._review_detail = _selectable_label("No pending review items.")
         review_layout.addWidget(self._review_detail)
         layout.addWidget(review_box)
 
@@ -319,14 +328,12 @@ class DashboardPage(QWidget):
         fail_box.setProperty("dashPanel", True)
         fail_layout = QVBoxLayout(fail_box)
         fail_layout.addWidget(self._panel_title("Common failures"))
-        fail_help = QLabel(
-            "Grouped from failed jobs — the pattern that is blocking the most work."
+        fail_help = _selectable_label(
+            "Grouped from failed jobs — the pattern that is blocking the most work.",
+            muted=True,
         )
-        fail_help.setWordWrap(True)
-        fail_help.setProperty("muted", True)
         fail_layout.addWidget(fail_help)
-        self._failure_summary = QLabel("No failed jobs.")
-        self._failure_summary.setWordWrap(True)
+        self._failure_summary = _selectable_label("No failed jobs.")
         fail_layout.addWidget(self._failure_summary)
         layout.addWidget(fail_box)
 
@@ -351,11 +358,10 @@ class DashboardPage(QWidget):
         log_box.setProperty("dashPanel", True)
         log_layout = QVBoxLayout(log_box)
         log_layout.addWidget(self._panel_title("Live activity"))
-        log_help = QLabel(
-            "Recent app log lines (scan, search, acquire). Full history is still in the log folder."
+        log_help = _selectable_label(
+            "Recent app log lines (scan, search, acquire). Full history is still in the log folder.",
+            muted=True,
         )
-        log_help.setWordWrap(True)
-        log_help.setProperty("muted", True)
         log_layout.addWidget(log_help)
         self._live_log = QPlainTextEdit()
         self._live_log.setReadOnly(True)
@@ -377,6 +383,8 @@ class DashboardPage(QWidget):
     def _panel_title(text: str) -> QLabel:
         label = QLabel(text)
         label.setProperty("panelTitle", True)
+        label.setTextInteractionFlags(_TEXT_SELECT)
+        label.setFocusPolicy(Qt.FocusPolicy.ClickFocus)
         return label
 
     def set_library(self, library_id: UUID | None) -> None:
@@ -440,7 +448,7 @@ class DashboardPage(QWidget):
         self._kpi_done.set_value(str(snap.completed_today))
         self._kpi_review.set_value(str(snap.review_pending))
         gaps = snap.missing_media
-        if gaps.available:
+        if gaps.scanned:
             self._kpi_missing.set_value(str(gaps.missing_tracks))
         else:
             self._kpi_missing.set_value("—")
@@ -506,6 +514,11 @@ class DashboardPage(QWidget):
             lines.append(
                 "Missing-track detection unavailable (MusicBrainz provider required)."
             )
+        elif not gaps.scanned:
+            lines.append(
+                "Missing tracks: not scanned yet — run Acquisition → Scan for missing "
+                "(this checks MusicBrainz and can take a minute)."
+            )
         elif gaps.albums_scanned == 0:
             lines.append(
                 "No albums linked to MusicBrainz yet — identify albums first so gaps can be detected."
@@ -520,9 +533,12 @@ class DashboardPage(QWidget):
             lines.append(
                 f"All {gaps.albums_scanned} MusicBrainz-linked album(s) have expected tracks."
             )
+        if gaps.scanned and gaps.scanned_at is not None:
+            when = gaps.scanned_at.astimezone().strftime("%Y-%m-%d %H:%M")
+            lines.append(f"Last missing-media scan: {when}")
 
         if acq.total == 0:
-            if gaps.missing_tracks:
+            if gaps.scanned and gaps.missing_tracks:
                 lines.append(
                     "No wishlist jobs yet — open Acquisition → Scan for missing to queue downloads."
                 )

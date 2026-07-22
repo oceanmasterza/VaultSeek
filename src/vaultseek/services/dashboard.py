@@ -6,7 +6,6 @@ repositories directly beyond the container façade.
 
 from __future__ import annotations
 
-import time
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 from uuid import UUID
@@ -15,7 +14,7 @@ from vaultseek.core.container import Container
 from vaultseek.models.entities.acquisition_job import AcquisitionJobState
 from vaultseek.models.entities.job import Job, JobStatus, JobType
 from vaultseek.models.entities.track import LibraryZone
-from vaultseek.services.missing_media_analyzer import MediaGapKind
+from vaultseek.services.missing_media_cache import get_snapshot
 
 # Left-to-right processing journey (Beets / MusicBrainz Picard mental model).
 # Discover → identify the library first; Acquiring (missing-media downloads) comes
@@ -35,11 +34,6 @@ PIPELINE_STAGES: tuple[tuple[str, str, str | None], ...] = (
 )
 
 
-# Avoid MusicBrainz lookups on every 2s dashboard poll.
-_MISSING_MEDIA_CACHE: dict[UUID, tuple[float, MissingMediaDashboardStat]] = {}
-_MISSING_MEDIA_CACHE_TTL_SECONDS = 120.0
-
-
 @dataclass(frozen=True, slots=True)
 class PipelineStageStat:
     key: str
@@ -52,13 +46,15 @@ class PipelineStageStat:
 
 @dataclass(frozen=True, slots=True)
 class MissingMediaDashboardStat:
-    """MusicBrainz gap detection (independent of wishlist jobs)."""
+    """MusicBrainz gap detection (updated only by Acquisition → Scan for missing)."""
 
     available: bool = False
+    scanned: bool = False
     albums_scanned: int = 0
     missing_tracks: int = 0
     incomplete_albums: int = 0
     complete_albums: int = 0
+    scanned_at: datetime | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -287,38 +283,20 @@ def _acquisition_stats(container: Container, library_id: UUID) -> AcquisitionDas
 
 
 def _missing_media_stats(container: Container, library_id: UUID) -> MissingMediaDashboardStat:
-    now = time.monotonic()
-    cached = _MISSING_MEDIA_CACHE.get(library_id)
-    if cached is not None and now - cached[0] < _MISSING_MEDIA_CACHE_TTL_SECONDS:
-        return cached[1]
-
-    analyzer = container.missing_media_analyzer
-    if analyzer is None:
-        stat = MissingMediaDashboardStat(available=False)
-        _MISSING_MEDIA_CACHE[library_id] = (now, stat)
-        return stat
-
-    gaps = analyzer.analyze_library(library_id, log=False)
-    track_gaps = [gap for gap in gaps if gap.kind is MediaGapKind.MISSING_TRACK]
-    albums_with_gaps: set[str] = {gap.album_title for gap in track_gaps}
-    albums_scanned = 0
-    complete_albums = 0
-    for row in container.album_repo.list_for_library(library_id):
-        if not row.mbid:
-            continue
-        albums_scanned += 1
-        if row.title not in albums_with_gaps:
-            complete_albums += 1
-
-    stat = MissingMediaDashboardStat(
-        available=True,
-        albums_scanned=albums_scanned,
-        missing_tracks=len(track_gaps),
-        incomplete_albums=len(albums_with_gaps),
-        complete_albums=complete_albums,
+    """Read the last explicit missing-media scan — never hits MusicBrainz here."""
+    analyzer_available = container.missing_media_analyzer is not None
+    snapshot = get_snapshot(library_id)
+    if snapshot is None:
+        return MissingMediaDashboardStat(available=analyzer_available, scanned=False)
+    return MissingMediaDashboardStat(
+        available=analyzer_available,
+        scanned=True,
+        albums_scanned=snapshot.albums_scanned,
+        missing_tracks=snapshot.missing_tracks,
+        incomplete_albums=snapshot.incomplete_albums,
+        complete_albums=snapshot.complete_albums,
+        scanned_at=snapshot.scanned_at,
     )
-    _MISSING_MEDIA_CACHE[library_id] = (now, stat)
-    return stat
 
 
 def _latest_scan_summary(container: Container, library_id: UUID) -> str:
@@ -449,7 +427,7 @@ def _insight(
 ) -> str:
     acq = acquisition or AcquisitionDashboardStat()
     gaps = missing_media or MissingMediaDashboardStat()
-    if gaps.available and gaps.missing_tracks and acq.total == 0:
+    if gaps.scanned and gaps.missing_tracks and acq.total == 0:
         return (
             f"{gaps.missing_tracks} missing track(s) detected across "
             f"{gaps.incomplete_albums} album(s) — open Acquisition → Scan for missing "

@@ -212,6 +212,14 @@ class AcquisitionPage(QWidget):
             auto_queue=auto_queue,
         )
         connected = self._container.provider_manager.connected_provider_ids()
+        from loguru import logger
+
+        if created:
+            logger.info(
+                "Missing-media scan created {} wishlist job(s); connected providers: {}",
+                len(created),
+                ", ".join(connected) if connected else "(none)",
+            )
         extra = ""
         if created and not connected:
             extra = (

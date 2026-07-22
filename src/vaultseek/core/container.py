@@ -293,6 +293,8 @@ class Container:
             acquisition_runner=acquisition_runner,
             pipeline_config=config.pipeline,
             event_bus=event_bus,
+            acquisition_config=config.acquisition,
+            provider_manager=provider_manager,
             review_queue=review_queue,
         )
         metadata_arbitrator = MetadataArbitrator(

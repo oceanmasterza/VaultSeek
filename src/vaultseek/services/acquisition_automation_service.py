@@ -14,6 +14,7 @@ It is intentionally conservative: it never attempts to auto-acquire jobs in
 from __future__ import annotations
 
 import threading
+import time
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from uuid import UUID
@@ -25,9 +26,12 @@ from vaultseek.core.event_bus import EventBus
 from vaultseek.db.repositories.acquisition_job_repo import AcquisitionJobRepository
 from vaultseek.db.repositories.library_repo import LibraryRepository
 from vaultseek.models.entities.acquisition_job import AcquisitionJobState
+from vaultseek.core.config import AcquisitionConfig
 from vaultseek.services.acquisition_attention import park_if_attention_needed
+from vaultseek.services.acquisition_bootstrap import connect_acquisition_providers
 from vaultseek.services.acquisition_engine import AcquisitionEngine
 from vaultseek.services.acquisition_runner import AcquisitionRunner
+from vaultseek.services.provider_manager import ProviderManager
 from vaultseek.services.review_queue_service import ReviewQueueService
 
 _FAILURE_STATES: tuple[AcquisitionJobState, ...] = (
@@ -70,6 +74,8 @@ class AcquisitionAutomationService:
         acquisition_runner: AcquisitionRunner,
         pipeline_config: PipelineConfig,
         event_bus: EventBus,
+        acquisition_config: AcquisitionConfig,
+        provider_manager: ProviderManager,
         automation_config: AcquisitionAutomationConfig | None = None,
         review_queue: ReviewQueueService | None = None,
     ) -> None:
@@ -79,8 +85,11 @@ class AcquisitionAutomationService:
         self._runner = acquisition_runner
         self._pipeline = pipeline_config
         self._event_bus = event_bus
+        self._acquisition_config = acquisition_config
+        self._providers = provider_manager
         self._cfg = automation_config or AcquisitionAutomationConfig()
         self._reviews = review_queue
+        self._last_provider_warning_at: float = 0.0
 
         self._stop = threading.Event()
         self._thread: threading.Thread | None = None
@@ -120,6 +129,19 @@ class AcquisitionAutomationService:
                 )
 
     def _tick_library(self, library_id: UUID) -> None:
+        connect_acquisition_providers(self._acquisition_config, self._providers)
+        if (
+            self._acquisition_config.nicotine_plus.enabled
+            and not self._providers.has_connected_search_providers()
+        ):
+            now = time.monotonic()
+            if now - self._last_provider_warning_at > 60.0:
+                self._last_provider_warning_at = now
+                logger.warning(
+                    "Nicotine+ is enabled but not connected — acquisition searches will not "
+                    "run until Nicotine+ is online (Settings → Test connection, then save)."
+                )
+
         # 1) Retry policy first — it may move jobs back to queued.
         self._schedule_retries(library_id)
 

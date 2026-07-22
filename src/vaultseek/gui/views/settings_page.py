@@ -617,6 +617,16 @@ class SettingsPage(QWidget):
             )
         primary_key = endpoint_rows[0].api_key if endpoint_rows else ""
 
+        enabled = list(self._container.config.acquisition.enabled_providers)
+        if self._nicotine_enabled.isChecked():
+            if "nicotine_plus" not in enabled:
+                enabled.append("nicotine_plus")
+            enabled = [provider_id for provider_id in enabled if provider_id != "stub"]
+        else:
+            enabled = [provider_id for provider_id in enabled if provider_id != "nicotine_plus"]
+        if not enabled:
+            enabled = ["stub"]
+
         metadata = dc_replace(
             self._container.config.metadata,
             acoustid_api_key=primary_key,
@@ -625,7 +635,7 @@ class SettingsPage(QWidget):
             fingerprint_sample_min=int(self._fingerprint_sample_min.value()),
         )
         acquisition = AcquisitionConfig(
-            enabled_providers=self._container.config.acquisition.enabled_providers,
+            enabled_providers=tuple(dict.fromkeys(enabled)),
             provider_order=self._container.config.acquisition.provider_order,
             search_timeout_seconds=self._container.config.acquisition.search_timeout_seconds,
             auto_queue_jobs=self._auto_queue_jobs.isChecked(),

@@ -15,6 +15,7 @@ from vaultseek.db.repositories.track_repo import TrackRepository
 from vaultseek.models.entities.acquisition_job import AcquisitionJob, AcquisitionJobType
 from vaultseek.plugins.builtin.musicbrainz.provider import MusicBrainzProvider, ReleaseTracklist
 from vaultseek.services.acquisition_engine import AcquisitionEngine
+from vaultseek.services.missing_media_cache import record_scan
 
 
 class MediaGapKind(str, Enum):
@@ -169,6 +170,13 @@ class MissingMediaAnalyzer:
                     incomplete_albums,
                     complete_albums,
                 )
+        record_scan(
+            library_id,
+            missing_tracks=len(track_gaps),
+            incomplete_albums=incomplete_albums,
+            albums_scanned=albums_scanned,
+            complete_albums=complete_albums,
+        )
         return gaps
 
 
