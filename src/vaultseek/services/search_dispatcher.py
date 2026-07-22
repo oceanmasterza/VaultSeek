@@ -8,6 +8,7 @@ from loguru import logger
 
 from vaultseek.models.entities.acquisition_job import AcquisitionJobState
 from vaultseek.models.interfaces.acquisition import SearchRequest, SearchResult
+from vaultseek.plugins.builtin.nicotine_plus.search_rate_gate import SearchThrottled
 from vaultseek.services.acquisition_engine import AcquisitionEngine
 from vaultseek.services.acquisition_labels import job_label
 from vaultseek.services.provider_manager import ProviderManager
@@ -78,7 +79,30 @@ class SearchDispatcher:
             return []
 
         logger.info("Searching providers for {}", job_label(job))
-        results = self._providers.search(request, provider_ids=provider_ids)
+        try:
+            results = self._providers.search(request, provider_ids=provider_ids)
+        except SearchThrottled as exc:
+            logger.info(
+                "Search for {} deferred ({:.1f}s) to avoid Soulseek flood ban",
+                job_label(job),
+                exc.retry_after_seconds,
+            )
+            # Roll back to QUEUED so automation retries after the rate window.
+            if job.state is AcquisitionJobState.SEARCHING:
+                self._engine.advance(
+                    job_id,
+                    AcquisitionJobState.QUEUED,
+                    note=f"rate-limited {exc.retry_after_seconds:.1f}s",
+                )
+            self._engine.update_extra(
+                job_id,
+                {
+                    "provider_offline": False,
+                    "search_deferred": True,
+                    "search_retry_after_seconds": exc.retry_after_seconds,
+                },
+            )
+            return []
 
         if not results:
             logger.info("Search for {}: no provider results", job_label(job))

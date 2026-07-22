@@ -18,7 +18,7 @@ from typing import Any
 
 from vaultseek.core.exceptions import ConfigError, ConfigMigrationError, ConfigVersionError
 
-CURRENT_SCHEMA_VERSION = 11
+CURRENT_SCHEMA_VERSION = 16
 
 
 @dataclass(frozen=True)
@@ -42,6 +42,9 @@ class NicotinePlusConfig:
     api_token: str = ""
     username: str = ""
     password: str = ""
+    # Soulseek flood protection — exact server limits are unpublished.
+    search_min_interval_seconds: float = 5.0
+    search_max_per_minute: int = 8
 
 
 @dataclass(frozen=True)
@@ -52,7 +55,13 @@ class AcquisitionConfig:
     provider_order: tuple[str, ...] = ("nicotine_plus", "stub")
     search_timeout_seconds: float = 30.0
     auto_queue_jobs: bool = True
-    auto_acquire_threshold: float = 0.90
+    auto_acquire_threshold: float = 0.45
+    prefer_lossless: bool = True
+    preferred_codec: str = ""
+    min_bitrate_kbps: int = 192
+    download_whole_album_on_upgrade: bool = True
+    # 0 = search wishlist as often as rate limits allow; >0 = at most one search pass per N hours.
+    wishlist_search_interval_hours: float = 0.0
     nicotine_plus: NicotinePlusConfig = field(default_factory=NicotinePlusConfig)
 
 
@@ -114,16 +123,19 @@ class MetadataConfig:
     provider_order: tuple[str, ...] = (
         "acoustid",
         "musicbrainz",
+        "discogs",
         "local_tags",
         "filename_parser",
     )
     enabled_providers: tuple[str, ...] = (
         "acoustid",
         "musicbrainz",
+        "discogs",
         "local_tags",
         "filename_parser",
     )
     acoustid_api_key: str = ""
+    discogs_user_token: str = ""
     # Up to several keys, each with its own proxy — 3 req/s per endpoint.
     acoustid_endpoints: tuple[AcoustIdEndpointConfig, ...] = ()
     # "all" = Chromaprint every file. "sample" = fingerprint until an album
@@ -270,6 +282,93 @@ def _migrate_v10_to_v11(raw: dict[str, Any]) -> dict[str, Any]:
     return migrated
 
 
+def _migrate_v11_to_v12(raw: dict[str, Any]) -> dict[str, Any]:
+    """Fix common Nicotine+ misconfiguration (HTTP port used as NDJSON socket)."""
+    migrated = dict(raw)
+    migrated["schema_version"] = 12
+    acq = dict(migrated.get("acquisition") or asdict(AcquisitionConfig()))
+    nicotine = dict(acq.get("nicotine_plus") or asdict(NicotinePlusConfig()))
+    transport = str(nicotine.get("transport") or "socket").casefold()
+    port = int(nicotine.get("port") or 22024)
+    api_port = int(nicotine.get("api_port") or 12339)
+    if transport == "socket" and port == api_port:
+        nicotine["transport"] = "http"
+        nicotine["port"] = 22024
+    acq["nicotine_plus"] = nicotine
+    enabled = list(acq.get("enabled_providers") or ["stub"])
+    if nicotine.get("enabled"):
+        if "nicotine_plus" not in enabled:
+            enabled.append("nicotine_plus")
+        enabled = [provider_id for provider_id in enabled if provider_id != "stub"]
+    acq["enabled_providers"] = enabled or ["stub"]
+    migrated["acquisition"] = acq
+    return migrated
+
+
+def _migrate_v12_to_v13(raw: dict[str, Any]) -> dict[str, Any]:
+    """Add Soulseek search flood-protection defaults for Nicotine+."""
+    migrated = dict(raw)
+    migrated["schema_version"] = 13
+    acq = dict(migrated.get("acquisition") or asdict(AcquisitionConfig()))
+    nicotine = dict(acq.get("nicotine_plus") or asdict(NicotinePlusConfig()))
+    nicotine.setdefault("search_min_interval_seconds", 5.0)
+    nicotine.setdefault("search_max_per_minute", 8)
+    acq["nicotine_plus"] = nicotine
+    migrated["acquisition"] = acq
+    return migrated
+
+
+def _migrate_v13_to_v14(raw: dict[str, Any]) -> dict[str, Any]:
+    """Lower unusable auto-acquire thresholds for Soulseek path-only hits."""
+    migrated = dict(raw)
+    migrated["schema_version"] = 14
+    acq = dict(migrated.get("acquisition") or asdict(AcquisitionConfig()))
+    try:
+        threshold = float(acq.get("auto_acquire_threshold", 0.45))
+    except (TypeError, ValueError):
+        threshold = 0.45
+    # Old defaults (0.85–0.90) never auto-downloaded Nicotine hits under the
+    # previous scorer. Cap down once; users can raise the setting again.
+    if threshold >= 0.70:
+        acq["auto_acquire_threshold"] = 0.45
+    migrated["acquisition"] = acq
+    return migrated
+
+
+def _migrate_v14_to_v15(raw: dict[str, Any]) -> dict[str, Any]:
+    """Restore Discogs + add library quality preference defaults."""
+    migrated = dict(raw)
+    migrated["schema_version"] = 15
+    metadata = dict(migrated.get("metadata") or asdict(MetadataConfig()))
+    metadata.setdefault("discogs_user_token", "")
+    for key in ("provider_order", "enabled_providers"):
+        providers = list(metadata.get(key) or [])
+        if "discogs" not in providers:
+            if "musicbrainz" in providers:
+                providers.insert(providers.index("musicbrainz") + 1, "discogs")
+            else:
+                providers.insert(0, "discogs")
+        metadata[key] = providers
+    migrated["metadata"] = metadata
+    acq = dict(migrated.get("acquisition") or asdict(AcquisitionConfig()))
+    acq.setdefault("prefer_lossless", True)
+    acq.setdefault("preferred_codec", "")
+    acq.setdefault("min_bitrate_kbps", 192)
+    acq.setdefault("download_whole_album_on_upgrade", True)
+    migrated["acquisition"] = acq
+    return migrated
+
+
+def _migrate_v15_to_v16(raw: dict[str, Any]) -> dict[str, Any]:
+    """Wishlist search interval (hours) for dashboard/automation."""
+    migrated = dict(raw)
+    migrated["schema_version"] = 16
+    acq = dict(migrated.get("acquisition") or asdict(AcquisitionConfig()))
+    acq.setdefault("wishlist_search_interval_hours", 0.0)
+    migrated["acquisition"] = acq
+    return migrated
+
+
 _MIGRATIONS: dict[int, Callable[[dict[str, Any]], dict[str, Any]]] = {
     1: _migrate_v1_to_v2,
     2: _migrate_v2_to_v3,
@@ -281,6 +380,11 @@ _MIGRATIONS: dict[int, Callable[[dict[str, Any]], dict[str, Any]]] = {
     8: _migrate_v8_to_v9,
     9: _migrate_v9_to_v10,
     10: _migrate_v10_to_v11,
+    11: _migrate_v11_to_v12,
+    12: _migrate_v12_to_v13,
+    13: _migrate_v13_to_v14,
+    14: _migrate_v14_to_v15,
+    15: _migrate_v15_to_v16,
 }
 
 

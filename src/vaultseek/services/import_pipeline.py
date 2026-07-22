@@ -105,7 +105,21 @@ class ImportPipeline:
                         shutil.copy2(path, dest)
                         staged.append(dest)
                         steps.append(f"staged:{dest.name}")
+                        # Clean VaultSeek-owned Nicotine drop folder originals.
+                        try:
+                            nicotine_root = incoming / "vaultseek-nicotine" / str(job_id)
+                            if path.resolve().is_relative_to(nicotine_root.resolve()):
+                                path.unlink(missing_ok=True)
+                                steps.append(f"cleaned_source:{path.name}")
+                        except (OSError, ValueError):
+                            pass
                     steps.append("incoming_staged")
+                    logger.info(
+                        "Staged {} file(s) for {} into {}",
+                        len(staged),
+                        job_label(job),
+                        dest_root,
+                    )
 
                     scan_id = self._jobs.enqueue(
                         JobType.SCAN_DIRECTORY,

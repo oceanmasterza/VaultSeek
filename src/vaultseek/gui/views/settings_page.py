@@ -26,6 +26,7 @@ from PySide6.QtWidgets import (
 
 from vaultseek.core.config import save_config
 from vaultseek.core.container import Container
+from vaultseek.gui.views.rules_page import RulesPage
 from vaultseek.gui.widgets.desktop import open_path
 from vaultseek.gui.widgets.path_picker import PathPickerRow
 from vaultseek.gui.widgets.scrollable import wrap_scrollable
@@ -94,6 +95,33 @@ class SettingsPage(QWidget):
         form.addRow("Staging", self._staging)
         form.addRow("Library", self._library)
         form.addRow("Archive", self._archive)
+        self._logs_path = PathPickerRow(show_browse=False, read_only=True, show_open=True)
+        self._logs_path.setToolTip("Application log files (vaultseek.log, debug.log).")
+        self._reports_path = PathPickerRow(show_browse=False, read_only=True, show_open=True)
+        self._reports_path.setToolTip("Generated library/acquisition report files.")
+        form.addRow("Logs", self._logs_path)
+        form.addRow("Reports", self._reports_path)
+        logs_actions = QHBoxLayout()
+        open_debug = QPushButton("Open debug.log")
+        open_app_log = QPushButton("Open vaultseek.log")
+        open_crashes = QPushButton("Open crashes")
+        for btn in (open_debug, open_app_log, open_crashes):
+            btn.setProperty("secondary", True)
+        open_debug.setToolTip(str(container.paths.logs_dir / "debug.log"))
+        open_app_log.setToolTip(str(container.paths.logs_dir / "vaultseek.log"))
+        open_crashes.setToolTip(str(container.paths.crashes_dir))
+        open_debug.clicked.connect(
+            lambda: open_path(self._container.paths.logs_dir / "debug.log")
+        )
+        open_app_log.clicked.connect(
+            lambda: open_path(self._container.paths.logs_dir / "vaultseek.log")
+        )
+        open_crashes.clicked.connect(lambda: open_path(self._container.paths.crashes_dir))
+        logs_actions.addWidget(open_debug)
+        logs_actions.addWidget(open_app_log)
+        logs_actions.addWidget(open_crashes)
+        logs_actions.addStretch(1)
+        form.addRow(logs_actions)
         form.addRow(self._watch)
         form.addRow("Auto-approve threshold", self._threshold)
         # Suggest sibling folders after the first zone is chosen.
@@ -152,9 +180,10 @@ class SettingsPage(QWidget):
         self._acq_threshold = QDoubleSpinBox()
         self._acq_threshold.setRange(0.0, 1.0)
         self._acq_threshold.setSingleStep(0.05)
-        self._acq_threshold.setValue(0.90)
+        self._acq_threshold.setValue(0.45)
         self._acq_threshold.setToolTip(
-            "Search results at or above this score auto-download during Auto-acquire."
+            "Minimum match score (0–1) to download automatically. "
+            "Lower = more automatic downloads from Soulseek; higher = more manual approval."
         )
         self._auto_queue_jobs = QCheckBox("Auto-queue jobs created by Scan for missing")
         self._auto_queue_jobs.setToolTip(
@@ -176,14 +205,65 @@ class SettingsPage(QWidget):
         self._nicotine_api_token = QLineEdit()
         self._nicotine_api_token.setEchoMode(QLineEdit.EchoMode.Password)
         self._nicotine_api_token.setPlaceholderText("api-nicotine-plus token (optional)")
+        self._nicotine_search_interval = QDoubleSpinBox()
+        self._nicotine_search_interval.setRange(1.0, 120.0)
+        self._nicotine_search_interval.setSingleStep(1.0)
+        self._nicotine_search_interval.setDecimals(1)
+        self._nicotine_search_interval.setSuffix(" s")
+        self._nicotine_search_interval.setValue(5.0)
+        self._nicotine_search_interval.setToolTip(
+            "Minimum seconds between Soulseek searches. The network bans accounts "
+            "that search too quickly (often ~30 minutes). Exact limits are unpublished; "
+            "5 seconds is a conservative default."
+        )
+        self._nicotine_search_max_per_min = QSpinBox()
+        self._nicotine_search_max_per_min.setRange(1, 30)
+        self._nicotine_search_max_per_min.setValue(8)
+        self._nicotine_search_max_per_min.setToolTip(
+            "Hard cap on Soulseek searches in any rolling 60-second window."
+        )
         acq_form.addRow("Auto-acquire threshold", self._acq_threshold)
         acq_form.addRow(self._auto_queue_jobs)
+        self._prefer_lossless = QCheckBox("Prefer lossless (FLAC/ALAC) when available")
+        self._prefer_lossless.setChecked(True)
+        self._preferred_codec = QLineEdit()
+        self._preferred_codec.setPlaceholderText("Optional exact codec, e.g. FLAC or MP3")
+        self._min_bitrate = QSpinBox()
+        self._min_bitrate.setRange(0, 3200)
+        self._min_bitrate.setSingleStep(32)
+        self._min_bitrate.setValue(192)
+        self._min_bitrate.setSuffix(" kbps")
+        self._min_bitrate.setToolTip(
+            "Minimum acceptable bitrate for lossy files. Green = meets this; "
+            "orange = present but below. 0 disables the bitrate floor."
+        )
+        self._download_whole_album = QCheckBox(
+            "When upgrading, prefer matching whole-album folders from the same peer"
+        )
+        self._download_whole_album.setChecked(True)
+        self._wishlist_hours = QDoubleSpinBox()
+        self._wishlist_hours.setRange(0.0, 168.0)
+        self._wishlist_hours.setSingleStep(1.0)
+        self._wishlist_hours.setDecimals(1)
+        self._wishlist_hours.setSuffix(" hours")
+        self._wishlist_hours.setSpecialValueText("Continuous")
+        self._wishlist_hours.setToolTip(
+            "How often background wishlist searches run. 0 = as often as Soulseek "
+            "rate limits allow. Example: 6 = at most one search pass every 6 hours."
+        )
+        acq_form.addRow(self._prefer_lossless)
+        acq_form.addRow("Preferred codec", self._preferred_codec)
+        acq_form.addRow("Min bitrate (lossy)", self._min_bitrate)
+        acq_form.addRow(self._download_whole_album)
+        acq_form.addRow("Wishlist search every", self._wishlist_hours)
         acq_form.addRow(self._nicotine_enabled)
         acq_form.addRow("Nicotine+ transport", self._nicotine_transport)
         acq_form.addRow("Nicotine+ host", self._nicotine_host)
         acq_form.addRow("NDJSON port", self._nicotine_port)
         acq_form.addRow("HTTP API port", self._nicotine_api_port)
         acq_form.addRow("HTTP API token", self._nicotine_api_token)
+        acq_form.addRow("Min seconds between searches", self._nicotine_search_interval)
+        acq_form.addRow("Max searches per minute", self._nicotine_search_max_per_min)
         test_conn = QPushButton("Test Nicotine+ connection")
         test_conn.setProperty("secondary", True)
         test_conn.setToolTip(
@@ -195,8 +275,10 @@ class SettingsPage(QWidget):
         acq_help = QLabel(
             "HTTP mode talks to the community api-nicotine-plus plugin inside Nicotine+. "
             "Socket mode expects a VaultSeek NDJSON companion on the NDJSON port. "
+            "Completed downloads are copied into Incoming, then organized into your Music folder. "
             "Restart VaultSeek after saving acquisition settings. "
-            "Enable Nicotine+ (and keep it connected) or searches return no results."
+            "Enable Nicotine+ (and keep it connected) or searches return no results. "
+            "Search rate limits protect against Soulseek's automatic 30-minute flood ban."
         )
         acq_help.setWordWrap(True)
         acq_help.setProperty("muted", True)
@@ -209,6 +291,24 @@ class SettingsPage(QWidget):
         self._log_level.addItems(["DEBUG", "INFO", "WARNING", "ERROR"])
         self._theme = QComboBox()
         self._theme.addItems(["dark", "light"])
+        self._discogs_token = QLineEdit()
+        self._discogs_token.setPlaceholderText("Paste Discogs personal access token")
+        self._discogs_token.setEchoMode(QLineEdit.EchoMode.Password)
+        self._discogs_token.setToolTip(
+            "Used for Discogs metadata (genre, label, catalog) and cover art. "
+            "Create a token at https://www.discogs.com/settings/developers. Restart after saving."
+        )
+        prefs_form.addRow("Log level", self._log_level)
+        prefs_form.addRow("Theme", self._theme)
+        prefs_form.addRow("Discogs token", self._discogs_token)
+        discogs_help = QLabel(
+            "Optional. Improves identification with genre/label/catalog and Discogs covers. "
+            "Token: https://www.discogs.com/settings/developers"
+        )
+        discogs_help.setWordWrap(True)
+        discogs_help.setProperty("muted", True)
+        discogs_help.setOpenExternalLinks(True)
+        prefs_form.addRow(discogs_help)
         self._acoustid_rows: list[tuple[QLineEdit, QLineEdit, QLineEdit]] = []
         acoustid_box = QGroupBox("AcoustID accounts (fingerprint lookups)")
         acoustid_form = QFormLayout(acoustid_box)
@@ -238,9 +338,6 @@ class SettingsPage(QWidget):
         acoustid_help.setOpenExternalLinks(True)
         acoustid_form.addRow(acoustid_help)
         prefs_form.addRow(acoustid_box)
-
-        prefs_form.addRow("Log level", self._log_level)
-        prefs_form.addRow("Theme", self._theme)
 
         self._fingerprint_mode = QComboBox()
         self._fingerprint_mode.addItem("Fingerprint every song", "all")
@@ -330,16 +427,24 @@ class SettingsPage(QWidget):
         layout.addWidget(media)
         self._ms_plugin.currentTextChanged.connect(self._load_media_server_form)
 
+        self._rules_page = RulesPage(container)
+        layout.addWidget(self._rules_page)
+
         layout.addStretch(1)
 
     def set_library(self, library_id: UUID | None) -> None:
         self._editing_id = library_id
+        self._rules_page.set_library(library_id)
         self.refresh()
 
     def refresh(self) -> None:
         config = self._container.config
+        self._logs_path.setText(str(self._container.paths.logs_dir))
+        self._reports_path.setText(str(self._container.paths.reports_dir))
+        self._rules_page.refresh()
         self._log_level.setCurrentText(config.log_level)
         self._theme.setCurrentText(config.theme)
+        self._discogs_token.setText(config.metadata.discogs_user_token or "")
         from vaultseek.core.config import AcoustIdEndpointConfig
 
         endpoints = list(config.metadata.acoustid_endpoints)
@@ -363,6 +468,11 @@ class SettingsPage(QWidget):
         self._sync_fingerprint_sample_enabled()
         self._acq_threshold.setValue(config.acquisition.auto_acquire_threshold)
         self._auto_queue_jobs.setChecked(config.acquisition.auto_queue_jobs)
+        self._prefer_lossless.setChecked(config.acquisition.prefer_lossless)
+        self._preferred_codec.setText(config.acquisition.preferred_codec or "")
+        self._min_bitrate.setValue(int(config.acquisition.min_bitrate_kbps))
+        self._download_whole_album.setChecked(config.acquisition.download_whole_album_on_upgrade)
+        self._wishlist_hours.setValue(float(config.acquisition.wishlist_search_interval_hours))
         nicotine = config.acquisition.nicotine_plus
         self._nicotine_enabled.setChecked(nicotine.enabled)
         transport_index = self._nicotine_transport.findData(nicotine.transport)
@@ -371,6 +481,8 @@ class SettingsPage(QWidget):
         self._nicotine_port.setValue(nicotine.port)
         self._nicotine_api_port.setValue(nicotine.api_port)
         self._nicotine_api_token.setText(nicotine.api_token)
+        self._nicotine_search_interval.setValue(float(nicotine.search_min_interval_seconds))
+        self._nicotine_search_max_per_min.setValue(int(nicotine.search_max_per_minute))
 
         if self._editing_id is None:
             self._clear_library_form()
@@ -631,8 +743,28 @@ class SettingsPage(QWidget):
             self._container.config.metadata,
             acoustid_api_key=primary_key,
             acoustid_endpoints=tuple(endpoint_rows),
+            discogs_user_token=self._discogs_token.text().strip(),
             fingerprint_mode=str(self._fingerprint_mode.currentData() or "all"),
             fingerprint_sample_min=int(self._fingerprint_sample_min.value()),
+        )
+        # Keep discogs in provider lists when a token is present.
+        meta_enabled = list(metadata.enabled_providers)
+        meta_order = list(metadata.provider_order)
+        if metadata.discogs_user_token:
+            if "discogs" not in meta_enabled:
+                if "musicbrainz" in meta_enabled:
+                    meta_enabled.insert(meta_enabled.index("musicbrainz") + 1, "discogs")
+                else:
+                    meta_enabled.append("discogs")
+            if "discogs" not in meta_order:
+                if "musicbrainz" in meta_order:
+                    meta_order.insert(meta_order.index("musicbrainz") + 1, "discogs")
+                else:
+                    meta_order.append("discogs")
+        metadata = dc_replace(
+            metadata,
+            enabled_providers=tuple(meta_enabled),
+            provider_order=tuple(meta_order),
         )
         acquisition = AcquisitionConfig(
             enabled_providers=tuple(dict.fromkeys(enabled)),
@@ -640,6 +772,11 @@ class SettingsPage(QWidget):
             search_timeout_seconds=self._container.config.acquisition.search_timeout_seconds,
             auto_queue_jobs=self._auto_queue_jobs.isChecked(),
             auto_acquire_threshold=float(self._acq_threshold.value()),
+            prefer_lossless=self._prefer_lossless.isChecked(),
+            preferred_codec=self._preferred_codec.text().strip(),
+            min_bitrate_kbps=int(self._min_bitrate.value()),
+            download_whole_album_on_upgrade=self._download_whole_album.isChecked(),
+            wishlist_search_interval_hours=float(self._wishlist_hours.value()),
             nicotine_plus=NicotinePlusConfig(
                 enabled=self._nicotine_enabled.isChecked(),
                 host=self._nicotine_host.text().strip() or "127.0.0.1",
@@ -647,6 +784,8 @@ class SettingsPage(QWidget):
                 transport=str(self._nicotine_transport.currentData() or "socket"),
                 api_port=int(self._nicotine_api_port.value()),
                 api_token=self._nicotine_api_token.text().strip(),
+                search_min_interval_seconds=float(self._nicotine_search_interval.value()),
+                search_max_per_minute=int(self._nicotine_search_max_per_min.value()),
             ),
         )
         updated = replace(
@@ -662,11 +801,12 @@ class SettingsPage(QWidget):
         self._container.acquisition_runner.set_auto_acquire_threshold(
             acquisition.auto_acquire_threshold
         )
+        self._container.acquisition_automation_service.set_acquisition_config(acquisition)
         self.preferences_saved.emit(updated.theme)
         QMessageBox.information(
             self,
             "Settings",
-            "Preferences saved. Restart VaultSeek so fingerprinting and AcoustID "
+            "Preferences saved. Restart VaultSeek so Discogs, fingerprinting, and AcoustID "
             "settings take effect.",
         )
 

@@ -12,6 +12,7 @@ from PySide6.QtWidgets import (
     QHBoxLayout,
     QLabel,
     QLineEdit,
+    QMessageBox,
     QPushButton,
     QSizePolicy,
     QSplitter,
@@ -22,8 +23,19 @@ from PySide6.QtWidgets import (
 )
 
 from vaultseek.core.container import Container
-from vaultseek.gui.widgets.browse import fill_track_table
+from vaultseek.gui.widgets.browse import (
+    HealthColorDelegate,
+    apply_album_health_style,
+    apply_track_health_style,
+)
 from vaultseek.gui.widgets.desktop import reveal_in_explorer
+from vaultseek.plugins.builtin.musicbrainz.provider import MusicBrainzProvider
+from vaultseek.services.album_track_display import (
+    album_status_for_display,
+    build_album_track_rows,
+    effective_track_health,
+)
+from vaultseek.services.library_scan_actions import run_missing_scan, run_quality_upgrade_scan
 
 
 class AlbumsPage(QWidget):
@@ -65,7 +77,25 @@ class AlbumsPage(QWidget):
         self._clear_filter.setVisible(False)
         self._clear_filter.clicked.connect(lambda: self.set_artist_filter(None))
         toolbar.addWidget(self._clear_filter)
+        find_missing = QPushButton("Find missing songs")
+        find_missing.setProperty("secondary", True)
+        find_missing.setToolTip("Scan this library for missing tracks and queue acquisition jobs.")
+        find_missing.clicked.connect(self._scan_missing)
+        toolbar.addWidget(find_missing)
+        find_upgrades = QPushButton("Find quality upgrades")
+        find_upgrades.setProperty("secondary", True)
+        find_upgrades.setToolTip(
+            "Scan for tracks below your Settings quality prefs and queue upgrade jobs."
+        )
+        find_upgrades.clicked.connect(self._scan_upgrades)
+        toolbar.addWidget(find_upgrades)
         layout.addLayout(toolbar)
+        legend = QLabel(
+            "Colors: green = complete & meets quality · orange = missing songs or below quality prefs"
+        )
+        legend.setProperty("muted", True)
+        legend.setWordWrap(True)
+        layout.addWidget(legend)
 
         main_split = QSplitter(Qt.Orientation.Horizontal)
 
@@ -73,14 +103,15 @@ class AlbumsPage(QWidget):
         left_layout = QVBoxLayout(left)
         left_layout.setContentsMargins(0, 0, 0, 0)
         list_split = QSplitter(Qt.Orientation.Vertical)
-        self._table = QTableWidget(0, 5)
+        self._table = QTableWidget(0, 6)
         self._table.setHorizontalHeaderLabels(
-            ["Album", "Artist", "Year", "Tracks", "Cover"]
+            ["Album", "Artist", "Year", "Tracks", "Status", "Cover"]
         )
         self._table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
         self._table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
         self._table.horizontalHeader().setStretchLastSection(True)
         self._table.itemSelectionChanged.connect(self._on_album_selected)
+        HealthColorDelegate().install_on(self._table)
         list_split.addWidget(self._table)
 
         tracks_box = QWidget()
@@ -95,6 +126,7 @@ class AlbumsPage(QWidget):
         self._tracks.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
         self._tracks.horizontalHeader().setStretchLastSection(True)
         self._tracks.doubleClicked.connect(self._reveal_track)
+        HealthColorDelegate().install_on(self._tracks)
         tracks_layout.addWidget(self._tracks, stretch=1)
         list_split.addWidget(tracks_box)
         list_split.setStretchFactor(0, 2)
@@ -170,14 +202,41 @@ class AlbumsPage(QWidget):
             limit=500,
         )
         self._table.setRowCount(len(rows))
+        prefs = self._container.config.acquisition
         for i, row in enumerate(rows):
             self._album_ids.append(row.album_id)
-            self._table.setItem(i, 0, QTableWidgetItem(row.title))
-            self._table.setItem(i, 1, QTableWidgetItem(row.artist_name or "—"))
-            self._table.setItem(i, 2, QTableWidgetItem(str(row.year) if row.year else "—"))
-            self._table.setItem(i, 3, QTableWidgetItem(str(row.track_count)))
-            self._table.setItem(i, 4, QTableWidgetItem("Yes" if row.has_cover else "Missing"))
+            tracks = self._container.track_repo.list_by_album(
+                self._library_id, row.album_id, limit=500
+            )
+            album = self._container.album_repo.get(row.album_id)
+            status = album_status_for_display(
+                row.album_id,
+                tracks,
+                prefs=prefs,
+                expected_count=row.expected_track_count
+                or (album.track_count if album and album.track_count else None),
+            )
+            track_label = str(row.track_count)
+            if status.expected_count is not None:
+                track_label = f"{status.present_count}/{status.expected_count}"
+            cells = [
+                QTableWidgetItem(row.title),
+                QTableWidgetItem(row.artist_name or "—"),
+                QTableWidgetItem(str(row.year) if row.year else "—"),
+                QTableWidgetItem(track_label),
+                QTableWidgetItem(status.health.value.replace("_", " ")),
+                QTableWidgetItem("Yes" if row.has_cover else "Missing"),
+            ]
+            for col, item in enumerate(cells):
+                apply_album_health_style(item, status.health)
+                self._table.setItem(i, col, item)
         self._status.setText(f"{len(rows)} album(s)")
+
+    def _musicbrainz(self) -> MusicBrainzProvider | None:
+        for provider in self._container.plugin_manager.get_metadata_providers():
+            if isinstance(provider, MusicBrainzProvider):
+                return provider
+        return None
 
     def _selected_album_id(self) -> UUID | None:
         rows = {index.row() for index in self._table.selectedIndexes()}
@@ -198,11 +257,57 @@ class AlbumsPage(QWidget):
         )
         album = self._container.album_repo.get(album_id)
         title = album.title if album else "Album"
-        self._tracks_label.setText(f"Tracks on {title} ({len(tracks)})")
-        self._track_paths = fill_track_table(
-            self._tracks, tracks, columns=("Title", "Zone", "File", "Confidence")
+        prefs = self._container.config.acquisition
+        display_rows = build_album_track_rows(
+            album=album,
+            present=tracks,
+            prefs=prefs,
+            musicbrainz=self._musicbrainz(),
         )
+        missing = sum(1 for row in display_rows if row.health.value == "missing")
+        self._tracks_label.setText(
+            f"Tracks on {title} ({len(display_rows)}"
+            + (f", {missing} missing" if missing else "")
+            + ")"
+        )
+        self._tracks.setRowCount(len(display_rows))
+        self._track_paths = []
+        for index, row in enumerate(display_rows):
+            self._track_paths.append(row.file_path or "")
+            cells = [
+                QTableWidgetItem(row.title),
+                QTableWidgetItem(row.zone),
+                QTableWidgetItem(row.file_label),
+                QTableWidgetItem(row.confidence),
+            ]
+            for col, item in enumerate(cells):
+                apply_track_health_style(item, row.health)
+                self._tracks.setItem(index, col, item)
         self._show_cover(album_id, title)
+
+    def _scan_missing(self) -> None:
+        if self._library_id is None:
+            QMessageBox.information(self, "Albums", "Select a library first.")
+            return
+        count = run_missing_scan(self._container, self._library_id)
+        QMessageBox.information(
+            self,
+            "Find missing songs",
+            f"Created {count} acquisition job(s). Check the Acquisition / Jobs tabs.",
+        )
+        self.refresh()
+
+    def _scan_upgrades(self) -> None:
+        if self._library_id is None:
+            QMessageBox.information(self, "Albums", "Select a library first.")
+            return
+        count = run_quality_upgrade_scan(self._container, self._library_id)
+        QMessageBox.information(
+            self,
+            "Find quality upgrades",
+            f"Created {count} upgrade job(s). Check the Acquisition / Jobs tabs.",
+        )
+        self.refresh()
 
     def _show_cover(self, album_id: UUID, title: str) -> None:
         self._cover_title.setText(title)
@@ -263,4 +368,6 @@ class AlbumsPage(QWidget):
             return
         row = next(iter(rows))
         if 0 <= row < len(self._track_paths):
-            reveal_in_explorer(self._track_paths[row])
+            path = self._track_paths[row]
+            if path:
+                reveal_in_explorer(path)

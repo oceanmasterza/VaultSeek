@@ -27,6 +27,7 @@ class ArtworkQuery:
     mb_release_id: str | None = None
     mb_release_group_id: str | None = None
     mb_recording_id: str | None = None
+    discogs_id: str | None = None
     artist: str | None = None
     album: str | None = None
 

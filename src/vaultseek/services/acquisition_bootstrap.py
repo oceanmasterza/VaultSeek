@@ -3,6 +3,9 @@
 from __future__ import annotations
 
 from dataclasses import asdict, dataclass
+from typing import Any
+
+from loguru import logger
 
 from vaultseek.core.config import AcquisitionConfig
 from vaultseek.models.interfaces.acquisition import AcquisitionProviderConfig
@@ -16,6 +19,33 @@ class NicotineProbeResult:
     message: str
 
 
+def normalize_nicotine_settings(settings: dict[str, Any]) -> dict[str, Any]:
+    """Return Nicotine+ settings safe for connect/probe.
+
+    Users often point the NDJSON port at the HTTP API port (12339) while
+    api-nicotine-plus is installed — auto-switch to HTTP in that case.
+    """
+    normalized = dict(settings)
+    transport = str(normalized.get("transport") or "socket").casefold()
+    port = int(normalized.get("port") or 22024)
+    api_port = int(normalized.get("api_port") or 12339)
+    if transport == "socket" and port == api_port:
+        normalized["transport"] = "http"
+        normalized["port"] = 22024
+    return normalized
+
+
+def resolve_enabled_acquisition_providers(config: AcquisitionConfig) -> set[str]:
+    """Enabled provider ids for connect — Nicotine+ replaces the stub placeholder."""
+    enabled = set(config.enabled_providers)
+    if config.nicotine_plus.enabled:
+        enabled.add("nicotine_plus")
+        enabled.discard("stub")
+    elif not enabled:
+        enabled.add("stub")
+    return enabled
+
+
 def probe_nicotine_plus_connection(
     *,
     host: str,
@@ -27,13 +57,16 @@ def probe_nicotine_plus_connection(
 ) -> NicotineProbeResult:
     """Probe Nicotine+ reachability using current settings (no persistence)."""
     transport_key = str(transport or "socket").casefold()
-    settings = {
-        "host": host or "127.0.0.1",
-        "port": port,
-        "transport": transport_key,
-        "api_port": api_port,
-        "api_token": api_token,
-    }
+    settings = normalize_nicotine_settings(
+        {
+            "host": host or "127.0.0.1",
+            "port": port,
+            "transport": transport_key,
+            "api_port": api_port,
+            "api_token": api_token,
+        }
+    )
+    transport_key = str(settings["transport"]).casefold()
     provider = NicotinePlusProvider(connect_timeout_seconds=timeout_seconds)
     ok = provider.connect(
         AcquisitionProviderConfig(
@@ -76,26 +109,47 @@ def connect_acquisition_providers(
     manager: ProviderManager,
 ) -> None:
     """Connect enabled acquisition providers using application config."""
-    settings_by_id = {
-        "nicotine_plus": {
+    nicotine_settings = normalize_nicotine_settings(
+        {
             **asdict(config.nicotine_plus),
             "api_token": config.nicotine_plus.api_token or config.nicotine_plus.password,
-        },
+            # HTTP search must poll Soulseek results for this long.
+            "search_timeout_seconds": config.search_timeout_seconds,
+        }
+    )
+    settings_by_id = {
+        "nicotine_plus": nicotine_settings,
         "stub": {},
     }
-    enabled = set(config.enabled_providers)
-    if config.nicotine_plus.enabled:
-        enabled.add("nicotine_plus")
+    enabled = resolve_enabled_acquisition_providers(config)
 
     for provider_id in config.provider_order:
         if provider_id not in enabled:
             continue
         if manager.get(provider_id) is None:
             continue
-        manager.connect(
+        ok = manager.connect(
             AcquisitionProviderConfig(
                 provider_id=provider_id,
                 enabled=True,
                 settings=settings_by_id.get(provider_id, {}),
             )
         )
+        if provider_id == "nicotine_plus" and config.nicotine_plus.enabled:
+            transport = str(nicotine_settings.get("transport") or "socket")
+            if ok:
+                logger.debug(
+                    "Nicotine+ connected via {} ({}:{})",
+                    transport,
+                    nicotine_settings.get("host"),
+                    nicotine_settings.get("api_port")
+                    if transport == "http"
+                    else nicotine_settings.get("port"),
+                )
+            else:
+                logger.warning(
+                    "Nicotine+ is enabled but did not connect (transport={}). "
+                    "Acquisition searches will not reach Soulseek until Settings → "
+                    "Test connection succeeds.",
+                    transport,
+                )

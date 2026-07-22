@@ -15,6 +15,7 @@ from PySide6.QtWidgets import (
 )
 
 from vaultseek.core.container import Container
+from vaultseek.gui.datetime_format import format_local_datetime
 from vaultseek.models.entities.job import JobStatus
 
 
@@ -98,7 +99,7 @@ class JobsPage(QWidget):
                         job.status.value,
                         str(job.attempt_count),
                         job.error_message or "",
-                        job.created_at.isoformat(timespec="seconds"),
+                        format_local_datetime(job.created_at),
                     )
                 )
 

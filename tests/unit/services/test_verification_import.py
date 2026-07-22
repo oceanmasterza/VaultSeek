@@ -250,6 +250,9 @@ def test_import_pipeline_stages_into_incoming_and_enqueues_scan(
     assert imported.ok
     assert imported.staged_paths
     assert imported.staged_paths[0].exists()
+    staged_dir = imported.staged_paths[0].parent
+    assert staged_dir.name == str(job_id) or "vaultseek-acquisition" in staged_dir.parts
+    assert any(part == "vaultseek-acquisition" for part in staged_dir.parts)
     assert "scan_enqueued" in imported.steps_completed
     assert "organize_handoff" in imported.steps_completed
     assert len(imported.enqueued_job_ids) == 1

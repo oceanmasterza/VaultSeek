@@ -1,5 +1,5 @@
 {
-  "schema_version": 11,
+  "schema_version": 15,
   "log_level": "INFO",
   "theme": "dark",
   "pipeline": {
@@ -14,9 +14,10 @@
   },
   "metadata": {
     "confidence_threshold": 0.90,
-    "provider_order": ["acoustid", "musicbrainz", "local_tags", "filename_parser"],
-    "enabled_providers": ["acoustid", "musicbrainz", "local_tags", "filename_parser"],
+    "provider_order": ["acoustid", "musicbrainz", "discogs", "local_tags", "filename_parser"],
+    "enabled_providers": ["acoustid", "musicbrainz", "discogs", "local_tags", "filename_parser"],
     "acoustid_api_key": "",
+    "discogs_user_token": "",
     "acoustid_endpoints": [],
     "fingerprint_mode": "all",
     "fingerprint_sample_min": 3
@@ -34,7 +35,12 @@
     "provider_order": ["nicotine_plus", "stub"],
     "search_timeout_seconds": 30.0,
     "auto_queue_jobs": true,
-    "auto_acquire_threshold": 0.90,
+    "auto_acquire_threshold": 0.45,
+    "prefer_lossless": true,
+    "preferred_codec": "",
+    "min_bitrate_kbps": 192,
+    "download_whole_album_on_upgrade": true,
+    "wishlist_search_interval_hours": 0.0,
     "nicotine_plus": {
       "enabled": false,
       "host": "127.0.0.1",
@@ -43,7 +49,9 @@
       "api_port": 12339,
       "api_token": "",
       "username": "",
-      "password": ""
+      "password": "",
+      "search_min_interval_seconds": 5.0,
+      "search_max_per_minute": 8
     }
   }
 }

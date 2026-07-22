@@ -71,6 +71,8 @@ class PathPickerRow(QWidget):
         placeholder: str = "",
         file_filter: str = "All files (*.*)",
         show_open: bool = True,
+        show_browse: bool = True,
+        read_only: bool = False,
         parent: QWidget | None = None,
     ) -> None:
         super().__init__(parent)
@@ -85,15 +87,18 @@ class PathPickerRow(QWidget):
 
         self._edit = _DropLineEdit(expect_directory=(mode == "directory"))
         self._edit.setPlaceholderText(placeholder)
+        self._edit.setReadOnly(read_only)
         self._edit.textChanged.connect(self.path_changed.emit)
-        self._edit.path_dropped.connect(self._edit.setText)
+        if not read_only:
+            self._edit.path_dropped.connect(self._edit.setText)
         row.addWidget(self._edit, stretch=1)
 
-        browse = QPushButton("Browse…")
-        browse.setProperty("secondary", True)
-        browse.setToolTip("Choose a folder" if mode == "directory" else "Choose a file")
-        browse.clicked.connect(self._browse)
-        row.addWidget(browse)
+        if show_browse and not read_only:
+            browse = QPushButton("Browse…")
+            browse.setProperty("secondary", True)
+            browse.setToolTip("Choose a folder" if mode == "directory" else "Choose a file")
+            browse.clicked.connect(self._browse)
+            row.addWidget(browse)
 
         if show_open:
             open_btn = QPushButton("Open")

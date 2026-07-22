@@ -86,6 +86,42 @@ def test_create_item_persists_and_publishes_event(
     assert received[0].track_id == track_id
 
 
+def test_create_item_skips_noop_refresh_without_event(
+    review_queue: ReviewQueueService, library_id: UUID, track_id: UUID
+) -> None:
+    del track_id
+    bus = EventBus()
+    review_queue._events = bus  # noqa: SLF001 — test double wiring
+    received: list[ReviewItemAddedEvent] = []
+    bus.subscribe(ReviewItemAddedEvent, received.append)
+
+    payload = {"acquisition_job_id": "00000000-0000-7000-8000-000000000001"}
+    first = review_queue.create_item(
+        ReviewItemCreate(
+            library_id=library_id,
+            review_type=ReviewType.ACQUISITION_NO_RESULTS,
+            title="No results",
+            description="empty",
+            payload=payload,
+        ),
+        now=_NOW,
+    )
+    assert len(received) == 1
+
+    second = review_queue.create_item(
+        ReviewItemCreate(
+            library_id=library_id,
+            review_type=ReviewType.ACQUISITION_NO_RESULTS,
+            title="No results",
+            description="empty",
+            payload=payload,
+        ),
+        now=_NOW,
+    )
+    assert first == second
+    assert len(received) == 1
+
+
 def test_create_item_upserts_pending_for_same_track_and_type(
     review_queue: ReviewQueueService, library_id: UUID, track_id: UUID
 ) -> None:

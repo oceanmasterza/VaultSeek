@@ -34,13 +34,52 @@ QListWidget::item:selected {
 QListWidget::item:hover:!selected {
     background-color: #2a2d2e;
 }
-QTableWidget, QTreeWidget, QTextEdit, QPlainTextEdit, QLineEdit, QSpinBox,
-QDoubleSpinBox, QComboBox {
+QTableWidget, QTreeWidget, QTextEdit, QPlainTextEdit, QLineEdit, QComboBox {
     background-color: #2d2d2d;
     border: 1px solid #3c3c3c;
     border-radius: 3px;
     padding: 4px;
-    selection-background-color: #0e639c;
+    selection-background-color: #1177bb;
+    selection-color: #ffffff;
+}
+QSpinBox, QDoubleSpinBox {
+    background-color: #2d2d2d;
+    border: 1px solid #3c3c3c;
+    border-radius: 3px;
+    padding: 2px 20px 2px 6px;
+    selection-background-color: #1177bb;
+    selection-color: #ffffff;
+}
+QSpinBox::up-button, QDoubleSpinBox::up-button {
+    subcontrol-origin: border;
+    subcontrol-position: top right;
+    width: 18px;
+    border-left: 1px solid #3c3c3c;
+    border-bottom: 1px solid #3c3c3c;
+    background-color: #3c3c3c;
+}
+QSpinBox::down-button, QDoubleSpinBox::down-button {
+    subcontrol-origin: border;
+    subcontrol-position: bottom right;
+    width: 18px;
+    border-left: 1px solid #3c3c3c;
+    background-color: #3c3c3c;
+}
+QSpinBox::up-button:hover, QDoubleSpinBox::up-button:hover,
+QSpinBox::down-button:hover, QDoubleSpinBox::down-button:hover {
+    background-color: #4a4a4a;
+}
+QSpinBox::up-arrow, QDoubleSpinBox::up-arrow {
+    width: 8px;
+    height: 8px;
+}
+QSpinBox::down-arrow, QDoubleSpinBox::down-arrow {
+    width: 8px;
+    height: 8px;
+}
+QTableWidget::item:selected, QTreeWidget::item:selected {
+    background-color: #1177bb;
+    color: #ffffff;
 }
 QHeaderView::section {
     background-color: #2d2d2d;

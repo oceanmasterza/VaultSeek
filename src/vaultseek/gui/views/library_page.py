@@ -25,10 +25,16 @@ from PySide6.QtWidgets import (
 )
 
 from vaultseek.core.container import Container
-from vaultseek.gui.widgets.browse import build_folder_tree
+from vaultseek.gui.widgets.browse import (
+    HealthColorDelegate,
+    apply_track_health_style,
+    build_folder_tree,
+)
 from vaultseek.gui.widgets.desktop import copy_text_to_clipboard, open_path, reveal_in_explorer
 from vaultseek.models.entities.job import JobType
 from vaultseek.models.entities.track import LibraryZone, Track
+from vaultseek.services.album_track_display import effective_track_health
+from vaultseek.services.library_scan_actions import run_missing_scan, run_quality_upgrade_scan
 
 
 class LibraryPage(QWidget):
@@ -66,7 +72,20 @@ class LibraryPage(QWidget):
         scan_btn.setToolTip("Enqueue a scan of this library’s Incoming folder.")
         scan_btn.clicked.connect(self._scan_incoming)
         toolbar.addWidget(scan_btn)
+        find_missing = QPushButton("Find missing songs")
+        find_missing.setProperty("secondary", True)
+        find_missing.clicked.connect(self._scan_missing)
+        toolbar.addWidget(find_missing)
+        find_upgrades = QPushButton("Find quality upgrades")
+        find_upgrades.setProperty("secondary", True)
+        find_upgrades.clicked.connect(self._scan_upgrades)
+        toolbar.addWidget(find_upgrades)
         layout.addLayout(toolbar)
+        legend = QLabel(
+            "Colors: green = meets quality · orange = missing file or below quality prefs"
+        )
+        legend.setProperty("muted", True)
+        layout.addWidget(legend)
 
         splitter = QSplitter(Qt.Orientation.Horizontal)
         left = QWidget()
@@ -105,6 +124,7 @@ class LibraryPage(QWidget):
         self._table.setSizePolicy(
             QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding
         )
+        HealthColorDelegate().install_on(self._table)
         right_layout.addWidget(self._table, stretch=1)
         splitter.addWidget(right)
         splitter.setStretchFactor(0, 1)
@@ -231,21 +251,51 @@ class LibraryPage(QWidget):
     def _fill_table(self, tracks: list[Track]) -> None:
         self._table.setRowCount(len(tracks))
         self._file_paths = []
+        prefs = self._container.config.acquisition
         for row, track in enumerate(tracks):
             self._file_paths.append(track.file_path)
-            self._table.setItem(row, 0, QTableWidgetItem(track.title or "(untitled)"))
-            self._table.setItem(row, 1, QTableWidgetItem(track.zone.value))
-            self._table.setItem(row, 2, QTableWidgetItem(track.file_name or track.file_path))
             conf = (
                 f"{track.overall_confidence:.0%}"
                 if track.overall_confidence is not None
                 else "—"
             )
-            self._table.setItem(row, 3, QTableWidgetItem(conf))
             quality = str(track.quality_score) if track.quality_score is not None else "—"
-            item = QTableWidgetItem(quality)
-            item.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
-            self._table.setItem(row, 4, item)
+            cells = [
+                QTableWidgetItem(track.title or "(untitled)"),
+                QTableWidgetItem(track.zone.value),
+                QTableWidgetItem(track.file_name or track.file_path),
+                QTableWidgetItem(conf),
+                QTableWidgetItem(quality),
+            ]
+            cells[4].setTextAlignment(
+                Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter
+            )
+            health = effective_track_health(track, prefs)
+            for col, item in enumerate(cells):
+                apply_track_health_style(item, health)
+                self._table.setItem(row, col, item)
+
+    def _scan_missing(self) -> None:
+        if self._library_id is None:
+            QMessageBox.warning(self, "Library", "Select or create a library in Settings first.")
+            return
+        count = run_missing_scan(self._container, self._library_id)
+        QMessageBox.information(
+            self,
+            "Find missing songs",
+            f"Created {count} acquisition job(s). Check Acquisition / Jobs.",
+        )
+
+    def _scan_upgrades(self) -> None:
+        if self._library_id is None:
+            QMessageBox.warning(self, "Library", "Select or create a library in Settings first.")
+            return
+        count = run_quality_upgrade_scan(self._container, self._library_id)
+        QMessageBox.information(
+            self,
+            "Find quality upgrades",
+            f"Created {count} upgrade job(s). Check Acquisition / Jobs.",
+        )
 
     def _selected_path(self) -> str | None:
         rows = {index.row() for index in self._table.selectedIndexes()}

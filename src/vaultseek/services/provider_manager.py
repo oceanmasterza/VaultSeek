@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from collections.abc import Sequence
 
+from loguru import logger
+
 from vaultseek.models.interfaces.acquisition import (
     AcquisitionProvider,
     AcquisitionProviderConfig,
@@ -33,8 +35,11 @@ class ProviderManager:
     def has_connected_search_providers(
         self, *, provider_ids: Sequence[str] | None = None
     ) -> bool:
-        """True when at least one connected provider can search."""
-        return any(p.capabilities.search for p in self._iter_active(provider_ids))
+        """True when at least one real (non-stub) connected provider can search."""
+        return any(
+            provider.capabilities.search and provider.provider_id != "stub"
+            for provider in self._iter_active(provider_ids)
+        )
 
     def get(self, provider_id: str) -> AcquisitionProvider | None:
         return self._providers.get(provider_id)
@@ -67,7 +72,13 @@ class ProviderManager:
         results: list[SearchResult] = []
         for provider in self._iter_active(provider_ids):
             if provider.capabilities.search:
-                results.extend(provider.search(request))
+                batch = provider.search(request)
+                logger.debug(
+                    "Provider {} returned {} result(s)",
+                    provider.provider_id,
+                    len(batch),
+                )
+                results.extend(batch)
         return results
 
     def download(self, result: SearchResult) -> DownloadHandle | None:

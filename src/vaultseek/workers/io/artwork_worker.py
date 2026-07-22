@@ -174,6 +174,7 @@ class ArtworkWorker:
     def _build_query(self, track: Track) -> ArtworkQuery:
         mb_release_id: str | None = None
         mb_release_group_id: str | None = None
+        discogs_id: str | None = None
         album_title: str | None = None
         artist_name: str | None = None
         if track.album_id is not None:
@@ -181,6 +182,7 @@ class ArtworkWorker:
             if album is not None:
                 mb_release_id = album.mbid
                 mb_release_group_id = album.release_group_mbid
+                discogs_id = album.discogs_id
                 album_title = album.title
                 if album.album_artist_id is not None and self._artists is not None:
                     album_artist = self._artists.get(album.album_artist_id)
@@ -201,6 +203,7 @@ class ArtworkWorker:
             mb_release_id=mb_release_id,
             mb_release_group_id=mb_release_group_id,
             mb_recording_id=track.mb_recording_id,
+            discogs_id=discogs_id,
             artist=artist_name,
             album=album_title,
         )

@@ -52,6 +52,7 @@ ACQUISITION_TRANSITIONS: dict[AcquisitionJobState, frozenset[AcquisitionJobState
         {
             AcquisitionJobState.COLLECTING_RESULTS,
             AcquisitionJobState.NO_RESULTS,
+            AcquisitionJobState.QUEUED,  # deferred by Soulseek search rate limit
             AcquisitionJobState.CANCELLED,
         }
     ),

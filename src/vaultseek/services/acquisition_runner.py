@@ -2,13 +2,21 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
+from datetime import UTC, datetime
+from pathlib import Path
 from typing import Any
 from uuid import UUID
 
 from loguru import logger
 
-from vaultseek.models.entities.acquisition_job import AcquisitionJob, AcquisitionJobState
+from vaultseek.core.config import AcquisitionConfig
+from vaultseek.db.repositories.library_repo import LibraryRepository
+from vaultseek.models.entities.acquisition_job import (
+    AcquisitionJob,
+    AcquisitionJobState,
+    AcquisitionJobType,
+)
 from vaultseek.models.interfaces.acquisition import SearchResult
 from vaultseek.services.acquisition_attention import park_if_attention_needed
 from vaultseek.services.acquisition_engine import AcquisitionEngine
@@ -44,6 +52,8 @@ class AcquisitionRunner:
         *,
         auto_acquire_threshold: float = 0.90,
         review_queue: ReviewQueueService | None = None,
+        library_repo: LibraryRepository | None = None,
+        acquisition_config: AcquisitionConfig | None = None,
     ) -> None:
         self._engine = acquisition_engine
         self._search = search_dispatcher
@@ -52,6 +62,8 @@ class AcquisitionRunner:
         self._workflow = acquisition_workflow
         self._threshold = auto_acquire_threshold
         self._reviews = review_queue
+        self._libraries = library_repo
+        self._acquisition_config = acquisition_config or AcquisitionConfig()
         self._download_progress_logged: dict[UUID, int] = {}
         self._last_active_download_count: int | None = None
 
@@ -73,6 +85,12 @@ class AcquisitionRunner:
         results = self._search.dispatch(job_id)
         job = self._engine.get(job_id)
         assert job is not None
+
+        if job.state is AcquisitionJobState.QUEUED and job.extra.get("search_deferred"):
+            retry_after = float(job.extra.get("search_retry_after_seconds") or 0.0)
+            message = f"deferred — Soulseek search rate limit ({retry_after:.0f}s)"
+            logger.info("Search for {}: {}", job_label(job), message)
+            return RunnerOutcome(job_id, AcquisitionJobState.QUEUED, message)
 
         if job.state is AcquisitionJobState.NO_RESULTS or not results:
             provider_offline = bool(job.extra.get("provider_offline"))
@@ -124,6 +142,8 @@ class AcquisitionRunner:
 
         if job.state is AcquisitionJobState.NO_RESULTS:
             return outcome
+        if job.state is AcquisitionJobState.QUEUED:
+            return outcome
 
         return self._auto_acquire_from_scored(job_id, auto_import=auto_import, prior=outcome)
 
@@ -144,7 +164,75 @@ class AcquisitionRunner:
         if job.state is AcquisitionJobState.SCORING:
             return self._auto_acquire_from_scored(job_id, auto_import=auto_import)
 
+        if job.state is AcquisitionJobState.WAITING_FOR_USER:
+            return self._rescore_waiting_and_acquire(job_id, auto_import=auto_import)
+
         return None
+
+    def _rescore_waiting_and_acquire(
+        self,
+        job_id: UUID,
+        *,
+        auto_import: bool = True,
+    ) -> RunnerOutcome:
+        """Re-score stored Nicotine hits (no new Soulseek search) and download if OK."""
+        job = self._engine.get(job_id)
+        if job is None:
+            raise KeyError(f"AcquisitionJob {job_id} not found")
+        results = [
+            _result_from_dict(item)
+            for item in job.extra.get("search_results") or []
+            if isinstance(item, dict) and item.get("result_id")
+        ]
+        if not results:
+            return RunnerOutcome(
+                job_id,
+                AcquisitionJobState.WAITING_FOR_USER,
+                "no stored results to rescore",
+            )
+
+        scored = self._scoring.score_results(job, results)
+        self._engine.update_extra(
+            job_id,
+            {
+                "search_results": [_result_to_dict(item) for item, _ in scored],
+                "scored_results": [
+                    {
+                        "result_id": item.result_id,
+                        "provider_id": item.provider_id,
+                        "score": score,
+                    }
+                    for item, score in scored
+                ],
+                "rescored_at": datetime.now(UTC).isoformat(),
+                "score_schema": 2,
+            },
+        )
+        best_score = scored[0][1] if scored else 0.0
+        if best_score < self._threshold:
+            logger.debug(
+                "{}: rescored best {:.0%} still below threshold {:.0%}",
+                job_label(job),
+                best_score,
+                self._threshold,
+            )
+            return RunnerOutcome(
+                job_id,
+                AcquisitionJobState.WAITING_FOR_USER,
+                "still below auto-acquire threshold",
+                best_score=best_score,
+                scored_count=len(scored),
+            )
+
+        logger.info(
+            "{}: rescored best {:.0%} meets threshold {:.0%} — starting download",
+            job_label(job),
+            best_score,
+            self._threshold,
+        )
+        return self.start_download(
+            job_id, scored[0][0], auto_import=auto_import, score=best_score
+        )
 
     def _auto_acquire_from_scored(
         self,
@@ -157,7 +245,31 @@ class AcquisitionRunner:
         if job is None:
             raise KeyError(f"AcquisitionJob {job_id} not found")
 
-        scored = _load_scored(job)
+        # Always re-score from stored hits so scoring improvements apply without
+        # another Soulseek search.
+        results = [
+            _result_from_dict(item)
+            for item in job.extra.get("search_results") or []
+            if isinstance(item, dict) and item.get("result_id")
+        ]
+        if results:
+            scored = self._scoring.score_results(job, results)
+            self._engine.update_extra(
+                job_id,
+                {
+                    "scored_results": [
+                        {
+                            "result_id": item.result_id,
+                            "provider_id": item.provider_id,
+                            "score": score,
+                        }
+                        for item, score in scored
+                    ],
+                    "score_schema": 2,
+                },
+            )
+        else:
+            scored = _load_scored(job)
         if not scored:
             self._engine.advance(job_id, AcquisitionJobState.NO_RESULTS, note="nothing to score")
             job = self._engine.get(job_id)
@@ -229,7 +341,8 @@ class AcquisitionRunner:
         if job.state is AcquisitionJobState.COLLECTING_RESULTS:
             self._engine.advance(job_id, AcquisitionJobState.SCORING)
 
-        handle = self._downloads.start(job_id, result)
+        download_result = self._with_download_folder(job, result)
+        handle = self._downloads.start(job_id, download_result)
         if handle is None:
             loaded = self._engine.get(job_id)
             assert loaded is not None
@@ -237,12 +350,15 @@ class AcquisitionRunner:
             self._park_attention(loaded, message="download start failed")
             return RunnerOutcome(job_id, loaded.state, "download start failed")
 
+        sibling_count = self._enqueue_album_siblings(job, download_result)
         label = job_label(job)
         logger.info(
-            "Downloading {} via {} ({})",
+            "Downloading {} via {} ({}) → {}{}",
             label,
-            result.display_name,
-            result.provider_id,
+            download_result.display_name,
+            download_result.provider_id,
+            download_result.raw.get("folder_path") or "(provider default folder)",
+            f" (+{sibling_count} album sibling(s))" if sibling_count else "",
         )
 
         self._engine.update_extra(
@@ -323,6 +439,12 @@ class AcquisitionRunner:
                     logger.info("Download {}% for {}", milestone, label)
             if status.state == "completed":
                 paths = list(status.local_paths) if status.local_paths else None
+                folder_paths = _audio_files_in_download_folder(job)
+                if folder_paths:
+                    merged = {str(p): p for p in (paths or [])}
+                    for path in folder_paths:
+                        merged[str(path)] = path
+                    paths = list(merged.values())
                 if paths:
                     logger.info("Download complete for {} — {} file(s)", label, len(paths))
                 self._download_progress_logged.pop(job.id, None)
@@ -348,6 +470,63 @@ class AcquisitionRunner:
                 updated += 1
         return updated
 
+    def _with_download_folder(self, job: AcquisitionJob, result: SearchResult) -> SearchResult:
+        """Point Nicotine downloads into Incoming/vaultseek-nicotine/<job_id>."""
+        if self._libraries is None:
+            return result
+        library = self._libraries.get(job.library_id)
+        if library is None or not library.incoming_path:
+            return result
+        folder = Path(library.incoming_path) / "vaultseek-nicotine" / str(job.id)
+        try:
+            folder.mkdir(parents=True, exist_ok=True)
+        except OSError:
+            logger.warning("Could not create Nicotine download folder {}", folder)
+            return result
+        raw = dict(result.raw)
+        raw["folder_path"] = str(folder)
+        self._engine.update_extra(job.id, {"nicotine_download_folder": str(folder)})
+        return replace(result, raw=raw)
+
+    def _enqueue_album_siblings(self, job: AcquisitionJob, primary: SearchResult) -> int:
+        """Queue other files from the same peer folder when whole-album mode is on."""
+        if not self._acquisition_config.download_whole_album_on_upgrade:
+            return 0
+        if job.job_type not in (
+            AcquisitionJobType.QUALITY_UPGRADE,
+            AcquisitionJobType.MISSING_ALBUM,
+            AcquisitionJobType.MISSING_TRACK,
+        ):
+            return 0
+        primary_key = _result_folder_key(primary)
+        if not primary_key:
+            return 0
+        folder = primary.raw.get("folder_path")
+        count = 0
+        for item in job.extra.get("search_results") or []:
+            if not isinstance(item, dict):
+                continue
+            sibling = _result_from_dict(item)
+            if sibling.result_id == primary.result_id:
+                continue
+            if _result_folder_key(sibling) != primary_key:
+                continue
+            raw = dict(sibling.raw)
+            if folder:
+                raw["folder_path"] = str(folder)
+            try:
+                self._downloads._providers.download(  # noqa: SLF001
+                    replace(sibling, raw=raw)
+                )
+                count += 1
+            except Exception:
+                logger.debug("Sibling enqueue skipped for {}", sibling.result_id)
+            if count >= 40:
+                break
+        if count:
+            self._engine.update_extra(job.id, {"album_sibling_enqueues": count})
+        return count
+
     def _park_attention(
         self,
         job: AcquisitionJob | None,
@@ -361,6 +540,39 @@ class AcquisitionRunner:
             message=message,
             provider_offline=provider_offline,
         )
+
+
+_AUDIO_SUFFIXES = {".flac", ".mp3", ".m4a", ".aac", ".ogg", ".opus", ".wav", ".aiff", ".wma"}
+
+
+def _result_folder_key(result: SearchResult) -> str | None:
+    raw = result.raw or {}
+    path = str(raw.get("file_path") or raw.get("virtual_path") or result.display_name or "")
+    if not path:
+        return None
+    normalized = path.replace("\\", "/")
+    if "/" not in normalized:
+        return None
+    parent = normalized.rsplit("/", 1)[0]
+    user = str(result.source_user or raw.get("username") or "")
+    return f"{user}:{parent}".casefold() if parent else None
+
+
+def _audio_files_in_download_folder(job: AcquisitionJob) -> list[Path]:
+    folder_raw = job.extra.get("nicotine_download_folder")
+    if not folder_raw:
+        return []
+    folder = Path(str(folder_raw))
+    if not folder.is_dir():
+        return []
+    files: list[Path] = []
+    try:
+        for path in folder.iterdir():
+            if path.is_file() and path.suffix.casefold() in _AUDIO_SUFFIXES:
+                files.append(path)
+    except OSError:
+        return []
+    return files
 
 
 def _result_to_dict(result: SearchResult) -> dict[str, Any]:

@@ -96,7 +96,7 @@ def park_acquisition_failure(
             },
         )
     )
-    logger.info(
+    logger.debug(
         "Parked acquisition attention review {} for job {} ({})",
         review_id,
         job.id,

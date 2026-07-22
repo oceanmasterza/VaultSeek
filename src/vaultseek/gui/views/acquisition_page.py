@@ -18,6 +18,8 @@ from PySide6.QtWidgets import (
 )
 
 from vaultseek.core.container import Container
+from vaultseek.gui.async_task import run_in_background
+from vaultseek.gui.datetime_format import format_local_datetime
 from vaultseek.models.entities.acquisition_job import AcquisitionJobState
 
 
@@ -61,9 +63,13 @@ class AcquisitionPage(QWidget):
         scan_btn.setToolTip("Create AcquisitionJobs from MusicBrainz release gaps.")
         run_btn.setToolTip(
             "Search providers, score hits, and download when score meets the "
-            "auto-acquire threshold in Settings."
+            "auto-acquire threshold in Settings. Uses the selected row(s), or the "
+            "top row when nothing is selected."
         )
-        acquire_btn.setToolTip("Download the highest-scored result for the selected job.")
+        acquire_btn.setToolTip(
+            "Download the highest-scored result for the selected job "
+            "(or the top row when nothing is selected)."
+        )
         pick_btn.setToolTip(
             "For jobs waiting on user confirmation: open a picker and download a result."
         )
@@ -87,6 +93,13 @@ class AcquisitionPage(QWidget):
         self.refresh()
 
     def refresh(self) -> None:
+        selected_rows = {index.row() for index in self._table.selectedIndexes()}
+        previous_ids = {
+            self._job_ids[row]
+            for row in selected_rows
+            if 0 <= row < len(self._job_ids)
+        }
+
         self._table.setRowCount(0)
         self._job_ids = []
         threshold = self._container.config.acquisition.auto_acquire_threshold
@@ -125,7 +138,7 @@ class AcquisitionPage(QWidget):
                     job.state.value,
                     score_text,
                     retries,
-                    job.updated_at.isoformat(timespec="seconds"),
+                    format_local_datetime(job.updated_at),
                     last_note,
                 )
             )
@@ -159,18 +172,34 @@ class AcquisitionPage(QWidget):
             note_item.setToolTip(last_note)
             self._table.setItem(row_index, 7, note_item)
 
+        restored = False
+        for row_index, job_id in enumerate(self._job_ids):
+            if job_id in previous_ids:
+                self._table.selectRow(row_index)
+                restored = True
+                break
+        if not restored and self._job_ids:
+            self._table.selectRow(0)
+            self._table.setCurrentCell(0, 0)
+
     def poll_downloads(self) -> None:
         """Refresh job rows; download polling is handled by automation service."""
         self.refresh()
 
     def _selected_ids(self) -> list[UUID]:
         rows = {index.row() for index in self._table.selectedIndexes()}
-        return [self._job_ids[row] for row in sorted(rows) if 0 <= row < len(self._job_ids)]
+        ids = [self._job_ids[row] for row in sorted(rows) if 0 <= row < len(self._job_ids)]
+        if ids:
+            return ids
+        if self._job_ids:
+            self._table.selectRow(0)
+            return [self._job_ids[0]]
+        return []
 
     def _auto_acquire_selected(self) -> None:
         selected = self._selected_ids()
         if not selected:
-            QMessageBox.information(self, "Acquisition", "Select one or more jobs first.")
+            QMessageBox.information(self, "Acquisition", "No jobs available.")
             return
         connected = self._container.provider_manager.connected_provider_ids()
         if not connected:
@@ -182,16 +211,30 @@ class AcquisitionPage(QWidget):
                 "(and its API / proxy) is running. Failures also appear under "
                 "Dashboard → Attention needed.",
             )
-        outcomes: list[str] = []
-        for job_id in selected:
-            try:
-                outcome = self._container.acquisition_runner.try_auto_acquire(job_id)
-                detail = outcome.message or outcome.state.value
-                outcomes.append(f"{outcome.state.value}: {detail}")
-            except (KeyError, ValueError) as exc:
-                outcomes.append(f"error — {exc}")
-        QMessageBox.information(self, "Acquisition", "\n".join(outcomes[:12]))
-        self.refresh()
+        runner = self._container.acquisition_runner
+        self._summary.setText("Running auto-acquire in the background…")
+
+        def work() -> list[str]:
+            outcomes: list[str] = []
+            for job_id in selected:
+                try:
+                    outcome = runner.try_auto_acquire(job_id)
+                    detail = outcome.message or outcome.state.value
+                    outcomes.append(f"{outcome.state.value}: {detail}")
+                except (KeyError, ValueError) as exc:
+                    outcomes.append(f"error — {exc}")
+            return outcomes
+
+        def done(outcomes: object) -> None:
+            lines = outcomes if isinstance(outcomes, list) else [str(outcomes)]
+            QMessageBox.information(self, "Acquisition", "\n".join(lines[:12]))
+            self.refresh()
+
+        run_in_background(
+            work,
+            on_finished=done,
+            on_failed=lambda msg: QMessageBox.warning(self, "Acquisition", msg),
+        )
 
     def _scan_missing(self) -> None:
         if self._library_id is None:
@@ -205,73 +248,108 @@ class AcquisitionPage(QWidget):
                 "Missing Media Analyzer is unavailable (MusicBrainz provider required).",
             )
             return
+        library_id = self._library_id
         auto_queue = self._container.config.acquisition.auto_queue_jobs
-        created = analyzer.create_jobs_for_library(
-            self._container.acquisition_engine,
-            self._library_id,
-            auto_queue=auto_queue,
-        )
-        connected = self._container.provider_manager.connected_provider_ids()
-        from loguru import logger
+        engine = self._container.acquisition_engine
+        providers = self._container.provider_manager
+        self._summary.setText("Scanning for missing tracks (this may take a minute)…")
 
-        if created:
-            logger.info(
-                "Missing-media scan created {} wishlist job(s); connected providers: {}",
-                len(created),
-                ", ".join(connected) if connected else "(none)",
+        def work() -> tuple[int, tuple[str, ...], bool]:
+            created = analyzer.create_jobs_for_library(
+                engine,
+                library_id,
+                auto_queue=auto_queue,
             )
-        extra = ""
-        if created and not connected:
-            extra = (
-                "\n\nWarning: no acquisition providers are connected — "
-                "searches will fail until Nicotine+ is online. "
-                "Check Dashboard → Attention needed after auto-acquire runs."
+            connected = providers.connected_provider_ids()
+            return len(created), connected, auto_queue
+
+        def done(result: object) -> None:
+            created_count, connected, queued = result  # type: ignore[misc]
+            from loguru import logger
+
+            if created_count:
+                logger.info(
+                    "Missing-media scan created {} wishlist job(s); connected providers: {}",
+                    created_count,
+                    ", ".join(connected) if connected else "(none)",
+                )
+            extra = ""
+            if created_count and not connected:
+                extra = (
+                    "\n\nWarning: no acquisition providers are connected — "
+                    "searches will fail until Nicotine+ is online. "
+                    "Check Dashboard → Attention needed after auto-acquire runs."
+                )
+            elif created_count and queued:
+                extra = "\n\nJobs were queued; background automation will search shortly."
+            elif created_count:
+                extra = (
+                    "\n\nJobs are created but not queued "
+                    "(enable auto_queue_jobs in Settings, or use Auto-acquire selected)."
+                )
+            QMessageBox.information(
+                self,
+                "Acquisition",
+                f"Created {created_count} missing-track job(s).{extra}",
             )
-        elif created and auto_queue:
-            extra = "\n\nJobs were queued; background automation will search shortly."
-        elif created:
-            extra = (
-                "\n\nJobs are created but not queued "
-                "(enable auto_queue_jobs in Settings, or use Auto-acquire selected)."
-            )
-        QMessageBox.information(
-            self,
-            "Acquisition",
-            f"Created {len(created)} missing-track job(s).{extra}",
+            self.refresh()
+
+        run_in_background(
+            work,
+            on_finished=done,
+            on_failed=lambda msg: QMessageBox.warning(self, "Acquisition", msg),
         )
-        self.refresh()
 
     def _acquire_top_selected(self) -> None:
         selected = self._selected_ids()
-        if len(selected) != 1:
-            QMessageBox.information(self, "Acquisition", "Select exactly one job.")
+        if not selected:
+            QMessageBox.information(self, "Acquisition", "No jobs available.")
+            return
+        if len(selected) > 1:
+            QMessageBox.information(
+                self,
+                "Acquisition",
+                "Select a single job (or clear selection to use the top row).",
+            )
             return
         job_id = selected[0]
-        job = self._container.acquisition_engine.get(job_id)
-        if job is None:
-            return
-        scored = job.extra.get("scored_results") or []
-        if not scored:
-            outcome = self._container.acquisition_runner.search_and_score(job_id)
-            if outcome.scored_count == 0:
-                QMessageBox.warning(self, "Acquisition", "No search results to acquire.")
-                self.refresh()
-                return
-            job = self._container.acquisition_engine.get(job_id)
-            assert job is not None
+        runner = self._container.acquisition_runner
+        engine = self._container.acquisition_engine
+        self._summary.setText("Acquiring best match in the background…")
+
+        def work() -> str:
+            job = engine.get(job_id)
+            if job is None:
+                return "Job not found."
             scored = job.extra.get("scored_results") or []
-        top = scored[0]
-        if not isinstance(top, dict) or not top.get("result_id"):
-            QMessageBox.warning(self, "Acquisition", "No scored result available.")
-            return
-        try:
-            outcome = self._container.acquisition_runner.start_download_by_result_id(
-                job_id, str(top["result_id"])
-            )
-            QMessageBox.information(self, "Acquisition", outcome.message or outcome.state.value)
-        except (KeyError, ValueError) as exc:
-            QMessageBox.warning(self, "Acquisition", str(exc))
-        self.refresh()
+            if not scored:
+                outcome = runner.search_and_score(job_id)
+                if outcome.state is AcquisitionJobState.QUEUED:
+                    return outcome.message or "Search deferred (rate limit)."
+                if outcome.scored_count == 0:
+                    return "No search results to acquire."
+                job = engine.get(job_id)
+                assert job is not None
+                scored = job.extra.get("scored_results") or []
+            top = scored[0]
+            if not isinstance(top, dict) or not top.get("result_id"):
+                return "No scored result available."
+            outcome = runner.start_download_by_result_id(job_id, str(top["result_id"]))
+            return outcome.message or outcome.state.value
+
+        def done(message: object) -> None:
+            text = str(message)
+            if text.startswith("No ") or text.endswith("not found."):
+                QMessageBox.warning(self, "Acquisition", text)
+            else:
+                QMessageBox.information(self, "Acquisition", text)
+            self.refresh()
+
+        run_in_background(
+            work,
+            on_finished=done,
+            on_failed=lambda msg: QMessageBox.warning(self, "Acquisition", msg),
+        )
 
     def _pick_result_for_selected_job(self) -> None:
         selected = self._selected_ids()

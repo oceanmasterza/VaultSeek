@@ -50,6 +50,8 @@ from vaultseek.plugins.builtin.acquisition_stub import StubAcquisitionProvider
 from vaultseek.plugins.builtin.ampache import AmpachePlugin
 from vaultseek.plugins.builtin.chromaprint.provider import ChromaprintFingerprintProvider
 from vaultseek.plugins.builtin.cover_art_archive import CoverArtArchiveProvider
+from vaultseek.plugins.builtin.discogs import DiscogsArtworkProvider, DiscogsProvider
+from vaultseek.plugins.builtin.embedded_art import EmbeddedArtProvider
 from vaultseek.plugins.builtin.embedded_art import EmbeddedArtProvider
 from vaultseek.plugins.builtin.emby import EmbyPlugin
 from vaultseek.plugins.builtin.filename_parser import FilenameParserProvider
@@ -238,7 +240,10 @@ class Container:
 
         plugin_manager = PluginManager(
             _build_metadata_providers(config.metadata),
-            _build_artwork_providers(config.artwork),
+            _build_artwork_providers(
+                config.artwork,
+                discogs_user_token=config.metadata.discogs_user_token,
+            ),
             _build_media_server_plugins(),
             _build_acquisition_providers(),
         )
@@ -285,6 +290,8 @@ class Container:
             acquisition_workflow,
             auto_acquire_threshold=config.acquisition.auto_acquire_threshold,
             review_queue=review_queue,
+            library_repo=library_repo,
+            acquisition_config=config.acquisition,
         )
         acquisition_automation_service = AcquisitionAutomationService(
             library_repo=library_repo,
@@ -518,6 +525,8 @@ def _build_metadata_providers(metadata: MetadataConfig) -> list[MetadataProvider
             providers.append(AcoustIdProvider(api_key=None))
     if "musicbrainz" in enabled:
         providers.append(MusicBrainzProvider())
+    if "discogs" in enabled:
+        providers.append(DiscogsProvider(user_token=metadata.discogs_user_token))
     if "local_tags" in enabled:
         providers.append(LocalTagsProvider())
     if "filename_parser" in enabled:
@@ -525,12 +534,18 @@ def _build_metadata_providers(metadata: MetadataConfig) -> list[MetadataProvider
     return providers
 
 
-def _build_artwork_providers(artwork: ArtworkConfig) -> list[ArtworkProvider]:
+def _build_artwork_providers(
+    artwork: ArtworkConfig,
+    *,
+    discogs_user_token: str = "",
+) -> list[ArtworkProvider]:
     """Construct built-in artwork providers. ``fetch_enabled`` gates only
     the network provider — embedded extraction always runs."""
     providers: list[ArtworkProvider] = []
     if artwork.fetch_enabled:
         providers.append(CoverArtArchiveProvider())
+        if discogs_user_token.strip():
+            providers.append(DiscogsArtworkProvider(user_token=discogs_user_token))
     providers.append(EmbeddedArtProvider())
     return providers
 

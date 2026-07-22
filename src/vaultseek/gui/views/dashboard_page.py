@@ -7,6 +7,7 @@ from uuid import UUID
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QFont, QTextCursor
 from PySide6.QtWidgets import (
+    QDoubleSpinBox,
     QFrame,
     QHBoxLayout,
     QLabel,
@@ -20,6 +21,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from vaultseek.core.config import save_config
 from vaultseek.core.container import Container
 from vaultseek.core.logging import get_live_log_buffer
 from vaultseek.gui.widgets.pipeline_flow import PipelineFlowWidget
@@ -169,6 +171,25 @@ class DashboardPage(QWidget):
         ):
             acq_kpi.addWidget(card)
         layout.addLayout(acq_kpi)
+
+        wishlist_row = QHBoxLayout()
+        wishlist_row.addWidget(QLabel("Wishlist search every"))
+        self._wishlist_hours = QDoubleSpinBox()
+        self._wishlist_hours.setRange(0.0, 168.0)
+        self._wishlist_hours.setSingleStep(1.0)
+        self._wishlist_hours.setDecimals(1)
+        self._wishlist_hours.setSuffix(" hours")
+        self._wishlist_hours.setSpecialValueText("Continuous")
+        self._wishlist_hours.setToolTip(
+            "0 = search as often as rate limits allow. "
+            "Set 6 to run at most one wishlist search pass every 6 hours."
+        )
+        self._wishlist_hours.valueChanged.connect(self._on_wishlist_hours_changed)
+        wishlist_row.addWidget(self._wishlist_hours)
+        self._wishlist_hint = QLabel("")
+        self._wishlist_hint.setProperty("muted", True)
+        wishlist_row.addWidget(self._wishlist_hint, stretch=1)
+        layout.addLayout(wishlist_row)
 
         # Quick actions
         actions = QHBoxLayout()
@@ -392,9 +413,33 @@ class DashboardPage(QWidget):
         self.refresh()
 
     def refresh(self) -> None:
+        hours = float(self._container.config.acquisition.wishlist_search_interval_hours or 0.0)
+        self._wishlist_hours.blockSignals(True)
+        self._wishlist_hours.setValue(hours)
+        self._wishlist_hours.blockSignals(False)
+        self._wishlist_hint.setText(
+            "Continuous (rate-limited)" if hours <= 0 else f"At most every {hours:g} hour(s)"
+        )
         snap = build_dashboard_snapshot(self._container, self._library_id)
         self._apply(snap)
         self._refresh_live_log()
+
+    def _on_wishlist_hours_changed(self, value: float) -> None:
+        from dataclasses import replace
+
+        acquisition = replace(
+            self._container.config.acquisition,
+            wishlist_search_interval_hours=float(value),
+        )
+        updated = replace(self._container.config, acquisition=acquisition)
+        save_config(updated, self._container.paths.config_file)
+        self._container.config = updated
+        self._container.acquisition_automation_service.set_acquisition_config(acquisition)
+        self._wishlist_hint.setText(
+            "Continuous (rate-limited)"
+            if value <= 0
+            else f"At most every {float(value):g} hour(s)"
+        )
 
     def _refresh_live_log(self) -> None:
         text = get_live_log_buffer().text()

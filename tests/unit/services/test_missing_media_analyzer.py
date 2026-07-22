@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
+from pathlib import Path
 from unittest.mock import MagicMock
 from uuid import UUID
 
@@ -65,6 +66,9 @@ def _insert_track(
         title=title,
         track_number=track_number,
     )
+    path = Path(track.file_path)
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_bytes(b"audio")
     TrackRepository(engine).upsert(track)
 
 
@@ -187,3 +191,35 @@ def test_create_jobs_for_library_persists_missing_track_jobs(
     assert jobs[0].artist == artist.name
     assert jobs[0].state is AcquisitionJobState.QUEUED
     assert jobs[0].preferred_codec == "FLAC"
+
+
+def test_analyze_missing_library_files_detects_absent_paths(
+    engine: Engine,
+    library_id: UUID,
+    artist_id: UUID,
+) -> None:
+    album_id = _seed_album(engine, library_id, artist_id)
+    track = Track(
+        id=generate_uuid7(),
+        library_id=library_id,
+        zone=LibraryZone.LIBRARY,
+        file_path="C:/library/ghost/01 - Ghost Track.flac",
+        file_name="01 - Ghost Track.flac",
+        file_size=1024,
+        file_modified=_NOW,
+        created_at=_NOW,
+        updated_at=_NOW,
+        album_id=album_id,
+        artist_id=artist_id,
+        title="Ghost Track",
+        track_number=1,
+    )
+    TrackRepository(engine).upsert(track)
+    musicbrainz = MagicMock()
+    musicbrainz.lookup_release_tracklist.return_value = None
+
+    gaps = _analyzer(engine, musicbrainz).analyze_missing_library_files(library_id)
+
+    assert len(gaps) == 1
+    assert gaps[0].track_title == "Ghost Track"
+    assert gaps[0].kind is MediaGapKind.MISSING_TRACK

@@ -5,6 +5,7 @@ See https://github.com/palaueb/api-nicotine-plus (default ``127.0.0.1:12339``).
 
 from __future__ import annotations
 
+import time
 from pathlib import Path, PurePosixPath
 from typing import Any
 
@@ -14,6 +15,8 @@ from vaultseek.models.interfaces.acquisition import SearchRequest
 from vaultseek.plugins.builtin.nicotine_plus.rpc import RpcDownloadState, RpcSearchHit
 
 DEFAULT_HTTP_PORT = 12339
+DEFAULT_SEARCH_WAIT_SECONDS = 30.0
+DEFAULT_SEARCH_POLL_INTERVAL = 1.5
 
 _STATUS_MAP = {
     "finished": "completed",
@@ -74,38 +77,102 @@ class HttpApiRpcClient:
             return False
         return data.get("status") == "ok"
 
-    def search(self, request: SearchRequest) -> list[RpcSearchHit]:
+    def search(
+        self,
+        request: SearchRequest,
+        *,
+        wait_seconds: float = DEFAULT_SEARCH_WAIT_SECONDS,
+        poll_interval: float = DEFAULT_SEARCH_POLL_INTERVAL,
+    ) -> list[RpcSearchHit]:
+        """Start a Soulseek search and poll until results arrive or timeout.
+
+        ``POST /search`` only *starts* the search; hits trickle in over several
+        seconds. Fetching ``/search/results`` once immediately almost always
+        returns an empty list.
+        """
         query_parts = [p for p in (request.artist, request.album, request.title) if p]
         query = " ".join(query_parts) if query_parts else (request.artist or "")
         if not query.strip():
             return []
         try:
-            started = self._post("/search", {"query": query, "mode": "global"})
+            started = self._post(
+                "/search",
+                {"query": query, "mode": "global", "switch_page": False},
+            )
             token = started.get("token")
             if token is None:
                 return []
-            results = self._get(
-                "/search/results",
-                params={"token": int(token), "limit": 200, "offset": 0},
-            )
+            token_i = int(token)
         except (OSError, requests.RequestException, ValueError):
             return []
 
+        deadline = time.monotonic() + max(0.0, float(wait_seconds))
+        interval = max(0.2, float(poll_interval))
         hits: list[RpcSearchHit] = []
-        for index, item in enumerate(results.get("items") or []):
-            if not isinstance(item, dict):
-                continue
-            hits.append(_hit_from_http_item(item, token=int(token), index=index))
+        last_count = -1
+        stable_rounds = 0
+        while True:
+            try:
+                results = self._get(
+                    "/search/results",
+                    params={"token": token_i, "limit": 200, "offset": 0},
+                )
+            except (OSError, requests.RequestException, ValueError):
+                return hits
+
+            hits = []
+            for index, item in enumerate(results.get("items") or []):
+                if not isinstance(item, dict):
+                    continue
+                hits.append(_hit_from_http_item(item, token=token_i, index=index))
+
+            # Exit early once results stop growing (Soulseek trickle settled).
+            if hits:
+                if len(hits) == last_count:
+                    stable_rounds += 1
+                    if stable_rounds >= 1:
+                        break
+                else:
+                    stable_rounds = 0
+                    last_count = len(hits)
+
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                break
+            time.sleep(min(interval, remaining))
         return hits
 
     def enqueue_download(self, result_id: str, *, raw: dict[str, Any] | None = None) -> str:
+        """Queue a download; return ``username:virtual_path`` for status matching.
+
+        Nicotine transfer rows expose Soulseek transfer tokens, not API search
+        tokens — so ``token:index`` cannot be used to look up transfers.
+        """
         raw = dict(raw or {})
         if ":" in result_id:
             token_s, index_s = result_id.split(":", 1)
             try:
                 token = int(token_s)
                 index = int(index_s)
-                self._post("/search/download", {"token": token, "index": index})
+                body: dict[str, Any] = {"token": token, "index": index}
+                folder = raw.get("folder_path")
+                if folder:
+                    body["folder_path"] = str(folder)
+                resp = self._post("/search/download", body)
+                username = str(resp.get("username") or raw.get("username") or raw.get("source_user") or "")
+                virtual_path = str(
+                    resp.get("virtual_path")
+                    or raw.get("file_path")
+                    or raw.get("virtual_path")
+                    or ""
+                )
+                # Close the Nicotine search tab once we've queued a download.
+                try:
+                    self.close_search(token)
+                except (OSError, requests.RequestException, ValueError):
+                    pass
+                if username and virtual_path:
+                    return f"{username}:{virtual_path}"
                 return result_id
             except (ValueError, OSError, requests.RequestException):
                 pass
@@ -114,18 +181,30 @@ class HttpApiRpcClient:
         virtual_path = raw.get("file_path") or raw.get("virtual_path")
         if username and virtual_path:
             try:
+                body = {
+                    "username": username,
+                    "virtual_path": virtual_path,
+                    "size": int(raw.get("size") or raw.get("size_bytes") or 0),
+                }
+                folder = raw.get("folder_path")
+                if folder:
+                    body["folder_path"] = str(folder)
                 self._post(
                     "/downloads/enqueue",
-                    {
-                        "username": username,
-                        "virtual_path": virtual_path,
-                        "size": int(raw.get("size") or raw.get("size_bytes") or 0),
-                    },
+                    body,
                 )
                 return f"{username}:{virtual_path}"
             except (OSError, requests.RequestException):
                 return f"offline-{result_id}"
         return f"offline-{result_id}"
+
+    def close_search(self, token: int) -> bool:
+        """Ask api-nicotine-plus to close a search tab (best-effort)."""
+        try:
+            self._post("/search/close", {"token": int(token)})
+            return True
+        except (OSError, requests.RequestException, ValueError):
+            return False
 
     def download_status(self, download_id: str) -> RpcDownloadState:
         try:
@@ -140,10 +219,11 @@ class HttpApiRpcClient:
         items = payload.get("items") or []
         match = _find_transfer(download_id, items)
         if match is None:
+            # Transfer list can lag enqueue by a tick — do not fail immediately.
             return RpcDownloadState(
                 download_id=download_id,
-                state="failed",
-                message="download not found in Nicotine+ transfers",
+                state="queued",
+                message="waiting for Nicotine+ transfer list",
             )
         return _transfer_to_state(download_id, match)
 
@@ -186,14 +266,47 @@ class HttpApiRpcClient:
 def _hit_from_http_item(item: dict[str, Any], *, token: int, index: int) -> RpcSearchHit:
     file_path = str(item.get("file_path") or "")
     display = file_path or f"result-{token}-{index}"
+    posix = PurePosixPath(file_path.replace("\\", "/")) if file_path else None
+    parts = posix.parts if posix is not None else ()
+    stem = posix.stem if posix is not None else None
+    # Typical share layout: …/Artist/Album/Track.ext
+    artist = None
+    album = None
+    if len(parts) >= 3:
+        artist = parts[-3]
+        album = parts[-2]
+    elif len(parts) >= 2:
+        album = parts[-2]
+    attrs = item.get("file_attributes") or {}
+    bit_depth = None
+    bitrate = None
+    if isinstance(attrs, dict):
+        for key in ("bit_depth", "bitdepth", "bits"):
+            if attrs.get(key) is not None:
+                try:
+                    bit_depth = int(attrs[key])
+                except (TypeError, ValueError):
+                    pass
+        for key in ("bitrate", "br", "kbps"):
+            if attrs.get(key) is not None:
+                try:
+                    bitrate = int(attrs[key])
+                except (TypeError, ValueError):
+                    pass
+    raw = {**item, "token": token, "index": index}
+    if bitrate is not None:
+        raw["bitrate"] = bitrate
     return RpcSearchHit(
         result_id=f"{token}:{index}",
         display_name=display,
-        title=PurePosixPath(file_path.replace("\\", "/")).stem if file_path else None,
+        artist=artist,
+        album=album,
+        title=stem,
         format=str(item.get("extension") or ""),
+        bit_depth=bit_depth,
         size_bytes=int(item.get("size") or 0) or None,
         source_user=str(item.get("username") or "") or None,
-        raw={**item, "token": token, "index": index},
+        raw=raw,
     )
 
 
@@ -201,18 +314,24 @@ def _find_transfer(download_id: str, items: list[Any]) -> dict[str, Any] | None:
     if ":" not in download_id:
         return None
     left, right = download_id.split(":", 1)
-    try:
-        token = int(left)
-        for item in items:
-            if isinstance(item, dict) and item.get("token") == token:
-                return item
-    except ValueError:
-        pass
     for item in items:
         if not isinstance(item, dict):
             continue
-        if item.get("username") == left and item.get("virtual_path") == right:
+        username = str(item.get("username") or "")
+        virtual = str(item.get("virtual_path") or item.get("file_path") or "")
+        if username == left and virtual == right:
             return item
+    # Fallback: match by filename when path separators differ.
+    right_name = PurePosixPath(right.replace("\\", "/")).name
+    if right_name:
+        for item in items:
+            if not isinstance(item, dict):
+                continue
+            if str(item.get("username") or "") != left:
+                continue
+            virtual = str(item.get("virtual_path") or item.get("file_path") or "")
+            if PurePosixPath(virtual.replace("\\", "/")).name == right_name:
+                return item
     return None
 
 

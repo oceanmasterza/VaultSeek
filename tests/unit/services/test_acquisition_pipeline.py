@@ -142,6 +142,43 @@ def test_scoring_engine_ranks_preferred_format_highest() -> None:
     assert ScoringEngine().select_best(scored) is scored[0][0]
 
 
+def test_scoring_engine_matches_artist_album_title_in_path() -> None:
+    from datetime import UTC, datetime
+    from vaultseek.db.uuid_utils import generate_uuid7
+    from vaultseek.models.entities.acquisition_job import AcquisitionJob
+
+    job = AcquisitionJob(
+        id=generate_uuid7(),
+        library_id=generate_uuid7(),
+        job_type=AcquisitionJobType.MISSING_TRACK,
+        state=AcquisitionJobState.SCORING,
+        created_at=datetime.now(UTC),
+        updated_at=datetime.now(UTC),
+        artist="Ace of Base",
+        album="Sign",
+        title="Happy Nation (remix)",
+    )
+    path_hit = SearchResult(
+        provider_id="nicotine_plus",
+        result_id="1:0",
+        display_name="Music/Ace of Base/Sign/01 Happy Nation (remix).flac",
+        title="01 Happy Nation (remix)",
+        format="flac",
+        raw={"file_path": "Music/Ace of Base/Sign/01 Happy Nation (remix).flac"},
+    )
+    junk = SearchResult(
+        provider_id="nicotine_plus",
+        result_id="1:1",
+        display_name="Music/Other/Album/track.mp3",
+        title="track",
+        format="mp3",
+        raw={"file_path": "Music/Other/Album/track.mp3"},
+    )
+    scored = ScoringEngine().score_results(job, [junk, path_hit])
+    assert scored[0][0].result_id == "1:0"
+    assert scored[0][1] >= 0.45
+
+
 def test_download_manager_starts_from_scoring_state(
     engine: Engine, library_id: UUID
 ) -> None:

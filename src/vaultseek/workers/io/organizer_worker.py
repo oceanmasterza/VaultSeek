@@ -121,6 +121,7 @@ class OrganizerWorker:
         now = datetime.now(UTC)
         destination = self._compute_destination(library, target, track)
         final = _safe_move(source, destination)
+        final = self._relocate_to_db_free_path(final, destination, track_id=track.id)
 
         updated = replace(
             track,
@@ -129,16 +130,25 @@ class OrganizerWorker:
             file_name=final.name,
             updated_at=now,
         )
-        try:
-            self._tracks.upsert(updated)
-        except IntegrityError:
-            collided = Path(updated.file_path)
-            final = _unique_sibling(collided)
-            if collided.exists() and collided != final:
-                collided.rename(final)
-            updated = replace(updated, file_path=str(final), file_name=final.name)
-            self._tracks.upsert(updated)
+        for attempt in range(8):
+            try:
+                self._tracks.upsert(updated)
+                break
+            except IntegrityError:
+                if attempt == 7:
+                    raise
+                final = self._relocate_to_db_free_path(final, destination, track_id=track.id)
+                updated = replace(
+                    updated, file_path=str(final), file_name=final.name, updated_at=now
+                )
         self._record_move(track, updated, now)
+
+        if target is LibraryZone.LIBRARY:
+            logger.info(
+                "Organized into library: {} → {}",
+                track.file_name,
+                final,
+            )
 
         cleaned: list[str] = []
         if track.zone is LibraryZone.INCOMING:
@@ -268,6 +278,46 @@ class OrganizerWorker:
         )
         self._operations.record_with_snapshot(operation, [change], snapshot)
 
+    def _relocate_to_db_free_path(
+        self,
+        current: Path,
+        base: Path,
+        *,
+        track_id: UUID,
+    ) -> Path:
+        """Rename on disk until ``file_path`` is unused in the DB (or owned by this track)."""
+        allocated = self._allocate_library_path(base, track_id=track_id)
+        if allocated == current:
+            return current
+        if allocated.exists():
+            allocated = self._allocate_library_path(
+                base, track_id=track_id, skip_paths={str(allocated)}
+            )
+        current.rename(allocated)
+        return allocated
+
+    def _allocate_library_path(
+        self,
+        base: Path,
+        *,
+        track_id: UUID,
+        skip_paths: set[str] | None = None,
+    ) -> Path:
+        skip = skip_paths or set()
+        for counter in range(128):
+            candidate = (
+                base
+                if counter == 0
+                else base.with_name(f"{base.stem} ({counter}){base.suffix}")
+            )
+            path_key = str(candidate)
+            if path_key in skip:
+                continue
+            holder = self._tracks.get_by_path(path_key)
+            if holder is None or holder.id == track_id:
+                return candidate
+        raise RuntimeError(f"No free path under {base}")
+
     def _should_auto_approve(self, track: Track, library: Library) -> bool:
         if track.needs_review:
             return False
@@ -312,21 +362,3 @@ def _safe_move(source: Path, destination: Path) -> Path:
     raise last_exc
 
 
-def _unique_sibling(path: Path) -> Path:
-    """Return ``path`` or the next free ``stem (n).suffix`` sibling."""
-    if not path.exists():
-        # Path may be reserved in DB but not on disk — still avoid the DB collision.
-        candidate = path
-        counter = 1
-        # Caller already hit UNIQUE; force at least one suffix.
-        candidate = path.with_name(f"{path.stem} ({counter}){path.suffix}")
-        while candidate.exists():
-            counter += 1
-            candidate = path.with_name(f"{path.stem} ({counter}){path.suffix}")
-        return candidate
-    counter = 1
-    candidate = path.with_name(f"{path.stem} ({counter}){path.suffix}")
-    while candidate.exists():
-        counter += 1
-        candidate = path.with_name(f"{path.stem} ({counter}){path.suffix}")
-    return candidate

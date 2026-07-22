@@ -30,12 +30,13 @@ from vaultseek.gui.views.albums_page import AlbumsPage
 from vaultseek.gui.views.artwork_page import ArtworkPage
 from vaultseek.gui.views.artists_page import ArtistsPage
 from vaultseek.gui.views.dashboard_page import DashboardPage
+from vaultseek.gui.views.discogs_page import DiscogsPage
 from vaultseek.gui.views.duplicates_page import DuplicatesPage
 from vaultseek.gui.views.jobs_page import JobsPage
 from vaultseek.gui.views.library_page import LibraryPage
 from vaultseek.gui.views.logs_page import LogsPage
+from vaultseek.gui.views.reports_page import ReportsPage
 from vaultseek.gui.views.review_page import ReviewPage
-from vaultseek.gui.views.rules_page import RulesPage
 from vaultseek.gui.views.settings_page import SettingsPage
 from vaultseek.gui.views.stub_page import StubPage
 from vaultseek.gui.widgets.desktop import open_path
@@ -52,9 +53,9 @@ _NAV = (
     ("Artwork", "artwork"),
     ("Duplicates", "duplicates"),
     ("Acquisition", "acquisition"),
+    ("Discogs", "discogs"),
     ("Jobs", "jobs"),
     ("Reports", "reports"),
-    ("Rules", "rules"),
     ("Logs", "logs"),
     ("Settings", "settings"),
     ("Plugins", "plugins"),
@@ -113,7 +114,8 @@ class MainWindow(QMainWindow):
         self._jobs_page = JobsPage(container)
         self._duplicates_page = DuplicatesPage(container)
         self._acquisition_page = AcquisitionPage(container)
-        self._rules_page = RulesPage(container)
+        self._discogs_page = DiscogsPage(container)
+        self._reports_page = ReportsPage(container)
         self._settings_page = SettingsPage(container)
         self._settings_page.library_saved.connect(self._on_library_saved)
         self._settings_page.preferences_saved.connect(self._on_theme_changed)
@@ -128,15 +130,10 @@ class MainWindow(QMainWindow):
             "albums": self._albums_page,
             "duplicates": self._duplicates_page,
             "acquisition": self._acquisition_page,
+            "discogs": self._discogs_page,
             "jobs": self._jobs_page,
             "artwork": self._artwork_page,
-            "reports": StubPage(
-                "Reports",
-                "Report viewer UI is deferred. Library summary reports can still be "
-                "generated as generate_report jobs; files land under the app reports folder "
-                "(Open data folder in Settings).",
-            ),
-            "rules": self._rules_page,
+            "reports": self._reports_page,
             "logs": self._logs_page,
             "settings": self._settings_page,
             "plugins": StubPage(
@@ -144,7 +141,7 @@ class MainWindow(QMainWindow):
                 "Plugin manager UI is next on the polish list. Built-in media servers "
                 "are already selectable in Settings: Navidrome, Jellyfin, Emby, Plex, "
                 "Subsonic, Ampache, Koel, Funkwhale, and Lyrion. Metadata/artwork "
-                "providers (tags, MusicBrainz, AcoustID, Cover Art Archive) run from "
+                "providers (tags, MusicBrainz, AcoustID, Cover Art Archive, Discogs) run from "
                 "the processing pipeline.",
             ),
         }
@@ -397,8 +394,12 @@ class MainWindow(QMainWindow):
             self._duplicates_page.refresh()
         elif key == "acquisition":
             self._acquisition_page.refresh()
-        elif key == "rules":
-            self._rules_page.refresh()
+        elif key == "discogs":
+            self._discogs_page.refresh()
+        elif key == "reports":
+            self._reports_page.refresh()
+        elif key == "logs":
+            self._logs_page.refresh()
         elif key == "settings":
             self._settings_page.refresh()
 
@@ -417,7 +418,8 @@ class MainWindow(QMainWindow):
             self._jobs_page,
             self._duplicates_page,
             self._acquisition_page,
-            self._rules_page,
+            self._discogs_page,
+            self._reports_page,
             self._settings_page,
         ):
             page.set_library(library_id)

@@ -112,6 +112,16 @@ class ReviewQueueService:
                         review_type=item.review_type,
                     )
         if existing is not None:
+            # Skip no-op refreshes — re-parking hundreds of acquisition failures
+            # every automation tick was flooding the event bus and freezing the UI.
+            same_content = (
+                existing.title == item.title
+                and (existing.description or "") == (item.description or "")
+                and existing.confidence == item.confidence
+                and (existing.payload or {}) == (item.payload or {})
+            )
+            if same_content:
+                return existing.id
             self._reviews.update_pending_content(
                 existing.id,
                 title=item.title,

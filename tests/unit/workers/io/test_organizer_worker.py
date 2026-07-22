@@ -189,6 +189,35 @@ def test_execute_moves_file_updates_track_and_logs_operation(
     assert snapshot.restored_at is None
 
 
+def test_execute_avoids_db_file_path_collision(
+    worker: OrganizerWorker,
+    track_repo: TrackRepository,
+    job_queue: JobQueueService,
+    job_repo: JobRepository,
+    zone_library: Library,
+) -> None:
+    """Another track row may already own the destination path without a file on disk."""
+    lib_dest = Path(zone_library.library_path) / "Unknown Artist" / "collision.flac"
+    lib_dest.parent.mkdir(parents=True, exist_ok=True)
+    lib_dest.write_bytes(b"stale")
+    stale = _make_track(zone_library, lib_dest, zone=LibraryZone.LIBRARY)
+    track_repo.upsert(stale)
+    lib_dest.unlink()
+
+    source = _write_source(zone_library, "collision.flac")
+    track = _make_track(zone_library, source)
+    track_repo.upsert(track)
+
+    job_id = _run(worker, job_queue, job_repo, zone_library, track.id, "library")
+
+    assert job_repo.get(job_id).status is JobStatus.COMPLETED  # type: ignore[union-attr]
+    suffixed = lib_dest.with_name("collision (1).flac")
+    assert suffixed.is_file()
+    updated = track_repo.get_by_id(track.id)
+    assert updated is not None
+    assert updated.file_path == str(suffixed)
+
+
 def test_execute_suffixes_on_filename_collision(
     worker: OrganizerWorker,
     track_repo: TrackRepository,

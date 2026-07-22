@@ -13,12 +13,19 @@ from vaultseek.models.interfaces.acquisition import (
     SearchRequest,
     SearchResult,
 )
+from loguru import logger
+
 from vaultseek.plugins.builtin.nicotine_plus.http_api_rpc import HttpApiRpcClient
 from vaultseek.plugins.builtin.nicotine_plus.rpc import (
     FakeRpcClient,
     LocalSocketRpcClient,
     NicotinePlusRpcClient,
     hits_to_search_results,
+)
+from vaultseek.plugins.builtin.nicotine_plus.search_rate_gate import (
+    DEFAULT_SEARCH_RATE_GATE,
+    SearchRateGate,
+    SearchThrottled,
 )
 
 
@@ -37,6 +44,7 @@ class NicotinePlusProvider:
         *,
         connect_timeout_seconds: float = 1.0,
         rpc_client: NicotinePlusRpcClient | None = None,
+        search_rate_gate: SearchRateGate | None = None,
     ) -> None:
         self._connect_timeout = connect_timeout_seconds
         self._rpc: NicotinePlusRpcClient = rpc_client or LocalSocketRpcClient(
@@ -45,6 +53,7 @@ class NicotinePlusProvider:
         self._injected = rpc_client is not None
         self._connected = False
         self._settings: dict[str, Any] = {}
+        self._search_gate = search_rate_gate or DEFAULT_SEARCH_RATE_GATE
 
     @property
     def capabilities(self) -> ProviderCapabilities:
@@ -76,6 +85,10 @@ class NicotinePlusProvider:
         api_port = int(settings.get("api_port") or 12339)
         api_token = str(settings.get("api_token") or settings.get("password") or "")
         self._settings = settings
+        self._search_gate.configure(
+            min_interval_seconds=float(settings.get("search_min_interval_seconds") or 5.0),
+            max_per_minute=int(settings.get("search_max_per_minute") or 8),
+        )
 
         if not self._injected:
             if transport == "http":
@@ -113,8 +126,31 @@ class NicotinePlusProvider:
 
     def search(self, request: SearchRequest) -> list[SearchResult]:
         if not self._connected:
+            logger.warning("Nicotine+ search skipped — provider not connected")
             return []
-        return hits_to_search_results(self._rpc.search(request))
+        query = " ".join(p for p in (request.artist, request.album, request.title) if p)
+        transport = str(self._settings.get("transport") or "socket")
+        # Fake RPC is unit-test only — never wait on the Soulseek flood gate.
+        if not isinstance(self._rpc, FakeRpcClient):
+            delay = self._search_gate.try_acquire()
+            if delay is not None:
+                logger.info(
+                    "Nicotine+ search deferred {:.1f}s (min {}s, max {}/min): {}",
+                    delay,
+                    self._search_gate.min_interval_seconds,
+                    self._search_gate.max_per_minute,
+                    query or "(empty query)",
+                )
+                raise SearchThrottled(delay)
+        logger.info("Nicotine+ search via {}: {}", transport, query or "(empty query)")
+        wait_seconds = float(self._settings.get("search_timeout_seconds") or 30.0)
+        if isinstance(self._rpc, HttpApiRpcClient):
+            hits = self._rpc.search(request, wait_seconds=wait_seconds)
+        else:
+            hits = self._rpc.search(request)
+        results = hits_to_search_results(hits)
+        logger.info("Nicotine+ returned {} hit(s) for {}", len(results), query or "(empty query)")
+        return results
 
     def download(self, result: SearchResult) -> DownloadHandle:
         download_id = self._rpc.enqueue_download(result.result_id, raw=dict(result.raw))

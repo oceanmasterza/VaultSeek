@@ -24,9 +24,10 @@ class AlbumBrowseRow:
     artist_name: str | None
     artist_id: UUID | None
     year: int | None
-    track_count: int
+    track_count: int  # present tracks linked to this library
     has_cover: bool
     mbid: str | None = None
+    expected_track_count: int | None = None  # albums.track_count when known
 
 
 @dataclass(frozen=True, slots=True)

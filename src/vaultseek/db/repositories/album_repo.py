@@ -66,7 +66,7 @@ class AlbumRepository:
     ) -> list[AlbumBrowseRow]:
         """Albums linked to tracks in this library, with artist name and cover flag."""
         lib = uuid_to_blob(library_id)
-        track_count = func.count(tracks_table.c.id).label("track_count")
+        present_count = func.count(tracks_table.c.id).label("present_count")
         has_cover = exists(
             select(album_artwork.c.artwork_id).where(
                 album_artwork.c.album_id == albums_table.c.id
@@ -80,8 +80,9 @@ class AlbumRepository:
                 albums_table.c.album_artist_id,
                 albums_table.c.year,
                 albums_table.c.mbid,
+                albums_table.c.track_count.label("expected_track_count"),
                 artists.c.name.label("artist_name"),
-                track_count,
+                present_count,
                 has_cover,
             )
             .join(tracks_table, tracks_table.c.album_id == albums_table.c.id)
@@ -94,6 +95,7 @@ class AlbumRepository:
                 albums_table.c.album_artist_id,
                 albums_table.c.year,
                 albums_table.c.mbid,
+                albums_table.c.track_count,
                 artists.c.name,
             )
             .order_by(artists.c.name, albums_table.c.year, albums_table.c.sort_title)
@@ -119,9 +121,14 @@ class AlbumRepository:
                 artist_name=row.artist_name,
                 artist_id=blob_to_uuid(row.album_artist_id) if row.album_artist_id else None,
                 year=row.year,
-                track_count=int(row.track_count),
+                track_count=int(row.present_count),
                 has_cover=bool(row.has_cover),
                 mbid=row.mbid,
+                expected_track_count=(
+                    int(row.expected_track_count)
+                    if row.expected_track_count not in (None, 0)
+                    else None
+                ),
             )
             for row in rows
         ]
