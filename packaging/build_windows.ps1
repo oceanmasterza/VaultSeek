@@ -14,13 +14,32 @@ param(
 $ErrorActionPreference = "Stop"
 Set-Location (Resolve-Path "$PSScriptRoot\..")
 
+# Native tools (python, ISCC) often write progress to stderr; with
+# ErrorActionPreference=Stop that becomes a terminating NativeCommandError.
+# Check $LASTEXITCODE instead.
+function Invoke-Native {
+    param(
+        [Parameter(Mandatory = $true)]
+        [scriptblock]$Command
+    )
+    $prev = $ErrorActionPreference
+    $ErrorActionPreference = "Continue"
+    try {
+        & $Command
+        if ($LASTEXITCODE -ne 0) {
+            exit $LASTEXITCODE
+        }
+    }
+    finally {
+        $ErrorActionPreference = $prev
+    }
+}
+
 Write-Host "==> Fetching pinned vendor binaries"
-python packaging/fetch_vendor.py
-if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+Invoke-Native { python packaging/fetch_vendor.py }
 
 Write-Host "==> PyInstaller onedir"
-python -m PyInstaller packaging/vaultseek.spec --noconfirm
-if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+Invoke-Native { python -m PyInstaller packaging/vaultseek.spec --noconfirm }
 
 $fpcalc = $null
 foreach ($candidate in @(
@@ -60,14 +79,12 @@ if (-not $SkipInstaller) {
         else {
             $iscc.FullName
         }
-        & $isccPath packaging\installer.iss
-        if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+        Invoke-Native { & $isccPath packaging\installer.iss }
         Write-Host "Installer: packaging\output\VaultSeek-Setup.exe"
     }
     else {
         Write-Host "==> Python Setup.exe (ISCC not found)"
-        python packaging/build_setup_exe.py
-        if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+        Invoke-Native { python packaging/build_setup_exe.py }
     }
 }
 

@@ -43,10 +43,12 @@ UninstallDisplayIcon={app}\{#MyAppExeName}
 Name: "english"; MessagesFile: "compiler:Default.isl"
 
 [Tasks]
-Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"; Flags: checkedonce
+; Checked by default on every install (Inno tasks are checked unless Flags: unchecked).
+Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"
 
 [Files]
-; Full onedir — includes VaultSeek.exe, Python DLLs, Qt, fpcalc.exe, etc.
+; Full onedir — embedded into Setup.exe at compile time (no build-tree needed at install).
+; ISCC fails the build if Source paths are missing, so no runtime dist\ check is needed.
 Source: "..\dist\VaultSeek\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
 
 [Icons]
@@ -56,23 +58,3 @@ Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; Tasks: de
 [Run]
 Filename: "{app}\{#MyAppExeName}"; Description: "{cm:LaunchProgram,{#StringChange(MyAppName, '&', '&&')}}"; Flags: nowait postinstall skipifsilent
 
-[Code]
-function InitializeSetup(): Boolean;
-begin
-  Result := True;
-  if not FileExists(ExpandConstant('{src}\..\dist\VaultSeek\VaultSeek.exe')) then
-  begin
-    MsgBox('dist\VaultSeek\VaultSeek.exe not found.'#13#10 +
-           'Run packaging\build_windows.ps1 (or fetch_vendor + pyinstaller) first.',
-           mbError, MB_OK);
-    Result := False;
-  end
-  else if (not FileExists(ExpandConstant('{src}\..\dist\VaultSeek\_internal\fpcalc.exe')))
-       and (not FileExists(ExpandConstant('{src}\..\dist\VaultSeek\fpcalc.exe'))) then
-  begin
-    MsgBox('fpcalc.exe is missing from dist\VaultSeek\ (or _internal).'#13#10 +
-           'Run: python packaging\fetch_vendor.py then rebuild with PyInstaller.',
-           mbError, MB_OK);
-    Result := False;
-  end;
-end;
