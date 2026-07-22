@@ -8,6 +8,7 @@ from loguru import logger
 
 from vaultseek.models.entities.acquisition_job import AcquisitionJob, AcquisitionJobState
 from vaultseek.models.entities.review_item import ReviewType
+from vaultseek.services.acquisition_labels import job_label
 from vaultseek.services.dto.review_dto import ReviewItemCreate
 from vaultseek.services.review_queue_service import ReviewQueueService
 
@@ -56,7 +57,7 @@ def park_acquisition_failure(
 
     assert review_type is not None
 
-    label = _job_label(job)
+    label = job_label(job)
     note = (message or job.error_message or "").strip()
     if provider_offline and not note:
         note = "No acquisition providers connected (Nicotine+ offline or disabled)."
@@ -122,8 +123,3 @@ def park_if_attention_needed(
             provider_offline=provider_offline,
         )
     return None
-
-
-def _job_label(job: AcquisitionJob) -> str:
-    parts = [p for p in (job.artist, job.album, job.title) if p]
-    return " — ".join(parts) if parts else str(job.id)

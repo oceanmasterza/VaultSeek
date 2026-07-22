@@ -5,8 +5,11 @@ from __future__ import annotations
 from pathlib import Path
 from uuid import UUID
 
+from loguru import logger
+
 from vaultseek.models.entities.acquisition_job import AcquisitionJobState
 from vaultseek.services.acquisition_engine import AcquisitionEngine
+from vaultseek.services.acquisition_labels import job_label
 from vaultseek.services.download_manager import DownloadManager
 from vaultseek.services.import_pipeline import ImportPipeline, ImportResult
 from vaultseek.services.verification_engine import VerificationEngine, VerificationResult
@@ -52,6 +55,18 @@ class AcquisitionWorkflow:
             paths = [Path(p) for p in raw]
 
         verification = self._verify.verify(job_id, paths)
+        if verification.ok:
+            logger.info(
+                "Verified {} — {} file(s) passed pre-import checks",
+                job_label(job),
+                len(verification.local_paths),
+            )
+        else:
+            logger.warning(
+                "Verification failed for {}: {}",
+                job_label(job),
+                "; ".join(verification.failures[:3]) or "checks failed",
+            )
         if not auto_import or not verification.ok:
             return verification, None
         imported = self._import.run_after_verification(verification)

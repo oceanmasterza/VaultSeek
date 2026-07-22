@@ -12,11 +12,14 @@ from dataclasses import dataclass
 from pathlib import Path
 from uuid import UUID
 
+from loguru import logger
+
 from vaultseek.db.repositories.library_repo import LibraryRepository
 from vaultseek.models.entities.acquisition_job import AcquisitionJobState
 from vaultseek.models.entities.job import JobType
 from vaultseek.models.entities.track import LibraryZone
 from vaultseek.services.acquisition_engine import AcquisitionEngine
+from vaultseek.services.acquisition_labels import job_label, maybe_log_album_fully_acquired
 from vaultseek.services.job_queue_service import JobQueueService
 from vaultseek.services.verification_engine import VerificationResult
 
@@ -152,6 +155,15 @@ class ImportPipeline:
                 AcquisitionJobState.COMPLETED,
                 note=f"imported {len(staged or paths)} file(s)",
             )
+            loaded = self._engine.get(job_id)
+            if loaded is not None:
+                file_count = len(staged or paths)
+                logger.info(
+                    "Acquired {} — imported {} file(s) to Incoming",
+                    job_label(loaded),
+                    file_count,
+                )
+                maybe_log_album_fully_acquired(self._engine, loaded)
         else:
             self._engine.advance(
                 job_id,

@@ -12,6 +12,7 @@ from vaultseek.models.entities.acquisition_job import AcquisitionJob, Acquisitio
 from vaultseek.models.interfaces.acquisition import SearchResult
 from vaultseek.services.acquisition_attention import park_if_attention_needed
 from vaultseek.services.acquisition_engine import AcquisitionEngine
+from vaultseek.services.acquisition_labels import job_label
 from vaultseek.services.acquisition_workflow import AcquisitionWorkflow
 from vaultseek.services.download_manager import DownloadManager
 from vaultseek.services.review_queue_service import ReviewQueueService
@@ -51,6 +52,8 @@ class AcquisitionRunner:
         self._workflow = acquisition_workflow
         self._threshold = auto_acquire_threshold
         self._reviews = review_queue
+        self._download_progress_logged: dict[UUID, int] = {}
+        self._last_active_download_count: int | None = None
 
     @property
     def auto_acquire_threshold(self) -> float:
@@ -78,7 +81,7 @@ class AcquisitionRunner:
                 if provider_offline
                 else "no provider results"
             )
-            logger.warning("Acquisition job {}: {}", job_id, message)
+            logger.warning("Search for {}: {}", job_label(job), message)
             self._park_attention(job, message=message, provider_offline=provider_offline)
             return RunnerOutcome(job_id, AcquisitionJobState.NO_RESULTS, message)
 
@@ -98,6 +101,13 @@ class AcquisitionRunner:
             },
         )
         best_score = scored[0][1] if scored else None
+        if scored:
+            logger.info(
+                "Scored {} hit(s) for {} (best {:.0%})",
+                len(scored),
+                job_label(job),
+                best_score or 0.0,
+            )
         return RunnerOutcome(
             job_id,
             AcquisitionJobState.SCORING,
@@ -163,8 +173,8 @@ class AcquisitionRunner:
                 note=f"best={best_score:.2f}<{self._threshold:.2f}",
             )
             logger.info(
-                "Acquisition job {}: best score {:.0%} below auto-acquire threshold {:.0%}",
-                job_id,
+                "{}: best score {:.0%} below auto-acquire threshold {:.0%}",
+                job_label(job),
                 best_score,
                 self._threshold,
             )
@@ -223,8 +233,17 @@ class AcquisitionRunner:
         if handle is None:
             loaded = self._engine.get(job_id)
             assert loaded is not None
+            logger.warning("Download start failed for {}", job_label(loaded))
             self._park_attention(loaded, message="download start failed")
             return RunnerOutcome(job_id, loaded.state, "download start failed")
+
+        label = job_label(job)
+        logger.info(
+            "Downloading {} via {} ({})",
+            label,
+            result.display_name,
+            result.provider_id,
+        )
 
         self._engine.update_extra(
             job_id,
@@ -237,6 +256,8 @@ class AcquisitionRunner:
 
         status = self._downloads.poll(job_id)
         if status is not None and status.state == "completed" and status.local_paths:
+            logger.info("Download complete for {} — {} file(s)", label, len(status.local_paths))
+            self._download_progress_logged.pop(job_id, None)
             self._workflow.finish_download(job_id, status.local_paths, auto_import=auto_import)
             loaded = self._engine.get(job_id)
             assert loaded is not None
@@ -275,23 +296,52 @@ class AcquisitionRunner:
         auto_import: bool = True,
     ) -> int:
         """Poll DOWNLOADING jobs; finish verify/import when complete."""
+        downloading = [
+            job
+            for job in self._engine.list_jobs(library_id=library_id)
+            if job.state is AcquisitionJobState.DOWNLOADING
+        ]
+        count = len(downloading)
+        if count != self._last_active_download_count:
+            if count:
+                logger.info("{} download(s) in progress", count)
+            elif self._last_active_download_count:
+                logger.info("All active downloads finished")
+            self._last_active_download_count = count
+
         updated = 0
-        for job in self._engine.list_jobs(library_id=library_id):
-            if job.state is not AcquisitionJobState.DOWNLOADING:
-                continue
+        for job in downloading:
             status = self._downloads.poll(job.id)
             if status is None:
                 continue
+            label = job_label(job)
+            if status.state not in ("completed", "failed", "cancelled"):
+                milestone = int((status.progress or 0.0) * 100) // 25 * 25
+                last = self._download_progress_logged.get(job.id, -1)
+                if milestone > last and milestone > 0:
+                    self._download_progress_logged[job.id] = milestone
+                    logger.info("Download {}% for {}", milestone, label)
             if status.state == "completed":
+                paths = list(status.local_paths) if status.local_paths else None
+                if paths:
+                    logger.info("Download complete for {} — {} file(s)", label, len(paths))
+                self._download_progress_logged.pop(job.id, None)
                 self._workflow.finish_download(
                     job.id,
-                    list(status.local_paths) if status.local_paths else None,
+                    paths,
                     auto_import=auto_import,
                 )
                 loaded = self._engine.get(job.id)
                 self._park_attention(loaded)
                 updated += 1
             elif status.state in ("failed", "cancelled"):
+                logger.warning(
+                    "Download {} for {}: {}",
+                    status.state,
+                    label,
+                    status.message or status.state,
+                )
+                self._download_progress_logged.pop(job.id, None)
                 self._downloads.complete(job.id)
                 loaded = self._engine.get(job.id)
                 self._park_attention(loaded, message=status.message or status.state)

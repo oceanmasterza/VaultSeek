@@ -2,9 +2,12 @@
 
 from __future__ import annotations
 
+from collections import Counter
 from dataclasses import dataclass
 from enum import Enum
 from uuid import UUID
+
+from loguru import logger
 
 from vaultseek.db.repositories.album_repo import AlbumRepository
 from vaultseek.db.repositories.artist_repo import ArtistRepository
@@ -64,10 +67,15 @@ class MissingMediaAnalyzer:
         preferred_codec: str | None = None,
     ) -> list[AcquisitionJob]:
         """Analyze gaps and create one MISSING_TRACK job per missing track."""
+        gaps = self.analyze_library(library_id)
+        track_gaps = [gap for gap in gaps if gap.kind is MediaGapKind.MISSING_TRACK]
+        if not track_gaps:
+            logger.info("Missing-media scan: no missing tracks found")
+            return []
+
         jobs: list[AcquisitionJob] = []
-        for gap in self.analyze_library(library_id):
-            if gap.kind is not MediaGapKind.MISSING_TRACK:
-                continue
+        by_album: Counter[str] = Counter()
+        for gap in track_gaps:
             artist_name = _artist_name_for_album(self._albums, self._artists, gap.album_id)
             job = acquisition_engine.create_job(
                 library_id=library_id,
@@ -81,6 +89,21 @@ class MissingMediaAnalyzer:
             if auto_queue:
                 job = acquisition_engine.queue(job.id)
             jobs.append(job)
+            by_album[gap.album_title] += 1
+
+        album_parts = [
+            f"{count} from {title}" for title, count in sorted(by_album.items(), key=lambda item: (-item[1], item[0]))
+        ]
+        summary = ", ".join(album_parts[:5])
+        if len(album_parts) > 5:
+            summary += f" (+{len(album_parts) - 5} more albums)"
+        queue_note = " (queued for auto-acquire)" if auto_queue else ""
+        logger.info(
+            "Missing-media scan: created {} job(s) — {}{}",
+            len(jobs),
+            summary,
+            queue_note,
+        )
         return jobs
 
     def analyze_album(self, library_id: UUID, album_id: UUID) -> list[MediaGap]:
@@ -94,7 +117,7 @@ class MissingMediaAnalyzer:
             return []
 
         library_tracks = self._tracks.list_by_album(library_id, album_id)
-        return _gaps_for_album(
+        gaps = _gaps_for_album(
             library_id=library_id,
             album_id=album_id,
             album_title=album.title,
@@ -107,15 +130,70 @@ class MissingMediaAnalyzer:
             },
             library_track_count=len(library_tracks),
         )
+        _log_album_gap_summary(album.title, tracklist.track_count, gaps)
+        return gaps
 
     def analyze_library(self, library_id: UUID) -> list[MediaGap]:
         """Scan albums linked to ``library_id`` and return all detected gaps."""
         gaps: list[MediaGap] = []
+        albums_scanned = 0
+        complete_albums = 0
         for row in self._albums.list_for_library(library_id):
             if not row.mbid:
                 continue
-            gaps.extend(self.analyze_album(library_id, row.album_id))
+            albums_scanned += 1
+            album_gaps = self.analyze_album(library_id, row.album_id)
+            if not any(gap.kind is MediaGapKind.MISSING_TRACK for gap in album_gaps):
+                complete_albums += 1
+            gaps.extend(album_gaps)
+
+        track_gaps = [gap for gap in gaps if gap.kind is MediaGapKind.MISSING_TRACK]
+        incomplete_albums = albums_scanned - complete_albums
+        if albums_scanned == 0:
+            logger.info("Missing-media scan: no MusicBrainz-linked albums in library")
+        elif not track_gaps:
+            logger.info(
+                "Missing-media scan complete: {} album(s) checked — all have expected tracks",
+                albums_scanned,
+            )
+        else:
+            logger.info(
+                "Missing-media scan complete: {} missing track(s) across {} album(s) "
+                "({} album(s) complete)",
+                len(track_gaps),
+                incomplete_albums,
+                complete_albums,
+            )
         return gaps
+
+
+def _log_album_gap_summary(album_title: str, official_count: int, gaps: list[MediaGap]) -> None:
+    track_gaps = [gap for gap in gaps if gap.kind is MediaGapKind.MISSING_TRACK]
+    if not track_gaps:
+        logger.info(
+            "Album has all tracks expected: {} ({}/{})",
+            album_title,
+            official_count,
+            official_count,
+        )
+        return
+
+    titles = [
+        gap.track_title or (f"#{gap.track_number}" if gap.track_number is not None else "unknown")
+        for gap in track_gaps
+    ]
+    preview = ", ".join(titles[:4])
+    if len(titles) > 4:
+        preview += f" (+{len(titles) - 4} more)"
+    owned = official_count - len(track_gaps)
+    logger.info(
+        "{} track(s) missing from {} ({}/{} owned) — {}",
+        len(track_gaps),
+        album_title,
+        owned,
+        official_count,
+        preview,
+    )
 
 
 def _gaps_for_album(

@@ -9,6 +9,7 @@ from loguru import logger
 from vaultseek.models.entities.acquisition_job import AcquisitionJobState
 from vaultseek.models.interfaces.acquisition import SearchRequest, SearchResult
 from vaultseek.services.acquisition_engine import AcquisitionEngine
+from vaultseek.services.acquisition_labels import job_label
 from vaultseek.services.provider_manager import ProviderManager
 
 
@@ -71,15 +72,16 @@ class SearchDispatcher:
 
         if not self._providers.has_connected_search_providers(provider_ids=provider_ids):
             note = "no acquisition providers connected (offline or disabled)"
-            logger.warning("Acquisition search {}: {}", job_id, note)
+            logger.warning("Search for {}: {}", job_label(job), note)
             self._engine.advance(job_id, AcquisitionJobState.NO_RESULTS, note=note)
             self._engine.update_extra(job_id, {"provider_offline": True})
             return []
 
+        logger.info("Searching providers for {}", job_label(job))
         results = self._providers.search(request, provider_ids=provider_ids)
 
         if not results:
-            logger.info("Acquisition search {}: no provider results", job_id)
+            logger.info("Search for {}: no provider results", job_label(job))
             self._engine.advance(
                 job_id,
                 AcquisitionJobState.NO_RESULTS,
@@ -87,6 +89,8 @@ class SearchDispatcher:
             )
             self._engine.update_extra(job_id, {"provider_offline": False})
             return []
+
+        logger.info("Search found {} result(s) for {}", len(results), job_label(job))
 
         self._engine.advance(
             job_id,

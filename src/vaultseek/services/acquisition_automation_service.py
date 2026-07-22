@@ -84,6 +84,7 @@ class AcquisitionAutomationService:
 
         self._stop = threading.Event()
         self._thread: threading.Thread | None = None
+        self._last_auto_acquire_pending: dict[UUID, int] = {}
 
     def start(self) -> None:
         if self._thread and self._thread.is_alive():
@@ -131,9 +132,22 @@ class AcquisitionAutomationService:
         # 4) Surface stuck failures under Attention needed.
         self._park_attention_for_failures(library_id)
 
+    def _count_jobs(self, library_id: UUID, states: tuple[AcquisitionJobState, ...]) -> int:
+        total = 0
+        for state in states:
+            total += len(self._jobs.list_by_library(library_id=library_id, state=state))
+        return total
+
     def _auto_acquire(self, library_id: UUID) -> None:
         # Keep it bounded to avoid long loops if many jobs exist.
         processed = 0
+        pending = self._count_jobs(library_id, _AUTO_ACQUIRE_STATES)
+        last_pending = self._last_auto_acquire_pending.get(library_id)
+        if pending and pending != last_pending:
+            logger.info("Auto-acquire: {} job(s) ready to search or download", pending)
+            self._last_auto_acquire_pending[library_id] = pending
+        elif not pending and last_pending:
+            self._last_auto_acquire_pending.pop(library_id, None)
         for state in _AUTO_ACQUIRE_STATES:
             if processed >= self._cfg.max_jobs_per_library_per_cycle:
                 return
