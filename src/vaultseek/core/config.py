@@ -18,7 +18,7 @@ from typing import Any
 
 from vaultseek.core.exceptions import ConfigError, ConfigMigrationError, ConfigVersionError
 
-CURRENT_SCHEMA_VERSION = 16
+CURRENT_SCHEMA_VERSION = 17
 
 
 @dataclass(frozen=True)
@@ -151,6 +151,10 @@ class AppConfig:
     schema_version: int = CURRENT_SCHEMA_VERSION
     log_level: str = "INFO"
     theme: str = "dark"
+    # First-run wizard: False for new installs; migration sets True for upgrades.
+    setup_completed: bool = False
+    # Dashboard “Getting started” checklist — hide after user dismisses.
+    onboarding_tips_dismissed: bool = False
     pipeline: PipelineConfig = field(default_factory=PipelineConfig)
     metadata: MetadataConfig = field(default_factory=MetadataConfig)
     watch: WatchConfig = field(default_factory=WatchConfig)
@@ -369,6 +373,16 @@ def _migrate_v15_to_v16(raw: dict[str, Any]) -> dict[str, Any]:
     return migrated
 
 
+def _migrate_v16_to_v17(raw: dict[str, Any]) -> dict[str, Any]:
+    """Onboarding flags — existing installs skip forced first-run wizard."""
+    migrated = dict(raw)
+    migrated["schema_version"] = 17
+    # Upgrades already have folders/config; don't force the wizard on them.
+    migrated.setdefault("setup_completed", True)
+    migrated.setdefault("onboarding_tips_dismissed", False)
+    return migrated
+
+
 _MIGRATIONS: dict[int, Callable[[dict[str, Any]], dict[str, Any]]] = {
     1: _migrate_v1_to_v2,
     2: _migrate_v2_to_v3,
@@ -385,6 +399,7 @@ _MIGRATIONS: dict[int, Callable[[dict[str, Any]], dict[str, Any]]] = {
     13: _migrate_v13_to_v14,
     14: _migrate_v14_to_v15,
     15: _migrate_v15_to_v16,
+    16: _migrate_v16_to_v17,
 }
 
 

@@ -105,6 +105,39 @@ class DashboardPage(QWidget):
         self._insight = _selectable_label(insight=True)
         layout.addWidget(self._insight)
 
+        # First-time / incomplete setup checklist (hide when dismissed).
+        self._getting_started = QFrame()
+        self._getting_started.setProperty("dashPanel", True)
+        gs_layout = QVBoxLayout(self._getting_started)
+        gs_title = QLabel("Getting started")
+        gs_title.setProperty("panelTitle", True)
+        gs_layout.addWidget(gs_title)
+        self._getting_started_body = _selectable_label()
+        gs_layout.addWidget(self._getting_started_body)
+        gs_actions = QHBoxLayout()
+        self._btn_run_wizard = QPushButton("Run setup wizard")
+        self._btn_run_wizard.clicked.connect(
+            lambda: self.navigate_requested.emit("setup_wizard")
+        )
+        self._btn_gs_scan = QPushButton("Scan Incoming")
+        self._btn_gs_scan.setProperty("secondary", True)
+        self._btn_gs_scan.clicked.connect(lambda: self.navigate_requested.emit("scan"))
+        self._btn_gs_missing = QPushButton("Find missing songs")
+        self._btn_gs_missing.setProperty("secondary", True)
+        self._btn_gs_missing.clicked.connect(
+            lambda: self.navigate_requested.emit("acquisition")
+        )
+        self._btn_gs_dismiss = QPushButton("Dismiss tips")
+        self._btn_gs_dismiss.setProperty("secondary", True)
+        self._btn_gs_dismiss.clicked.connect(self._dismiss_onboarding_tips)
+        gs_actions.addWidget(self._btn_run_wizard)
+        gs_actions.addWidget(self._btn_gs_scan)
+        gs_actions.addWidget(self._btn_gs_missing)
+        gs_actions.addWidget(self._btn_gs_dismiss)
+        gs_actions.addStretch(1)
+        gs_layout.addLayout(gs_actions)
+        layout.addWidget(self._getting_started)
+
         def _section_title(text: str) -> QLabel:
             label = QLabel(text)
             label.setProperty("panelTitle", True)
@@ -441,6 +474,63 @@ class DashboardPage(QWidget):
             else f"At most every {float(value):g} hour(s)"
         )
 
+    def _dismiss_onboarding_tips(self) -> None:
+        from dataclasses import replace
+
+        updated = replace(self._container.config, onboarding_tips_dismissed=True)
+        save_config(updated, self._container.paths.config_file)
+        self._container.config = updated
+        self._getting_started.setVisible(False)
+
+    def _refresh_getting_started(self, snap: DashboardSnapshot) -> None:
+        """Show a short checklist until the user dismisses tips (or has no library)."""
+        # Never hide when there is no library — otherwise first-time users are stuck.
+        if self._container.config.onboarding_tips_dismissed and snap.has_library:
+            self._getting_started.setVisible(False)
+            return
+
+        steps: list[str] = []
+        if not snap.has_library:
+            steps.append("1. Create folders — click Run setup wizard (Incoming + Library).")
+        else:
+            steps.append("1. Library folders — done.")
+
+        nicotine_on = self._container.config.acquisition.nicotine_plus.enabled
+        connected = self._container.provider_manager.has_connected_search_providers()
+        if not nicotine_on:
+            steps.append(
+                "2. Enable Nicotine+ in the wizard or Settings → Acquisition (for downloads)."
+            )
+        elif not connected:
+            steps.append(
+                "2. Start Nicotine+ with api-nicotine-plus, then Test connection in Settings."
+            )
+        else:
+            steps.append("2. Nicotine+ connected — ready to search.")
+
+        if snap.track_count == 0:
+            steps.append("3. Scan Incoming (or drop music into Incoming) to build the catalog.")
+        else:
+            steps.append(
+                f"3. Catalog has {snap.track_count} track(s) — keep scanning as you add files."
+            )
+
+        if snap.acquisition.total == 0:
+            steps.append(
+                "4. Find gaps — Albums → Find missing songs, or Discogs → search an artist."
+            )
+        else:
+            steps.append(
+                f"4. Wishlist has {snap.acquisition.active} active job(s) — "
+                "watch Acquisition / Jobs."
+            )
+
+        steps.append(
+            "Colors on Albums/Library: green = OK · orange = missing or below quality prefs."
+        )
+        self._getting_started_body.setText("\n".join(steps))
+        self._getting_started.setVisible(True)
+
     def _refresh_live_log(self) -> None:
         text = get_live_log_buffer().text()
         # Avoid resetting scroll when content is unchanged.
@@ -455,6 +545,7 @@ class DashboardPage(QWidget):
             self._live_log.moveCursor(QTextCursor.MoveOperation.End)
 
     def _apply(self, snap: DashboardSnapshot) -> None:
+        self._refresh_getting_started(snap)
         if not snap.has_library:
             self._heading.setText("Dashboard")
             self._insight.setText(snap.insight)

@@ -38,6 +38,7 @@ from vaultseek.gui.views.logs_page import LogsPage
 from vaultseek.gui.views.reports_page import ReportsPage
 from vaultseek.gui.views.review_page import ReviewPage
 from vaultseek.gui.views.settings_page import SettingsPage
+from vaultseek.gui.views.setup_wizard import SetupWizard
 from vaultseek.gui.views.stub_page import StubPage
 from vaultseek.gui.widgets.desktop import open_path
 from vaultseek.models.entities.job import JobType
@@ -171,6 +172,8 @@ class MainWindow(QMainWindow):
 
         self.reload_libraries()
         self._tick()
+        # Defer wizard until the window is visible (avoids modal-before-show glitches).
+        QTimer.singleShot(0, self._maybe_show_setup_wizard)
 
     def _build_menus(self) -> None:
         file_menu = self.menuBar().addMenu("&File")
@@ -231,6 +234,10 @@ class MainWindow(QMainWindow):
         view_menu.addAction(refresh)
 
         help_menu = self.menuBar().addMenu("&Help")
+        setup = QAction("Setup &wizard…", self)
+        setup.setToolTip("Walk through folders, Nicotine+, and optional tokens.")
+        setup.triggered.connect(lambda: self._show_setup_wizard(force=True))
+        help_menu.addAction(setup)
         about = QAction("&About VaultSeek", self)
         about.triggered.connect(self._about)
         help_menu.addAction(about)
@@ -239,7 +246,37 @@ class MainWindow(QMainWindow):
         uninstall.triggered.connect(self._uninstall)
         help_menu.addAction(uninstall)
 
+    def _maybe_show_setup_wizard(self) -> None:
+        """Auto-open wizard for new installs or when no library exists yet."""
+        has_library = bool(self._container.library_repo.list_all())
+        if self._container.config.setup_completed and has_library:
+            return
+        self._show_setup_wizard(force=False)
+
+    def _show_setup_wizard(self, *, force: bool = False) -> None:
+        del force  # same dialog either way; force only bypasses the auto-skip above
+        wizard = SetupWizard(self._container, parent=self)
+        wizard.finished_setup.connect(self._on_setup_finished)
+        wizard.exec()
+
+    def _on_setup_finished(self, library_id: object) -> None:
+        if isinstance(library_id, UUID):
+            self.reload_libraries()
+            # Select the library created/updated by the wizard.
+            for index in range(self._library_combo.count()):
+                if self._library_combo.itemData(index) == library_id:
+                    self._library_combo.setCurrentIndex(index)
+                    break
+            self._dashboard_page.refresh()
+            self._go_to("dashboard")
+            self.statusBar().showMessage(
+                "Setup complete — follow Getting started on the Dashboard.", 8000
+            )
+
     def _on_dashboard_navigate(self, key: str) -> None:
+        if key == "setup_wizard":
+            self._show_setup_wizard(force=True)
+            return
         if key == "scan":
             self._scan_incoming(force=False)
             return

@@ -1,7 +1,9 @@
 {
-  "schema_version": 15,
+  "schema_version": 17,
   "log_level": "INFO",
   "theme": "dark",
+  "setup_completed": false,
+  "onboarding_tips_dismissed": false,
   "pipeline": {
     "db_writer_batch_size": 5000,
     "db_writer_flush_interval_ms": 500,
@@ -13,9 +15,21 @@
     "retry_max_delay_seconds": 300.0
   },
   "metadata": {
-    "confidence_threshold": 0.90,
-    "provider_order": ["acoustid", "musicbrainz", "discogs", "local_tags", "filename_parser"],
-    "enabled_providers": ["acoustid", "musicbrainz", "discogs", "local_tags", "filename_parser"],
+    "confidence_threshold": 0.9,
+    "provider_order": [
+      "acoustid",
+      "musicbrainz",
+      "discogs",
+      "local_tags",
+      "filename_parser"
+    ],
+    "enabled_providers": [
+      "acoustid",
+      "musicbrainz",
+      "discogs",
+      "local_tags",
+      "filename_parser"
+    ],
     "acoustid_api_key": "",
     "discogs_user_token": "",
     "acoustid_endpoints": [],
@@ -31,8 +45,13 @@
     "min_height": 500
   },
   "acquisition": {
-    "enabled_providers": ["stub"],
-    "provider_order": ["nicotine_plus", "stub"],
+    "enabled_providers": [
+      "stub"
+    ],
+    "provider_order": [
+      "nicotine_plus",
+      "stub"
+    ],
     "search_timeout_seconds": 30.0,
     "auto_queue_jobs": true,
     "auto_acquire_threshold": 0.45,
