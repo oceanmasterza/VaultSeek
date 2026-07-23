@@ -7,7 +7,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from uuid import UUID, uuid7
 
-from PySide6.QtCore import Signal
+from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
     QCheckBox,
     QComboBox,
@@ -37,6 +37,13 @@ from vaultseek.models.entities.track import LibraryZone
 from vaultseek.services.acquisition_bootstrap import (
     connect_acquisition_providers,
     probe_nicotine_plus_connection,
+)
+from vaultseek.services.quality_presets import (
+    PRESET_CHOICES,
+    PRESET_CUSTOM,
+    infer_preset,
+    normalize_preset_id,
+    values_for_preset,
 )
 from vaultseek.services.library_reset import reset_library_processing
 
@@ -224,6 +231,19 @@ class SettingsPage(QWidget):
         )
         acq_form.addRow("Auto-acquire threshold", self._acq_threshold)
         acq_form.addRow(self._auto_queue_jobs)
+        self._quality_preset = QComboBox()
+        for preset_id, label, tip in PRESET_CHOICES:
+            self._quality_preset.addItem(label, preset_id)
+            idx = self._quality_preset.count() - 1
+            self._quality_preset.setItemData(idx, tip, Qt.ItemDataRole.ToolTipRole)
+        self._quality_preset.setToolTip(
+            "Named profiles for orange traffic lights and quality upgrades. "
+            "Custom keeps your manual codec / bitrate values."
+        )
+        self._quality_preset_hint = QLabel("")
+        self._quality_preset_hint.setProperty("muted", True)
+        self._quality_preset_hint.setWordWrap(True)
+        self._quality_applying = False
         self._prefer_lossless = QCheckBox("Prefer lossless (FLAC/ALAC) when available")
         self._prefer_lossless.setChecked(True)
         self._preferred_codec = QLineEdit()
@@ -251,11 +271,17 @@ class SettingsPage(QWidget):
             "How often background wishlist searches run. 0 = as often as Soulseek "
             "rate limits allow. Example: 6 = at most one search pass every 6 hours."
         )
+        acq_form.addRow("Quality preset", self._quality_preset)
+        acq_form.addRow(self._quality_preset_hint)
         acq_form.addRow(self._prefer_lossless)
         acq_form.addRow("Preferred codec", self._preferred_codec)
         acq_form.addRow("Min bitrate (lossy)", self._min_bitrate)
         acq_form.addRow(self._download_whole_album)
         acq_form.addRow("Wishlist search every", self._wishlist_hours)
+        self._quality_preset.currentIndexChanged.connect(self._on_quality_preset_changed)
+        self._prefer_lossless.toggled.connect(self._on_quality_fields_edited)
+        self._preferred_codec.textEdited.connect(self._on_quality_fields_edited)
+        self._min_bitrate.valueChanged.connect(self._on_quality_fields_edited)
         acq_form.addRow(self._nicotine_enabled)
         acq_form.addRow("Nicotine+ transport", self._nicotine_transport)
         acq_form.addRow("Nicotine+ host", self._nicotine_host)
@@ -468,9 +494,13 @@ class SettingsPage(QWidget):
         self._sync_fingerprint_sample_enabled()
         self._acq_threshold.setValue(config.acquisition.auto_acquire_threshold)
         self._auto_queue_jobs.setChecked(config.acquisition.auto_queue_jobs)
+        self._set_quality_preset_combo(
+            normalize_preset_id(getattr(config.acquisition, "quality_preset", PRESET_CUSTOM))
+        )
         self._prefer_lossless.setChecked(config.acquisition.prefer_lossless)
         self._preferred_codec.setText(config.acquisition.preferred_codec or "")
         self._min_bitrate.setValue(int(config.acquisition.min_bitrate_kbps))
+        self._update_quality_preset_hint()
         self._download_whole_album.setChecked(config.acquisition.download_whole_album_on_upgrade)
         self._wishlist_hours.setValue(float(config.acquisition.wishlist_search_interval_hours))
         nicotine = config.acquisition.nicotine_plus
@@ -710,6 +740,46 @@ class SettingsPage(QWidget):
         sample = self._fingerprint_mode.currentData() == "sample"
         self._fingerprint_sample_min.setEnabled(sample)
 
+    def _set_quality_preset_combo(self, preset_id: str) -> None:
+        key = normalize_preset_id(preset_id)
+        index = self._quality_preset.findData(key)
+        self._quality_applying = True
+        self._quality_preset.setCurrentIndex(index if index >= 0 else self._quality_preset.findData(PRESET_CUSTOM))
+        self._quality_applying = False
+        self._update_quality_preset_hint()
+
+    def _update_quality_preset_hint(self) -> None:
+        tip = ""
+        for preset_id, _label, description in PRESET_CHOICES:
+            if preset_id == self._quality_preset.currentData():
+                tip = description
+                break
+        self._quality_preset_hint.setText(tip)
+
+    def _on_quality_preset_changed(self, _index: int = 0) -> None:
+        if self._quality_applying:
+            return
+        values = values_for_preset(str(self._quality_preset.currentData() or PRESET_CUSTOM))
+        self._update_quality_preset_hint()
+        if values is None:
+            return
+        self._quality_applying = True
+        self._prefer_lossless.setChecked(values.prefer_lossless)
+        self._preferred_codec.setText(values.preferred_codec)
+        self._min_bitrate.setValue(values.min_bitrate_kbps)
+        self._quality_applying = False
+
+    def _on_quality_fields_edited(self, *_args: object) -> None:
+        if self._quality_applying:
+            return
+        matched = infer_preset(
+            prefer_lossless=self._prefer_lossless.isChecked(),
+            preferred_codec=self._preferred_codec.text().strip(),
+            min_bitrate_kbps=int(self._min_bitrate.value()),
+        )
+        if self._quality_preset.currentData() != matched:
+            self._set_quality_preset_combo(matched)
+
     def _save_preferences(self) -> None:
         from dataclasses import replace as dc_replace
 
@@ -775,6 +845,7 @@ class SettingsPage(QWidget):
             prefer_lossless=self._prefer_lossless.isChecked(),
             preferred_codec=self._preferred_codec.text().strip(),
             min_bitrate_kbps=int(self._min_bitrate.value()),
+            quality_preset=normalize_preset_id(self._quality_preset.currentData()),
             download_whole_album_on_upgrade=self._download_whole_album.isChecked(),
             wishlist_search_interval_hours=float(self._wishlist_hours.value()),
             nicotine_plus=NicotinePlusConfig(

@@ -46,6 +46,7 @@ from vaultseek.gui.views.settings_page import SettingsPage
 from vaultseek.gui.views.setup_wizard import SetupWizard
 from vaultseek.gui.views.stub_page import StubPage
 from vaultseek.gui.widgets.desktop import open_path
+from vaultseek.gui.widgets.jump_palette import JumpPalette, jump_destinations_from_hubs
 from vaultseek.models.entities.job import JobType
 from vaultseek.models.entities.library import Library
 from vaultseek.models.entities.track import LibraryZone
@@ -277,6 +278,11 @@ class MainWindow(QMainWindow):
         go_settings.triggered.connect(lambda: self._go_to("settings"))
         view_menu.addAction(go_settings)
         view_menu.addSeparator()
+        jump = QAction("&Jump to…", self)
+        jump.setShortcut(QKeySequence("Ctrl+K"))
+        jump.setToolTip("Open a filterable list of every page (four hubs).")
+        jump.triggered.connect(self._open_jump_palette)
+        view_menu.addAction(jump)
         refresh = QAction("&Refresh", self)
         refresh.setShortcut(QKeySequence.StandardKey.Refresh)
         refresh.triggered.connect(self._refresh_current)
@@ -294,6 +300,11 @@ class MainWindow(QMainWindow):
         uninstall.setToolTip("Remove the installed application via Windows Apps & Features.")
         uninstall.triggered.connect(self._uninstall)
         help_menu.addAction(uninstall)
+
+    def _open_jump_palette(self) -> None:
+        dialog = JumpPalette(jump_destinations_from_hubs(_NAV_HUBS), parent=self)
+        if dialog.exec() and dialog.selected_key:
+            self._go_to(dialog.selected_key)
 
     def _maybe_show_setup_wizard(self) -> None:
         """Auto-open at most once: true first run only (never completed, no library)."""

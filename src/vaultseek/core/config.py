@@ -18,7 +18,7 @@ from typing import Any
 
 from vaultseek.core.exceptions import ConfigError, ConfigMigrationError, ConfigVersionError
 
-CURRENT_SCHEMA_VERSION = 17
+CURRENT_SCHEMA_VERSION = 18
 
 
 @dataclass(frozen=True)
@@ -59,6 +59,8 @@ class AcquisitionConfig:
     prefer_lossless: bool = True
     preferred_codec: str = ""
     min_bitrate_kbps: int = 192
+    # Named UI preset: completist | collector | lossy_ok | custom
+    quality_preset: str = "custom"
     download_whole_album_on_upgrade: bool = True
     # 0 = search wishlist as often as rate limits allow; >0 = at most one search pass per N hours.
     wishlist_search_interval_hours: float = 0.0
@@ -383,6 +385,23 @@ def _migrate_v16_to_v17(raw: dict[str, Any]) -> dict[str, Any]:
     return migrated
 
 
+def _migrate_v17_to_v18(raw: dict[str, Any]) -> dict[str, Any]:
+    """Named quality presets for Settings / Setup wizard UI."""
+    migrated = dict(raw)
+    migrated["schema_version"] = 18
+    acq = dict(migrated.get("acquisition") or asdict(AcquisitionConfig()))
+    if "quality_preset" not in acq:
+        from vaultseek.services.quality_presets import infer_preset
+
+        acq["quality_preset"] = infer_preset(
+            prefer_lossless=bool(acq.get("prefer_lossless", True)),
+            preferred_codec=str(acq.get("preferred_codec") or ""),
+            min_bitrate_kbps=int(acq.get("min_bitrate_kbps") or 0),
+        )
+    migrated["acquisition"] = acq
+    return migrated
+
+
 _MIGRATIONS: dict[int, Callable[[dict[str, Any]], dict[str, Any]]] = {
     1: _migrate_v1_to_v2,
     2: _migrate_v2_to_v3,
@@ -400,6 +419,7 @@ _MIGRATIONS: dict[int, Callable[[dict[str, Any]], dict[str, Any]]] = {
     14: _migrate_v14_to_v15,
     15: _migrate_v15_to_v16,
     16: _migrate_v16_to_v17,
+    17: _migrate_v17_to_v18,
 }
 
 

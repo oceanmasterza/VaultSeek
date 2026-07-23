@@ -1,5 +1,5 @@
 {
-  "schema_version": 17,
+  "schema_version": 18,
   "log_level": "INFO",
   "theme": "dark",
   "setup_completed": false,
@@ -58,6 +58,7 @@
     "prefer_lossless": true,
     "preferred_codec": "",
     "min_bitrate_kbps": 192,
+    "quality_preset": "custom",
     "download_whole_album_on_upgrade": true,
     "wishlist_search_interval_hours": 0.0,
     "nicotine_plus": {

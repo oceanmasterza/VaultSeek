@@ -13,9 +13,10 @@ from datetime import UTC, datetime
 from pathlib import Path
 from uuid import UUID, uuid7
 
-from PySide6.QtCore import Signal
+from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
     QCheckBox,
+    QComboBox,
     QFormLayout,
     QHBoxLayout,
     QLabel,
@@ -39,6 +40,13 @@ from vaultseek.models.entities.library import Library
 from vaultseek.services.acquisition_bootstrap import (
     connect_acquisition_providers,
     probe_nicotine_plus_connection,
+)
+from vaultseek.services.quality_presets import (
+    PRESET_CHOICES,
+    PRESET_CUSTOM,
+    infer_preset,
+    normalize_preset_id,
+    values_for_preset,
 )
 
 
@@ -158,8 +166,9 @@ class SetupWizard(QWizard):
             auto_queue_jobs=True,
             auto_acquire_threshold=self._container.config.acquisition.auto_acquire_threshold,
             prefer_lossless=self._quality.prefer_lossless.isChecked(),
-            preferred_codec=self._container.config.acquisition.preferred_codec,
+            preferred_codec=self._quality.preferred_codec.text().strip(),
             min_bitrate_kbps=int(self._quality.min_bitrate.value()),
+            quality_preset=normalize_preset_id(self._quality.preset.currentData()),
             download_whole_album_on_upgrade=(
                 self._container.config.acquisition.download_whole_album_on_upgrade
             ),
@@ -348,15 +357,74 @@ class _QualityPage(QWizardPage):
         self.setTitle("Library quality")
         self.setSubTitle("Used for orange “below prefs / missing” highlights and upgrade jobs.")
         layout = QFormLayout(self)
+        self._applying = False
+        self.preset = QComboBox()
+        for preset_id, label, tip in PRESET_CHOICES:
+            self.preset.addItem(label, preset_id)
+            self.preset.setItemData(self.preset.count() - 1, tip, Qt.ItemDataRole.ToolTipRole)
+        self.preset_hint = QLabel("")
+        self.preset_hint.setProperty("muted", True)
+        self.preset_hint.setWordWrap(True)
         self.prefer_lossless = QCheckBox("Prefer lossless (FLAC) when available")
         self.prefer_lossless.setChecked(True)
+        self.preferred_codec = QLineEdit()
+        self.preferred_codec.setPlaceholderText("Optional, e.g. FLAC or MP3")
         self.min_bitrate = QSpinBox()
         self.min_bitrate.setRange(0, 3200)
         self.min_bitrate.setSingleStep(32)
         self.min_bitrate.setValue(192)
         self.min_bitrate.setSuffix(" kbps")
+        layout.addRow("Quality preset", self.preset)
+        layout.addRow(self.preset_hint)
         layout.addRow(self.prefer_lossless)
+        layout.addRow("Preferred codec", self.preferred_codec)
         layout.addRow("Min bitrate for lossy", self.min_bitrate)
+        self.preset.currentIndexChanged.connect(self._on_preset_changed)
+        self.prefer_lossless.toggled.connect(self._on_fields_edited)
+        self.preferred_codec.textEdited.connect(self._on_fields_edited)
+        self.min_bitrate.valueChanged.connect(self._on_fields_edited)
+        # Default first-run suggestion: Collector (prefer lossless, 320 floor).
+        collector_index = self.preset.findData("collector")
+        if collector_index >= 0:
+            self.preset.setCurrentIndex(collector_index)
+        self._on_preset_changed()
+
+    def _on_preset_changed(self, _index: int = 0) -> None:
+        if self._applying:
+            return
+        values = values_for_preset(str(self.preset.currentData() or PRESET_CUSTOM))
+        tip = ""
+        for preset_id, _label, description in PRESET_CHOICES:
+            if preset_id == self.preset.currentData():
+                tip = description
+                break
+        self.preset_hint.setText(tip)
+        if values is None:
+            return
+        self._applying = True
+        self.prefer_lossless.setChecked(values.prefer_lossless)
+        self.preferred_codec.setText(values.preferred_codec)
+        self.min_bitrate.setValue(values.min_bitrate_kbps)
+        self._applying = False
+
+    def _on_fields_edited(self, *_args: object) -> None:
+        if self._applying:
+            return
+        matched = infer_preset(
+            prefer_lossless=self.prefer_lossless.isChecked(),
+            preferred_codec=self.preferred_codec.text().strip(),
+            min_bitrate_kbps=int(self.min_bitrate.value()),
+        )
+        index = self.preset.findData(matched)
+        if index >= 0 and self.preset.currentIndex() != index:
+            self._applying = True
+            self.preset.setCurrentIndex(index)
+            self._applying = False
+            tip = next(
+                (d for pid, _l, d in PRESET_CHOICES if pid == matched),
+                "",
+            )
+            self.preset_hint.setText(tip)
 
 
 class _DonePage(QWizardPage):
