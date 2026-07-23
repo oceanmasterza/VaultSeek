@@ -31,6 +31,7 @@ from vaultseek.core.container import Container
 from vaultseek.gui.bridge.qt_event_bridge import QtEventBridge
 from vaultseek.gui.theme import apply_theme
 from vaultseek.gui.views.acquisition_page import AcquisitionPage
+from vaultseek.gui.views.activity_page import ActivityPage
 from vaultseek.gui.views.albums_page import AlbumsPage
 from vaultseek.gui.views.artwork_page import ArtworkPage
 from vaultseek.gui.views.artists_page import ArtistsPage
@@ -75,17 +76,18 @@ _NAV_HUBS: tuple[tuple[str, tuple[tuple[str, str], ...]], ...] = (
             ("Wishlist", "acquisition"),
         ),
     ),
-    (
-        "System",
         (
-            ("Jobs", "jobs"),
-            ("Reports", "reports"),
-            ("Logs", "logs"),
-            ("Settings", "settings"),
-            ("Plugins", "plugins"),
+            "System",
+            (
+                ("Jobs", "jobs"),
+                ("Activity", "activity"),
+                ("Reports", "reports"),
+                ("Logs", "logs"),
+                ("Settings", "settings"),
+                ("Plugins", "plugins"),
+            ),
         ),
-    ),
-)
+    )
 
 
 class MainWindow(QMainWindow):
@@ -148,6 +150,8 @@ class MainWindow(QMainWindow):
         self._albums_page.navigate_requested.connect(self._on_dashboard_navigate)
         self._artwork_page = ArtworkPage(container)
         self._jobs_page = JobsPage(container)
+        self._activity_page = ActivityPage(container)
+        self._activity_page.navigate_requested.connect(self._on_dashboard_navigate)
         self._duplicates_page = DuplicatesPage(container)
         self._acquisition_page = AcquisitionPage(container)
         self._acquisition_page.navigate_requested.connect(self._on_dashboard_navigate)
@@ -170,6 +174,7 @@ class MainWindow(QMainWindow):
             "find": self._find_page,
             "acquisition": self._acquisition_page,
             "jobs": self._jobs_page,
+            "activity": self._activity_page,
             "artwork": self._artwork_page,
             "reports": self._reports_page,
             "logs": self._logs_page,
@@ -517,6 +522,8 @@ class MainWindow(QMainWindow):
             self._update_review_badge()
         elif key == "jobs":
             self._jobs_page.refresh()
+        elif key == "activity":
+            self._activity_page.refresh()
         elif key == "library":
             self._library_page.refresh()
         elif key == "artists":
@@ -551,6 +558,7 @@ class MainWindow(QMainWindow):
             self._artwork_page,
             self._review_page,
             self._jobs_page,
+            self._activity_page,
             self._duplicates_page,
             self._find_page,
             self._acquisition_page,
@@ -600,6 +608,8 @@ class MainWindow(QMainWindow):
             self._dashboard_page.refresh()
         elif key == "jobs":
             self._jobs_page.refresh()
+        elif key == "activity":
+            self._activity_page.refresh()
         elif key == "acquisition":
             self._acquisition_page.poll_downloads()
         self._update_review_badge()
