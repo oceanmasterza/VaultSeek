@@ -25,6 +25,7 @@ from vaultseek.core.container import Container
 from vaultseek.gui.async_task import run_in_background
 from vaultseek.models.entities.acquisition_job import AcquisitionJobType
 from vaultseek.plugins.builtin.discogs.provider import DiscogsProvider
+from vaultseek.services.wanted import park_album_job
 
 
 @dataclass(frozen=True, slots=True)
@@ -141,9 +142,16 @@ class DiscogsPage(QWidget):
         actions = QHBoxLayout()
         queue_btn = QPushButton("Queue selected for download")
         queue_btn.setToolTip(
-            "Create missing-album acquisition jobs for the selected Discogs releases."
+            "Create missing-album jobs and search/download now (Wishlist)."
         )
         queue_btn.clicked.connect(self._queue_selected)
+        wanted_btn = QPushButton("Add to Wanted")
+        wanted_btn.setProperty("secondary", True)
+        wanted_btn.setToolTip(
+            "Park selected releases on the Wanted shelf without searching yet. "
+            "Start download later from Albums → Wanted or Wishlist."
+        )
+        wanted_btn.clicked.connect(self._add_to_wanted)
         select_all = QPushButton("Select all")
         select_all.setProperty("secondary", True)
         select_all.clicked.connect(self._table.selectAll)
@@ -151,6 +159,7 @@ class DiscogsPage(QWidget):
         clear_sel.setProperty("secondary", True)
         clear_sel.clicked.connect(self._table.clearSelection)
         actions.addWidget(queue_btn)
+        actions.addWidget(wanted_btn)
         actions.addWidget(select_all)
         actions.addWidget(clear_sel)
         actions.addStretch(1)
@@ -372,6 +381,46 @@ class DiscogsPage(QWidget):
             self,
             "Discogs",
             f"Queued {created} album job(s).{extra}",
+        )
+
+    def _add_to_wanted(self) -> None:
+        if self._library_id is None:
+            QMessageBox.warning(self, "Discogs", "Select a library first.")
+            return
+        rows = sorted({index.row() for index in self._table.selectedIndexes()})
+        selected = [self._rows[row] for row in rows if 0 <= row < len(self._rows)]
+        if not selected:
+            QMessageBox.information(self, "Discogs", "Select one or more releases.")
+            return
+
+        engine = self._container.acquisition_engine
+        created = 0
+        for row in selected:
+            artist = row.artist or self._artist_name
+            park_album_job(
+                engine,
+                library_id=self._library_id,
+                artist=artist,
+                album=row.title,
+                year=int(row.year) if row.year.isdigit() else None,
+                preferred_codec=self._container.config.acquisition.preferred_codec or None,
+                priority=90,
+                extra={
+                    "discogs_release_id": row.release_id,
+                    "discogs_artist_id": self._artist_id,
+                    "discogs_role": row.role,
+                    "discogs_format": row.format,
+                    "discogs_label": row.label,
+                    "source": "wanted",
+                },
+            )
+            created += 1
+
+        QMessageBox.information(
+            self,
+            "Discogs",
+            f"Added {created} release(s) to Wanted. "
+            "Open Albums → Wanted (or Wishlist → Show Wanted) and click Start download when ready.",
         )
 
 

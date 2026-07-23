@@ -26,6 +26,7 @@ from vaultseek.services.download_manager import DownloadManager
 from vaultseek.services.review_queue_service import ReviewQueueService
 from vaultseek.services.scoring_engine import ScoringEngine
 from vaultseek.services.search_dispatcher import SearchDispatcher
+from vaultseek.services.wanted import is_parked
 
 
 @dataclass(frozen=True, slots=True)
@@ -135,6 +136,16 @@ class AcquisitionRunner:
         )
 
     def try_auto_acquire(self, job_id: UUID, *, auto_import: bool = True) -> RunnerOutcome:
+        job = self._engine.get(job_id)
+        if job is None:
+            raise KeyError(f"AcquisitionJob {job_id} not found")
+        if is_parked(job):
+            return RunnerOutcome(
+                job_id,
+                job.state,
+                "parked on Wanted shelf — use Start download to search",
+            )
+
         outcome = self.search_and_score(job_id)
         job = self._engine.get(job_id)
         if job is None:
@@ -157,6 +168,8 @@ class AcquisitionRunner:
         job = self._engine.get(job_id)
         if job is None:
             raise KeyError(f"AcquisitionJob {job_id} not found")
+        if is_parked(job):
+            return None
 
         if job.state in (AcquisitionJobState.CREATED, AcquisitionJobState.QUEUED):
             return self.try_auto_acquire(job_id, auto_import=auto_import)

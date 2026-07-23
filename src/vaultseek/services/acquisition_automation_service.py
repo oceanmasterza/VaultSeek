@@ -31,6 +31,7 @@ from vaultseek.services.acquisition_labels import job_label
 from vaultseek.services.acquisition_runner import AcquisitionRunner
 from vaultseek.services.provider_manager import ProviderManager
 from vaultseek.services.review_queue_service import ReviewQueueService
+from vaultseek.services.wanted import is_parked
 
 _FAILURE_STATES: tuple[AcquisitionJobState, ...] = (
     AcquisitionJobState.NO_RESULTS,
@@ -196,7 +197,10 @@ class AcquisitionAutomationService:
     def _count_jobs(self, library_id: UUID, states: tuple[AcquisitionJobState, ...]) -> int:
         total = 0
         for state in states:
-            total += len(self._jobs.list_by_library(library_id=library_id, state=state))
+            for job in self._jobs.list_by_library(library_id=library_id, state=state):
+                if is_parked(job):
+                    continue
+                total += 1
         return total
 
     def _auto_acquire(self, library_id: UUID) -> bool:
@@ -230,6 +234,8 @@ class AcquisitionAutomationService:
                     break
                 if not is_search_state and scoring_processed >= scoring_budget:
                     break
+                if is_parked(job):
+                    continue
                 if is_search_state:
                     search_processed += 1
                     started_search = True

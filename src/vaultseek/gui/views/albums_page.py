@@ -38,6 +38,7 @@ from vaultseek.services.album_track_display import (
     build_album_track_rows,
 )
 from vaultseek.services.library_scan_actions import run_missing_scan, run_quality_upgrade_scan
+from vaultseek.services.wanted import list_wanted, promote_wanted, remove_wanted
 
 
 class AlbumsPage(QWidget):
@@ -52,6 +53,7 @@ class AlbumsPage(QWidget):
         self._filter_artist_id: UUID | None = None
         self._album_ids: list[UUID] = []
         self._track_paths: list[str] = []
+        self._wanted_ids: list[UUID] = []
         self._full_cover: QPixmap | None = None
 
         layout = QVBoxLayout(self)
@@ -176,6 +178,46 @@ class AlbumsPage(QWidget):
         main_split.setChildrenCollapsible(False)
         layout.addWidget(main_split, stretch=1)
 
+        wanted_box = QFrame()
+        wanted_box.setProperty("dashPanel", True)
+        self._wanted_box = wanted_box
+        wanted_layout = QVBoxLayout(wanted_box)
+        wanted_title = QLabel("Wanted")
+        wanted_title.setProperty("panelTitle", True)
+        wanted_layout.addWidget(wanted_title)
+        wanted_help = QLabel(
+            "Parked Discogs picks waiting for download. Add from Find music → Discogs → Add to Wanted."
+        )
+        wanted_help.setWordWrap(True)
+        wanted_help.setProperty("muted", True)
+        wanted_layout.addWidget(wanted_help)
+        self._wanted_table = QTableWidget(0, 4)
+        self._wanted_table.setHorizontalHeaderLabels(["Artist", "Album", "Year", "Source"])
+        self._wanted_table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
+        self._wanted_table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
+        self._wanted_table.horizontalHeader().setStretchLastSection(True)
+        self._wanted_table.setMaximumHeight(160)
+        wanted_layout.addWidget(self._wanted_table)
+        wanted_actions = QHBoxLayout()
+        start_btn = QPushButton("Start download")
+        start_btn.setToolTip("Promote selected Wanted items to the Wishlist and begin search.")
+        start_btn.clicked.connect(self._promote_wanted_selected)
+        remove_btn = QPushButton("Remove")
+        remove_btn.setProperty("secondary", True)
+        remove_btn.clicked.connect(self._remove_wanted_selected)
+        find_discogs = QPushButton("Find music…")
+        find_discogs.setProperty("secondary", True)
+        find_discogs.clicked.connect(lambda: self.navigate_requested.emit("find_discogs"))
+        wanted_actions.addWidget(start_btn)
+        wanted_actions.addWidget(remove_btn)
+        wanted_actions.addWidget(find_discogs)
+        wanted_actions.addStretch(1)
+        wanted_layout.addLayout(wanted_actions)
+        self._wanted_empty = QLabel("No Wanted items — add releases from Discogs browse.")
+        self._wanted_empty.setProperty("muted", True)
+        wanted_layout.addWidget(self._wanted_empty)
+        layout.addWidget(wanted_box)
+
         self._status = QLabel("")
         layout.addWidget(self._status)
         self._clear_cover()
@@ -208,7 +250,10 @@ class AlbumsPage(QWidget):
             self._status.setText("No library selected — create one in Settings.")
             self._empty.setVisible(True)
             self._main_split.setVisible(False)
+            self._wanted_box.setVisible(False)
             return
+        self._wanted_box.setVisible(True)
+        self._reload_wanted()
         needle = self._search.text().strip() or None
         rows = self._container.album_repo.list_for_library(
             self._library_id,
@@ -217,7 +262,7 @@ class AlbumsPage(QWidget):
             limit=500,
         )
         empty = len(rows) == 0
-        self._empty.setVisible(empty)
+        self._empty.setVisible(empty and not self._wanted_ids)
         self._main_split.setVisible(not empty)
         if empty:
             self._status.setText("0 album(s)")
@@ -251,7 +296,64 @@ class AlbumsPage(QWidget):
             for col, item in enumerate(cells):
                 apply_album_health_style(item, status.health)
                 self._table.setItem(i, col, item)
-        self._status.setText(f"{len(rows)} album(s)")
+        self._status.setText(f"{len(rows)} album(s) · {len(self._wanted_ids)} wanted")
+
+    def _reload_wanted(self) -> None:
+        self._wanted_ids = []
+        self._wanted_table.setRowCount(0)
+        if self._library_id is None:
+            return
+        artist_name = None
+        if self._filter_artist_id is not None:
+            artist = self._container.artist_repo.get(self._filter_artist_id)
+            artist_name = artist.name if artist else None
+        jobs = list_wanted(
+            self._container.acquisition_engine,
+            self._library_id,
+            artist=artist_name,
+        )
+        self._wanted_empty.setVisible(len(jobs) == 0)
+        self._wanted_table.setVisible(len(jobs) > 0)
+        self._wanted_table.setRowCount(len(jobs))
+        for index, job in enumerate(jobs):
+            self._wanted_ids.append(job.id)
+            source = str(job.extra.get("source") or "wanted")
+            self._wanted_table.setItem(index, 0, QTableWidgetItem(job.artist or ""))
+            self._wanted_table.setItem(index, 1, QTableWidgetItem(job.album or ""))
+            self._wanted_table.setItem(
+                index, 2, QTableWidgetItem(str(job.year) if job.year else "")
+            )
+            self._wanted_table.setItem(index, 3, QTableWidgetItem(source))
+
+    def _selected_wanted_ids(self) -> list[UUID]:
+        rows = {index.row() for index in self._wanted_table.selectedIndexes()}
+        return [self._wanted_ids[row] for row in sorted(rows) if 0 <= row < len(self._wanted_ids)]
+
+    def _promote_wanted_selected(self) -> None:
+        ids = self._selected_wanted_ids()
+        if not ids:
+            QMessageBox.information(self, "Wanted", "Select one or more Wanted rows.")
+            return
+        engine = self._container.acquisition_engine
+        for job_id in ids:
+            promote_wanted(engine, job_id)
+        QMessageBox.information(
+            self,
+            "Wanted",
+            f"Started download for {len(ids)} item(s). Open Wishlist to watch progress.",
+        )
+        self.refresh()
+        self.navigate_requested.emit("acquisition")
+
+    def _remove_wanted_selected(self) -> None:
+        ids = self._selected_wanted_ids()
+        if not ids:
+            QMessageBox.information(self, "Wanted", "Select one or more Wanted rows.")
+            return
+        engine = self._container.acquisition_engine
+        for job_id in ids:
+            remove_wanted(engine, job_id)
+        self.refresh()
 
     def _musicbrainz(self) -> MusicBrainzProvider | None:
         for provider in self._container.plugin_manager.get_metadata_providers():

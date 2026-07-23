@@ -7,6 +7,7 @@ from uuid import UUID
 from PySide6.QtCore import Signal
 from PySide6.QtWidgets import (
     QAbstractItemView,
+    QCheckBox,
     QDialog,
     QHBoxLayout,
     QLabel,
@@ -23,6 +24,7 @@ from vaultseek.gui.async_task import run_in_background
 from vaultseek.gui.datetime_format import format_local_datetime
 from vaultseek.gui.widgets.empty_state import EmptyState
 from vaultseek.models.entities.acquisition_job import AcquisitionJobState
+from vaultseek.services.wanted import is_parked
 
 
 class AcquisitionPage(QWidget):
@@ -51,6 +53,14 @@ class AcquisitionPage(QWidget):
         self._summary = QLabel("")
         self._summary.setWordWrap(True)
         layout.addWidget(self._summary)
+
+        self._show_wanted = QCheckBox("Show Wanted (parked)")
+        self._show_wanted.setToolTip(
+            "Wanted items are parked Discogs picks that do not search until you Start download. "
+            "Hidden from this list by default."
+        )
+        self._show_wanted.toggled.connect(self.refresh)
+        layout.addWidget(self._show_wanted)
 
         self._empty = EmptyState(
             "Wishlist is empty",
@@ -135,10 +145,16 @@ class AcquisitionPage(QWidget):
             return
 
         jobs = self._container.acquisition_engine.list_jobs(library_id=self._library_id)
+        wanted_count = sum(1 for job in jobs if is_parked(job))
+        if not self._show_wanted.isChecked():
+            jobs = [job for job in jobs if not is_parked(job)]
         active = sum(1 for job in jobs if not job.is_terminal)
         waiting = sum(1 for job in jobs if job.state is AcquisitionJobState.WAITING_FOR_USER)
+        wanted_note = f" · {wanted_count} wanted (hidden)" if wanted_count and not self._show_wanted.isChecked() else (
+            f" · {wanted_count} wanted" if wanted_count else ""
+        )
         self._summary.setText(
-            f"{len(jobs)} job(s) · {active} active · {waiting} awaiting choice · "
+            f"{len(jobs)} shown{wanted_note} · {active} active · {waiting} awaiting choice · "
             f"auto-acquire ≥ {threshold:.0%}"
         )
 
@@ -251,6 +267,10 @@ class AcquisitionPage(QWidget):
             outcomes: list[str] = []
             for job_id in selected:
                 try:
+                    job = self._container.acquisition_engine.get(job_id)
+                    if is_parked(job):
+                        outcomes.append("skipped — parked on Wanted (use Start download)")
+                        continue
                     outcome = runner.try_auto_acquire(job_id)
                     detail = outcome.message or outcome.state.value
                     outcomes.append(f"{outcome.state.value}: {detail}")
