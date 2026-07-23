@@ -1,22 +1,27 @@
-"""Main application window — sidebar navigation + content stack."""
+"""Main application window — hub sidebar + content stack.
+
+Navigation is grouped into four hubs (Home / Library / Find & get / System)
+so first-time users see a short path. Every former flat page remains available
+as a leaf under a hub — nothing is removed, only grouped.
+"""
 
 from __future__ import annotations
 
 import os
 from uuid import UUID
 
-from PySide6.QtCore import QTimer
+from PySide6.QtCore import Qt, QTimer
 from PySide6.QtGui import QAction, QCloseEvent, QKeySequence
 from PySide6.QtWidgets import (
     QComboBox,
     QHBoxLayout,
     QLabel,
-    QListWidget,
-    QListWidgetItem,
     QMainWindow,
     QMessageBox,
     QStackedWidget,
     QStatusBar,
+    QTreeWidget,
+    QTreeWidgetItem,
     QVBoxLayout,
     QWidget,
 )
@@ -30,8 +35,8 @@ from vaultseek.gui.views.albums_page import AlbumsPage
 from vaultseek.gui.views.artwork_page import ArtworkPage
 from vaultseek.gui.views.artists_page import ArtistsPage
 from vaultseek.gui.views.dashboard_page import DashboardPage
-from vaultseek.gui.views.discogs_page import DiscogsPage
 from vaultseek.gui.views.duplicates_page import DuplicatesPage
+from vaultseek.gui.views.find_music_page import FindMusicPage
 from vaultseek.gui.views.jobs_page import JobsPage
 from vaultseek.gui.views.library_page import LibraryPage
 from vaultseek.gui.views.logs_page import LogsPage
@@ -45,21 +50,40 @@ from vaultseek.models.entities.job import JobType
 from vaultseek.models.entities.library import Library
 from vaultseek.models.entities.track import LibraryZone
 
-_NAV = (
-    ("Dashboard", "dashboard"),
-    ("Library", "library"),
-    ("Review", "review"),
-    ("Artists", "artists"),
-    ("Albums", "albums"),
-    ("Artwork", "artwork"),
-    ("Duplicates", "duplicates"),
-    ("Acquisition", "acquisition"),
-    ("Discogs", "discogs"),
-    ("Jobs", "jobs"),
-    ("Reports", "reports"),
-    ("Logs", "logs"),
-    ("Settings", "settings"),
-    ("Plugins", "plugins"),
+# Hub → (label, page_key). page_key None = hub header only (not selectable).
+_NAV_HUBS: tuple[tuple[str, tuple[tuple[str, str], ...]], ...] = (
+    (
+        "Home",
+        (("Dashboard", "dashboard"),),
+    ),
+    (
+        "Library",
+        (
+            ("Files", "library"),
+            ("Artists", "artists"),
+            ("Albums", "albums"),
+            ("Artwork", "artwork"),
+            ("Duplicates", "duplicates"),
+        ),
+    ),
+    (
+        "Find & get",
+        (
+            ("Find music", "find"),
+            ("Review", "review"),
+            ("Wishlist", "acquisition"),
+        ),
+    ),
+    (
+        "System",
+        (
+            ("Jobs", "jobs"),
+            ("Reports", "reports"),
+            ("Logs", "logs"),
+            ("Settings", "settings"),
+            ("Plugins", "plugins"),
+        ),
+    ),
 )
 
 
@@ -75,7 +99,6 @@ class MainWindow(QMainWindow):
 
         self.setWindowTitle("VaultSeek")
         self.resize(1200, 800)
-        # Allow smaller remote-desktop / laptop viewports; pages scroll instead of clipping.
         self.setMinimumSize(720, 480)
 
         root = QWidget()
@@ -96,26 +119,39 @@ class MainWindow(QMainWindow):
         body = QHBoxLayout()
         body.setContentsMargins(0, 0, 0, 0)
         body.setSpacing(0)
-        self._nav = QListWidget()
-        self._nav.setFixedWidth(160)
+        self._nav = QTreeWidget()
+        self._nav.setObjectName("navSidebar")
+        self._nav.setHeaderHidden(True)
+        self._nav.setFixedWidth(180)
+        self._nav.setRootIsDecorated(True)
+        self._nav.setAnimated(True)
+        self._nav.setIndentation(14)
+        self._nav.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         self._stack = QStackedWidget()
         body.addWidget(self._nav)
         body.addWidget(self._stack, stretch=1)
         outer.addLayout(body, stretch=1)
 
         self._pages: dict[str, QWidget] = {}
+        self._nav_items: dict[str, QTreeWidgetItem] = {}
+        self._stack_index: dict[str, int] = {}
+
         self._dashboard_page = DashboardPage(container)
         self._dashboard_page.navigate_requested.connect(self._on_dashboard_navigate)
         self._review_page = ReviewPage(container)
         self._library_page = LibraryPage(container)
+        self._library_page.navigate_requested.connect(self._on_dashboard_navigate)
         self._artists_page = ArtistsPage(container)
         self._artists_page.navigate_to_albums.connect(self._on_artists_to_albums)
         self._albums_page = AlbumsPage(container)
+        self._albums_page.navigate_requested.connect(self._on_dashboard_navigate)
         self._artwork_page = ArtworkPage(container)
         self._jobs_page = JobsPage(container)
         self._duplicates_page = DuplicatesPage(container)
         self._acquisition_page = AcquisitionPage(container)
-        self._discogs_page = DiscogsPage(container)
+        self._acquisition_page.navigate_requested.connect(self._on_dashboard_navigate)
+        self._find_page = FindMusicPage(container)
+        self._find_page.navigate_requested.connect(self._on_dashboard_navigate)
         self._reports_page = ReportsPage(container)
         self._settings_page = SettingsPage(container)
         self._settings_page.library_saved.connect(self._on_library_saved)
@@ -130,8 +166,8 @@ class MainWindow(QMainWindow):
             "artists": self._artists_page,
             "albums": self._albums_page,
             "duplicates": self._duplicates_page,
+            "find": self._find_page,
             "acquisition": self._acquisition_page,
-            "discogs": self._discogs_page,
             "jobs": self._jobs_page,
             "artwork": self._artwork_page,
             "reports": self._reports_page,
@@ -147,16 +183,26 @@ class MainWindow(QMainWindow):
             ),
         }
 
-        self._nav_keys: list[str] = []
-        for label, key in _NAV:
-            self._nav.addItem(QListWidgetItem(label))
-            page = page_builders[key]
-            self._pages[key] = page
-            self._nav_keys.append(key)
-            self._stack.addWidget(page)
+        for hub_label, children in _NAV_HUBS:
+            hub_item = QTreeWidgetItem([hub_label])
+            hub_item.setFlags(Qt.ItemFlag.ItemIsEnabled)
+            hub_item.setData(0, Qt.ItemDataRole.UserRole, None)
+            self._nav.addTopLevelItem(hub_item)
+            hub_item.setExpanded(True)
+            for child_label, key in children:
+                page = page_builders[key]
+                if key not in self._pages:
+                    self._pages[key] = page
+                    self._stack_index[key] = self._stack.count()
+                    self._stack.addWidget(page)
+                child = QTreeWidgetItem([child_label])
+                child.setData(0, Qt.ItemDataRole.UserRole, key)
+                hub_item.addChild(child)
+                self._nav_items[key] = child
 
-        self._nav.currentRowChanged.connect(self._on_nav_changed)
-        self._nav.setCurrentRow(0)  # Dashboard home
+        self._nav.currentItemChanged.connect(self._on_nav_item_changed)
+        # Start on Dashboard leaf.
+        self._go_to("dashboard")
 
         status = QStatusBar()
         self.setStatusBar(status)
@@ -172,7 +218,6 @@ class MainWindow(QMainWindow):
 
         self.reload_libraries()
         self._tick()
-        # Defer wizard until the window is visible (avoids modal-before-show glitches).
         QTimer.singleShot(0, self._maybe_show_setup_wizard)
 
     def _build_menus(self) -> None:
@@ -211,10 +256,14 @@ class MainWindow(QMainWindow):
         go_dash.setShortcut(QKeySequence("Ctrl+D"))
         go_dash.triggered.connect(lambda: self._go_to("dashboard"))
         view_menu.addAction(go_dash)
-        go_library = QAction("&Library", self)
+        go_library = QAction("&Library files", self)
         go_library.setShortcut(QKeySequence("Ctrl+L"))
         go_library.triggered.connect(lambda: self._go_to("library"))
         view_menu.addAction(go_library)
+        go_find = QAction("&Find music", self)
+        go_find.setShortcut(QKeySequence("Ctrl+F"))
+        go_find.triggered.connect(lambda: self._go_to("find"))
+        view_menu.addAction(go_find)
         go_review = QAction("&Review", self)
         go_review.setShortcut(QKeySequence("Ctrl+R"))
         go_review.triggered.connect(lambda: self._go_to("review"))
@@ -247,22 +296,34 @@ class MainWindow(QMainWindow):
         help_menu.addAction(uninstall)
 
     def _maybe_show_setup_wizard(self) -> None:
-        """Auto-open wizard for new installs or when no library exists yet."""
-        has_library = bool(self._container.library_repo.list_all())
-        if self._container.config.setup_completed and has_library:
+        """Auto-open at most once: true first run only (never completed, no library)."""
+        if self._container.config.setup_completed:
             return
-        self._show_setup_wizard(force=False)
+        if self._container.library_repo.list_all():
+            return
+        self._show_setup_wizard()
 
     def _show_setup_wizard(self, *, force: bool = False) -> None:
-        del force  # same dialog either way; force only bypasses the auto-skip above
+        del force  # Always user-invoked or one-shot first run; same dialog either way.
         wizard = SetupWizard(self._container, parent=self)
         wizard.finished_setup.connect(self._on_setup_finished)
         wizard.exec()
 
+    def _mark_setup_completed(self) -> None:
+        """Stop auto-prompting the wizard (button / Help menu still reopen it)."""
+        if self._container.config.setup_completed:
+            return
+        from dataclasses import replace
+
+        from vaultseek.core.config import save_config
+
+        updated = replace(self._container.config, setup_completed=True)
+        save_config(updated, self._container.paths.config_file)
+        self._container.config = updated
+
     def _on_setup_finished(self, library_id: object) -> None:
         if isinstance(library_id, UUID):
             self.reload_libraries()
-            # Select the library created/updated by the wizard.
             for index in range(self._library_combo.count()):
                 if self._library_combo.itemData(index) == library_id:
                     self._library_combo.setCurrentIndex(index)
@@ -272,6 +333,10 @@ class MainWindow(QMainWindow):
             self.statusBar().showMessage(
                 "Setup complete — follow Getting started on the Dashboard.", 8000
             )
+            return
+        # Cancelled or unfinished — never force the wizard again.
+        self._mark_setup_completed()
+        self._dashboard_page.refresh()
 
     def _on_dashboard_navigate(self, key: str) -> None:
         if key == "setup_wizard":
@@ -282,6 +347,15 @@ class MainWindow(QMainWindow):
             return
         if key == "force_scan":
             self._scan_incoming(force=True)
+            return
+        if key == "find_discogs":
+            self._go_to("find")
+            self._find_page.show_discogs_tab()
+            return
+        if key == "discogs":
+            # Legacy deep-link from older tips — open Find music → Discogs tab.
+            self._go_to("find")
+            self._find_page.show_discogs_tab()
             return
         self._go_to(key)
 
@@ -318,13 +392,19 @@ class MainWindow(QMainWindow):
         self._go_to("albums")
 
     def _go_to(self, key: str) -> None:
-        if key not in self._nav_keys:
+        item = self._nav_items.get(key)
+        if item is None:
             return
-        self._nav.setCurrentRow(self._nav_keys.index(key))
+        self._nav.setCurrentItem(item)
+        # Ensure parent hub is expanded so the leaf is visible.
+        parent = item.parent()
+        if parent is not None:
+            parent.setExpanded(True)
 
     def _refresh_current(self) -> None:
-        index = self._nav.currentRow()
-        self._on_nav_changed(index)
+        item = self._nav.currentItem()
+        if item is not None:
+            self._on_nav_item_changed(item, None)
 
     def _current_library(self) -> Library | None:
         if self._library_id is None:
@@ -352,7 +432,6 @@ class MainWindow(QMainWindow):
         )
 
     def _uninstall(self) -> None:
-        """Launch the Windows uninstaller when running from an installed copy."""
         import sys
         from pathlib import Path
 
@@ -407,11 +486,19 @@ class MainWindow(QMainWindow):
         self._library_combo.setCurrentIndex(index)
         self._set_library(self._library_combo.currentData())
 
-    def _on_nav_changed(self, index: int) -> None:
-        self._stack.setCurrentIndex(index)
-        if index < 0 or index >= len(self._nav_keys):
+    def _on_nav_item_changed(
+        self, current: QTreeWidgetItem | None, _previous: QTreeWidgetItem | None
+    ) -> None:
+        if current is None:
             return
-        key = self._nav_keys[index]
+        key = current.data(0, Qt.ItemDataRole.UserRole)
+        if not isinstance(key, str):
+            # Hub header clicked — keep previous leaf if any.
+            return
+        stack_i = self._stack_index.get(key)
+        if stack_i is None:
+            return
+        self._stack.setCurrentIndex(stack_i)
         if key == "dashboard":
             self._dashboard_page.refresh()
         elif key == "review":
@@ -429,10 +516,10 @@ class MainWindow(QMainWindow):
             self._artwork_page.refresh()
         elif key == "duplicates":
             self._duplicates_page.refresh()
+        elif key == "find":
+            self._find_page.refresh()
         elif key == "acquisition":
             self._acquisition_page.refresh()
-        elif key == "discogs":
-            self._discogs_page.refresh()
         elif key == "reports":
             self._reports_page.refresh()
         elif key == "logs":
@@ -454,8 +541,8 @@ class MainWindow(QMainWindow):
             self._review_page,
             self._jobs_page,
             self._duplicates_page,
+            self._find_page,
             self._acquisition_page,
-            self._discogs_page,
             self._reports_page,
             self._settings_page,
         ):
@@ -481,12 +568,9 @@ class MainWindow(QMainWindow):
 
     def _update_review_badge(self) -> None:
         count = self._review_page.pending_count()
-        for i, key in enumerate(self._nav_keys):
-            if key != "review":
-                continue
-            item = self._nav.item(i)
-            if item is not None:
-                item.setText(f"Review ({count})" if count else "Review")
+        item = self._nav_items.get("review")
+        if item is not None:
+            item.setText(0, f"Review ({count})" if count else "Review")
 
     def _tick(self) -> None:
         if self._library_id is None:
@@ -498,17 +582,17 @@ class MainWindow(QMainWindow):
             f"Jobs: {stats.running} running · {stats.pending} pending · "
             f"{stats.failed} failed · Review: {review}"
         )
-        self._update_review_badge()
         # Acquisition download polling runs in AcquisitionAutomationService.
-        row = self._nav.currentRow()
-        if self._nav_keys and 0 <= row < len(self._nav_keys):
-            key = self._nav_keys[row]
-            if key == "dashboard":
-                self._dashboard_page.refresh()
-            elif key == "acquisition":
-                self._acquisition_page.refresh()
+        current = self._nav.currentItem()
+        key = current.data(0, Qt.ItemDataRole.UserRole) if current else None
+        if key == "dashboard":
+            self._dashboard_page.refresh()
+        elif key == "jobs":
+            self._jobs_page.refresh()
+        elif key == "acquisition":
+            self._acquisition_page.poll_downloads()
+        self._update_review_badge()
 
-    def closeEvent(self, event: QCloseEvent) -> None:  # noqa: N802 - Qt naming
+    def closeEvent(self, event: QCloseEvent) -> None:  # noqa: N802
         self._timer.stop()
-        self._bridge.close()
         super().closeEvent(event)

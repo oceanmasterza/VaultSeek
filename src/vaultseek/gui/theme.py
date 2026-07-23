@@ -34,6 +34,28 @@ QListWidget::item:selected {
 QListWidget::item:hover:!selected {
     background-color: #2a2d2e;
 }
+QTreeWidget#navSidebar {
+    background-color: #252526;
+    border: none;
+    outline: none;
+    padding: 4px;
+    show-decoration-selected: 1;
+}
+QTreeWidget#navSidebar::item {
+    padding: 6px 8px;
+    border-radius: 4px;
+    color: #cccccc;
+}
+QTreeWidget#navSidebar::item:selected {
+    background-color: #0e639c;
+    color: #ffffff;
+}
+QTreeWidget#navSidebar::item:hover:!selected {
+    background-color: #2a2d2e;
+}
+QTreeWidget#navSidebar::branch {
+    background: transparent;
+}
 QTableWidget, QTreeWidget, QTextEdit, QPlainTextEdit, QLineEdit, QComboBox {
     background-color: #2d2d2d;
     border: 1px solid #3c3c3c;
@@ -226,6 +248,23 @@ QListWidget {
 QListWidget::item:selected {
     background-color: #0078d4;
     color: #ffffff;
+}
+QTreeWidget#navSidebar {
+    background-color: #e8e8e8;
+    border: none;
+    outline: none;
+    padding: 4px;
+}
+QTreeWidget#navSidebar::item {
+    padding: 6px 8px;
+    border-radius: 4px;
+}
+QTreeWidget#navSidebar::item:selected {
+    background-color: #0078d4;
+    color: #ffffff;
+}
+QTreeWidget#navSidebar::item:hover:!selected {
+    background-color: #dddddd;
 }
 QPushButton {
     background-color: #0078d4;

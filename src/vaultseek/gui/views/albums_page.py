@@ -5,13 +5,14 @@ from __future__ import annotations
 from pathlib import Path
 from uuid import UUID
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QPixmap
 from PySide6.QtWidgets import (
     QFrame,
     QHBoxLayout,
     QLabel,
     QLineEdit,
+    QMenu,
     QMessageBox,
     QPushButton,
     QSizePolicy,
@@ -29,17 +30,20 @@ from vaultseek.gui.widgets.browse import (
     apply_track_health_style,
 )
 from vaultseek.gui.widgets.desktop import reveal_in_explorer
+from vaultseek.gui.widgets.empty_state import EmptyState
+from vaultseek.models.entities.acquisition_job import AcquisitionJobType
 from vaultseek.plugins.builtin.musicbrainz.provider import MusicBrainzProvider
 from vaultseek.services.album_track_display import (
     album_status_for_display,
     build_album_track_rows,
-    effective_track_health,
 )
 from vaultseek.services.library_scan_actions import run_missing_scan, run_quality_upgrade_scan
 
 
 class AlbumsPage(QWidget):
     """List albums for the active library; selection shows cover + tracks."""
+
+    navigate_requested = Signal(str)
 
     def __init__(self, container: Container, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -55,8 +59,8 @@ class AlbumsPage(QWidget):
         heading.setProperty("heading", True)
         layout.addWidget(heading)
         help_lbl = QLabel(
-            "Select an album to see its cover and tracks. Double-click a track "
-            "to reveal it in Explorer."
+            "Select an album to see its cover and tracks. Right-click for Find / Acquire. "
+            "Double-click a track to reveal it in Explorer."
         )
         help_lbl.setWordWrap(True)
         help_lbl.setProperty("muted", True)
@@ -77,18 +81,11 @@ class AlbumsPage(QWidget):
         self._clear_filter.setVisible(False)
         self._clear_filter.clicked.connect(lambda: self.set_artist_filter(None))
         toolbar.addWidget(self._clear_filter)
-        find_missing = QPushButton("Find missing songs")
-        find_missing.setProperty("secondary", True)
-        find_missing.setToolTip("Scan this library for missing tracks and queue acquisition jobs.")
-        find_missing.clicked.connect(self._scan_missing)
-        toolbar.addWidget(find_missing)
-        find_upgrades = QPushButton("Find quality upgrades")
-        find_upgrades.setProperty("secondary", True)
-        find_upgrades.setToolTip(
-            "Scan for tracks below your Settings quality prefs and queue upgrade jobs."
-        )
-        find_upgrades.clicked.connect(self._scan_upgrades)
-        toolbar.addWidget(find_upgrades)
+        find_music = QPushButton("Find music…")
+        find_music.setProperty("secondary", True)
+        find_music.setToolTip("Open Find & get → Find music (gap scans + Discogs).")
+        find_music.clicked.connect(lambda: self.navigate_requested.emit("find"))
+        toolbar.addWidget(find_music)
         layout.addLayout(toolbar)
         legend = QLabel(
             "Colors: green = complete & meets quality · orange = missing songs or below quality prefs"
@@ -97,7 +94,18 @@ class AlbumsPage(QWidget):
         legend.setWordWrap(True)
         layout.addWidget(legend)
 
+        self._empty = EmptyState(
+            "No albums yet",
+            "Scan Incoming to identify releases, or use Find music → Discogs to queue downloads.",
+            primary_label="Scan Incoming",
+            on_primary=lambda: self.navigate_requested.emit("scan"),
+            secondary_label="Find music",
+            on_secondary=lambda: self.navigate_requested.emit("find"),
+        )
+        layout.addWidget(self._empty)
+
         main_split = QSplitter(Qt.Orientation.Horizontal)
+        self._main_split = main_split
 
         left = QWidget()
         left_layout = QVBoxLayout(left)
@@ -110,6 +118,8 @@ class AlbumsPage(QWidget):
         self._table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
         self._table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
         self._table.horizontalHeader().setStretchLastSection(True)
+        self._table.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        self._table.customContextMenuRequested.connect(self._album_context_menu)
         self._table.itemSelectionChanged.connect(self._on_album_selected)
         HealthColorDelegate().install_on(self._table)
         list_split.addWidget(self._table)
@@ -125,6 +135,8 @@ class AlbumsPage(QWidget):
         self._tracks.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
         self._tracks.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
         self._tracks.horizontalHeader().setStretchLastSection(True)
+        self._tracks.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
+        self._tracks.customContextMenuRequested.connect(self._track_context_menu)
         self._tracks.doubleClicked.connect(self._reveal_track)
         HealthColorDelegate().install_on(self._tracks)
         tracks_layout.addWidget(self._tracks, stretch=1)
@@ -167,6 +179,7 @@ class AlbumsPage(QWidget):
         self._status = QLabel("")
         layout.addWidget(self._status)
         self._clear_cover()
+        self._empty.setVisible(False)
 
     def set_library(self, library_id: UUID | None) -> None:
         self._library_id = library_id
@@ -193,6 +206,8 @@ class AlbumsPage(QWidget):
         self._clear_cover()
         if self._library_id is None:
             self._status.setText("No library selected — create one in Settings.")
+            self._empty.setVisible(True)
+            self._main_split.setVisible(False)
             return
         needle = self._search.text().strip() or None
         rows = self._container.album_repo.list_for_library(
@@ -201,6 +216,12 @@ class AlbumsPage(QWidget):
             query=needle,
             limit=500,
         )
+        empty = len(rows) == 0
+        self._empty.setVisible(empty)
+        self._main_split.setVisible(not empty)
+        if empty:
+            self._status.setText("0 album(s)")
+            return
         self._table.setRowCount(len(rows))
         prefs = self._container.config.acquisition
         for i, row in enumerate(rows):
@@ -293,9 +314,11 @@ class AlbumsPage(QWidget):
         QMessageBox.information(
             self,
             "Find missing songs",
-            f"Created {count} acquisition job(s). Check the Acquisition / Jobs tabs.",
+            f"Created {count} acquisition job(s). Check Find music / Wishlist.",
         )
         self.refresh()
+        if count:
+            self.navigate_requested.emit("acquisition")
 
     def _scan_upgrades(self) -> None:
         if self._library_id is None:
@@ -305,9 +328,73 @@ class AlbumsPage(QWidget):
         QMessageBox.information(
             self,
             "Find quality upgrades",
-            f"Created {count} upgrade job(s). Check the Acquisition / Jobs tabs.",
+            f"Created {count} upgrade job(s). Check Find music / Wishlist.",
         )
         self.refresh()
+        if count:
+            self.navigate_requested.emit("acquisition")
+
+    def _album_context_menu(self, pos: object) -> None:
+        album_id = self._selected_album_id()
+        menu = QMenu(self)
+        act_find = menu.addAction("Find missing songs (library)")
+        act_upgrades = menu.addAction("Find quality upgrades (library)")
+        act_queue = menu.addAction("Queue this album for download")
+        act_find_page = menu.addAction("Open Find music…")
+        chosen = menu.exec(self._table.mapToGlobal(pos))  # type: ignore[arg-type]
+        if chosen is act_find:
+            self._scan_missing()
+        elif chosen is act_upgrades:
+            self._scan_upgrades()
+        elif chosen is act_queue and album_id is not None:
+            self._queue_album_download(album_id)
+        elif chosen is act_find_page:
+            self.navigate_requested.emit("find")
+
+    def _track_context_menu(self, pos: object) -> None:
+        menu = QMenu(self)
+        act_reveal = menu.addAction("Reveal in Explorer")
+        act_find = menu.addAction("Find missing songs (library)")
+        act_upgrades = menu.addAction("Find quality upgrades (library)")
+        act_find_page = menu.addAction("Open Find music…")
+        chosen = menu.exec(self._tracks.mapToGlobal(pos))  # type: ignore[arg-type]
+        if chosen is act_reveal:
+            self._reveal_track()
+        elif chosen is act_find:
+            self._scan_missing()
+        elif chosen is act_upgrades:
+            self._scan_upgrades()
+        elif chosen is act_find_page:
+            self.navigate_requested.emit("find")
+
+    def _queue_album_download(self, album_id: UUID) -> None:
+        if self._library_id is None:
+            return
+        album = self._container.album_repo.get(album_id)
+        if album is None:
+            return
+        artist_name = ""
+        if album.album_artist_id is not None:
+            artist = self._container.artist_repo.get(album.album_artist_id)
+            artist_name = artist.name if artist else ""
+        job = self._container.acquisition_engine.create_job(
+            library_id=self._library_id,
+            job_type=AcquisitionJobType.MISSING_ALBUM,
+            artist=artist_name or None,
+            album=album.title,
+            year=album.year,
+            mb_release_id=album.mbid,
+            preferred_codec=self._container.config.acquisition.preferred_codec or None,
+            priority=80,
+        )
+        if self._container.config.acquisition.auto_queue_jobs:
+            self._container.acquisition_engine.queue(job.id)
+        QMessageBox.information(
+            self,
+            "Albums",
+            f"Queued “{album.title}” for download. Open Wishlist to acquire.",
+        )
+        self.navigate_requested.emit("acquisition")
 
     def _show_cover(self, album_id: UUID, title: str) -> None:
         self._cover_title.setText(title)

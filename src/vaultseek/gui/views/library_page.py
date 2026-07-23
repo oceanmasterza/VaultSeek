@@ -5,7 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 from uuid import UUID
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QAction, QKeySequence
 from PySide6.QtWidgets import (
     QComboBox,
@@ -31,6 +31,7 @@ from vaultseek.gui.widgets.browse import (
     build_folder_tree,
 )
 from vaultseek.gui.widgets.desktop import copy_text_to_clipboard, open_path, reveal_in_explorer
+from vaultseek.gui.widgets.empty_state import EmptyState
 from vaultseek.models.entities.job import JobType
 from vaultseek.models.entities.track import LibraryZone, Track
 from vaultseek.services.album_track_display import effective_track_health
@@ -39,6 +40,8 @@ from vaultseek.services.library_scan_actions import run_missing_scan, run_qualit
 
 class LibraryPage(QWidget):
     """Lists tracks for the selected library with a zone folder tree."""
+
+    navigate_requested = Signal(str)
 
     def __init__(self, container: Container, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -72,14 +75,10 @@ class LibraryPage(QWidget):
         scan_btn.setToolTip("Enqueue a scan of this library’s Incoming folder.")
         scan_btn.clicked.connect(self._scan_incoming)
         toolbar.addWidget(scan_btn)
-        find_missing = QPushButton("Find missing songs")
-        find_missing.setProperty("secondary", True)
-        find_missing.clicked.connect(self._scan_missing)
-        toolbar.addWidget(find_missing)
-        find_upgrades = QPushButton("Find quality upgrades")
-        find_upgrades.setProperty("secondary", True)
-        find_upgrades.clicked.connect(self._scan_upgrades)
-        toolbar.addWidget(find_upgrades)
+        find_music = QPushButton("Find music…")
+        find_music.setProperty("secondary", True)
+        find_music.clicked.connect(lambda: self.navigate_requested.emit("find"))
+        toolbar.addWidget(find_music)
         layout.addLayout(toolbar)
         legend = QLabel(
             "Colors: green = meets quality · orange = missing file or below quality prefs"
@@ -87,7 +86,18 @@ class LibraryPage(QWidget):
         legend.setProperty("muted", True)
         layout.addWidget(legend)
 
+        self._empty = EmptyState(
+            "No tracks yet",
+            "Scan Incoming to import music, or open Find music to download missing albums.",
+            primary_label="Scan Incoming",
+            on_primary=self._scan_incoming,
+            secondary_label="Find music",
+            on_secondary=lambda: self.navigate_requested.emit("find"),
+        )
+        layout.addWidget(self._empty)
+
         splitter = QSplitter(Qt.Orientation.Horizontal)
+        self._splitter = splitter
         left = QWidget()
         left_layout = QVBoxLayout(left)
         left_layout.setContentsMargins(0, 0, 0, 0)
@@ -134,6 +144,7 @@ class LibraryPage(QWidget):
 
         self._counts = QLabel("")
         layout.addWidget(self._counts)
+        self._empty.setVisible(False)
 
         reveal = QAction("Reveal in Explorer", self)
         reveal.setShortcut(QKeySequence("Ctrl+Return"))
@@ -208,6 +219,8 @@ class LibraryPage(QWidget):
         self._file_paths = []
         if self._library_id is None:
             self._counts.setText("No library selected — create one in Settings.")
+            self._empty.setVisible(True)
+            self._splitter.setVisible(False)
             return
 
         zone = self._folder_zone if self._folder_zone is not None else self._zone.currentData()
@@ -236,6 +249,20 @@ class LibraryPage(QWidget):
                 or needle in (track.file_name or "").lower()
                 or needle in (track.file_path or "").lower()
             ]
+        empty = (
+            len(tracks) == 0
+            and not needle
+            and self._folder_prefix is None
+            and self._zone.currentData() is None
+            and self._folder_zone is None
+        )
+        # Show empty CTA only for truly empty libraries (not filter misses).
+        self._empty.setVisible(empty)
+        self._splitter.setVisible(not empty)
+        if empty:
+            self._counts.setText("0 tracks")
+            return
+
         self._fill_table(tracks)
 
         counts = self._container.track_repo.count_by_zone(self._library_id)
@@ -283,8 +310,10 @@ class LibraryPage(QWidget):
         QMessageBox.information(
             self,
             "Find missing songs",
-            f"Created {count} acquisition job(s). Check Acquisition / Jobs.",
+            f"Created {count} acquisition job(s). Check Find music / Wishlist.",
         )
+        if count:
+            self.navigate_requested.emit("acquisition")
 
     def _scan_upgrades(self) -> None:
         if self._library_id is None:
@@ -294,8 +323,10 @@ class LibraryPage(QWidget):
         QMessageBox.information(
             self,
             "Find quality upgrades",
-            f"Created {count} upgrade job(s). Check Acquisition / Jobs.",
+            f"Created {count} upgrade job(s). Check Find music / Wishlist.",
         )
+        if count:
+            self.navigate_requested.emit("acquisition")
 
     def _selected_path(self) -> str | None:
         rows = {index.row() for index in self._table.selectedIndexes()}
@@ -307,20 +338,32 @@ class LibraryPage(QWidget):
         return None
 
     def _context_menu(self, pos: object) -> None:
-        path = self._selected_path()
-        if not path:
-            return
         menu = QMenu(self)
-        reveal = menu.addAction("Reveal in Explorer")
-        copy = menu.addAction("Copy path")
-        open_parent = menu.addAction("Open containing folder")
+        path = self._selected_path()
+        act_reveal = menu.addAction("Reveal in Explorer")
+        act_copy = menu.addAction("Copy path")
+        act_open = menu.addAction("Open containing folder")
+        menu.addSeparator()
+        act_find = menu.addAction("Find missing songs (library)")
+        act_upgrades = menu.addAction("Find quality upgrades (library)")
+        act_find_page = menu.addAction("Open Find music…")
+        if not path:
+            act_reveal.setEnabled(False)
+            act_copy.setEnabled(False)
+            act_open.setEnabled(False)
         chosen = menu.exec(self._table.viewport().mapToGlobal(pos))  # type: ignore[arg-type]
-        if chosen is reveal:
+        if chosen is act_reveal and path:
             reveal_in_explorer(path)
-        elif chosen is copy:
+        elif chosen is act_copy and path:
             copy_text_to_clipboard(path)
-        elif chosen is open_parent:
+        elif chosen is act_open and path:
             open_path(Path(path).parent)
+        elif chosen is act_find:
+            self._scan_missing()
+        elif chosen is act_upgrades:
+            self._scan_upgrades()
+        elif chosen is act_find_page:
+            self.navigate_requested.emit("find")
 
     def _reveal_selected(self, *_args: object) -> None:
         path = self._selected_path()

@@ -96,6 +96,15 @@ class DashboardPage(QWidget):
         self._heading.setProperty("heading", True)
         header.addWidget(self._heading)
         header.addStretch(1)
+        self._btn_setup_wizard = QPushButton("Setup wizard")
+        self._btn_setup_wizard.setToolTip(
+            "Folders, Nicotine+, and optional tokens. Opens anytime — never forced again after first run."
+        )
+        self._btn_setup_wizard.setProperty("secondary", True)
+        self._btn_setup_wizard.clicked.connect(
+            lambda: self.navigate_requested.emit("setup_wizard")
+        )
+        header.addWidget(self._btn_setup_wizard)
         refresh = QPushButton("Refresh")
         refresh.setProperty("secondary", True)
         refresh.clicked.connect(self.refresh)
@@ -115,22 +124,17 @@ class DashboardPage(QWidget):
         self._getting_started_body = _selectable_label()
         gs_layout.addWidget(self._getting_started_body)
         gs_actions = QHBoxLayout()
-        self._btn_run_wizard = QPushButton("Run setup wizard")
-        self._btn_run_wizard.clicked.connect(
-            lambda: self.navigate_requested.emit("setup_wizard")
-        )
         self._btn_gs_scan = QPushButton("Scan Incoming")
         self._btn_gs_scan.setProperty("secondary", True)
         self._btn_gs_scan.clicked.connect(lambda: self.navigate_requested.emit("scan"))
-        self._btn_gs_missing = QPushButton("Find missing songs")
+        self._btn_gs_missing = QPushButton("Find music")
         self._btn_gs_missing.setProperty("secondary", True)
         self._btn_gs_missing.clicked.connect(
-            lambda: self.navigate_requested.emit("acquisition")
+            lambda: self.navigate_requested.emit("find")
         )
         self._btn_gs_dismiss = QPushButton("Dismiss tips")
         self._btn_gs_dismiss.setProperty("secondary", True)
         self._btn_gs_dismiss.clicked.connect(self._dismiss_onboarding_tips)
-        gs_actions.addWidget(self._btn_run_wizard)
         gs_actions.addWidget(self._btn_gs_scan)
         gs_actions.addWidget(self._btn_gs_missing)
         gs_actions.addWidget(self._btn_gs_dismiss)
@@ -180,8 +184,8 @@ class DashboardPage(QWidget):
             totals_kpi.addWidget(card)
         layout.addLayout(totals_kpi)
 
-        # Acquisition — separate from library pipeline (Soulseek wishlist)
-        layout.addWidget(_section_title("Acquisition — wishlist downloads"))
+        # Wishlist — separate from library pipeline (Soulseek downloads)
+        layout.addWidget(_section_title("Wishlist — downloads in progress"))
         acq_kpi = QHBoxLayout()
         acq_kpi.setSpacing(10)
         self._kpi_missing = _KpiCard("Missing tracks")
@@ -228,7 +232,7 @@ class DashboardPage(QWidget):
         actions = QHBoxLayout()
         self._btn_review = QPushButton("Open Review")
         self._btn_jobs = QPushButton("Open Jobs")
-        self._btn_acquisition = QPushButton("Open Acquisition")
+        self._btn_acquisition = QPushButton("Open Wishlist")
         self._btn_library = QPushButton("Open Library")
         self._btn_scan = QPushButton("Scan Incoming")
         self._btn_force_scan = QPushButton("Force rescan")
@@ -271,10 +275,10 @@ class DashboardPage(QWidget):
         acq_box = QFrame()
         acq_box.setProperty("dashPanel", True)
         acq_layout = QVBoxLayout(acq_box)
-        acq_layout.addWidget(self._panel_title("Acquisition"))
+        acq_layout.addWidget(self._panel_title("Wishlist"))
         acq_help = _selectable_label(
             "Compares your library to MusicBrainz tracklists. "
-            "“Missing tracks” updates when you run Acquisition → Scan for missing. "
+            "“Missing tracks” updates when you run Find music → Find missing songs. "
             "Auto-acquire downloads when scores meet the threshold in Settings.",
             muted=True,
         )
@@ -491,7 +495,9 @@ class DashboardPage(QWidget):
 
         steps: list[str] = []
         if not snap.has_library:
-            steps.append("1. Create folders — click Run setup wizard (Incoming + Library).")
+            steps.append(
+                "1. Create folders — click Setup wizard (top of this page) for Incoming + Library."
+            )
         else:
             steps.append("1. Library folders — done.")
 
@@ -517,12 +523,12 @@ class DashboardPage(QWidget):
 
         if snap.acquisition.total == 0:
             steps.append(
-                "4. Find gaps — Albums → Find missing songs, or Discogs → search an artist."
+                "4. Find gaps — Find & get → Find music (Library gaps or Discogs browse)."
             )
         else:
             steps.append(
                 f"4. Wishlist has {snap.acquisition.active} active job(s) — "
-                "watch Acquisition / Jobs."
+                "watch Wishlist / Jobs."
             )
 
         steps.append(
@@ -652,7 +658,7 @@ class DashboardPage(QWidget):
             )
         elif not gaps.scanned:
             lines.append(
-                "Missing tracks: not scanned yet — run Acquisition → Scan for missing "
+                "Missing tracks: not scanned yet — run Find music → Find missing songs "
                 "(this checks MusicBrainz and can take a minute)."
             )
         elif gaps.albums_scanned == 0:
@@ -676,13 +682,13 @@ class DashboardPage(QWidget):
         if acq.total == 0:
             if gaps.scanned and gaps.missing_tracks:
                 lines.append(
-                    "No wishlist jobs yet — open Acquisition → Scan for missing to queue downloads."
+                    "No wishlist jobs yet — open Find music → Find missing songs to queue downloads."
                 )
             elif gaps.available and gaps.albums_scanned:
                 lines.append("No wishlist jobs — nothing missing to acquire.")
             else:
                 lines.append(
-                    "No wishlist jobs yet. Use Acquisition → Scan for missing after albums are identified."
+                    "No wishlist jobs yet. Use Find music → Find missing songs after albums are identified."
                 )
         else:
             wishlist_parts = [

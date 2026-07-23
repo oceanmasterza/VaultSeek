@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from uuid import UUID
 
+from PySide6.QtCore import Signal
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QDialog,
@@ -20,11 +21,14 @@ from PySide6.QtWidgets import (
 from vaultseek.core.container import Container
 from vaultseek.gui.async_task import run_in_background
 from vaultseek.gui.datetime_format import format_local_datetime
+from vaultseek.gui.widgets.empty_state import EmptyState
 from vaultseek.models.entities.acquisition_job import AcquisitionJobState
 
 
 class AcquisitionPage(QWidget):
     """Wishlist of AcquisitionJobs with search / auto-acquire actions."""
+
+    navigate_requested = Signal(str)
 
     def __init__(self, container: Container, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -33,13 +37,30 @@ class AcquisitionPage(QWidget):
         self._job_ids: list[UUID] = []
 
         layout = QVBoxLayout(self)
-        heading = QLabel("Acquisition")
+        heading = QLabel("Wishlist")
         heading.setProperty("heading", True)
         layout.addWidget(heading)
+        help_lbl = QLabel(
+            "Download queue for missing albums and upgrades. Queue jobs from Find music, "
+            "then auto-acquire or pick results here."
+        )
+        help_lbl.setWordWrap(True)
+        help_lbl.setProperty("muted", True)
+        layout.addWidget(help_lbl)
 
         self._summary = QLabel("")
         self._summary.setWordWrap(True)
         layout.addWidget(self._summary)
+
+        self._empty = EmptyState(
+            "Wishlist is empty",
+            "Find missing songs or browse Discogs, then come back here to download.",
+            primary_label="Find music",
+            on_primary=lambda: self.navigate_requested.emit("find"),
+            secondary_label="Scan for missing",
+            on_secondary=self._scan_missing,
+        )
+        layout.addWidget(self._empty)
 
         self._table = QTableWidget(0, 8)
         self._table.setHorizontalHeaderLabels(
@@ -58,7 +79,8 @@ class AcquisitionPage(QWidget):
         pick_btn = QPushButton("Pick result…")
         cancel_btn = QPushButton("Cancel selected")
         refresh_btn = QPushButton("Refresh")
-        for btn in (cancel_btn, refresh_btn, pick_btn):
+        find_btn = QPushButton("Find music…")
+        for btn in (cancel_btn, refresh_btn, pick_btn, find_btn):
             btn.setProperty("secondary", True)
         scan_btn.setToolTip("Create AcquisitionJobs from MusicBrainz release gaps.")
         run_btn.setToolTip(
@@ -79,14 +101,17 @@ class AcquisitionPage(QWidget):
         pick_btn.clicked.connect(self._pick_result_for_selected_job)
         cancel_btn.clicked.connect(self._cancel_selected)
         refresh_btn.clicked.connect(self.refresh)
+        find_btn.clicked.connect(lambda: self.navigate_requested.emit("find"))
         row1.addWidget(scan_btn)
         row1.addWidget(run_btn)
         row1.addWidget(acquire_btn)
         row1.addWidget(pick_btn)
         row1.addWidget(cancel_btn)
         row1.addWidget(refresh_btn)
+        row1.addWidget(find_btn)
         row1.addStretch(1)
         layout.addLayout(row1)
+        self._empty.setVisible(False)
 
     def set_library(self, library_id: UUID | None) -> None:
         self._library_id = library_id
@@ -105,6 +130,8 @@ class AcquisitionPage(QWidget):
         threshold = self._container.config.acquisition.auto_acquire_threshold
         if self._library_id is None:
             self._summary.setText("No library selected.")
+            self._empty.setVisible(True)
+            self._table.setVisible(False)
             return
 
         jobs = self._container.acquisition_engine.list_jobs(library_id=self._library_id)
@@ -114,6 +141,12 @@ class AcquisitionPage(QWidget):
             f"{len(jobs)} job(s) · {active} active · {waiting} awaiting choice · "
             f"auto-acquire ≥ {threshold:.0%}"
         )
+
+        empty = len(jobs) == 0
+        self._empty.setVisible(empty)
+        self._table.setVisible(not empty)
+        if empty:
+            return
 
         rows: list[tuple[UUID, str, str, str, str, str, str, str, str]] = []
         for job in jobs:

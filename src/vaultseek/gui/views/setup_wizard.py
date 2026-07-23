@@ -370,10 +370,11 @@ class _DonePage(QWizardPage):
             "<ol>"
             "<li>Open <b>Dashboard</b> — use the Getting started checklist.</li>"
             "<li><b>Scan Incoming</b> if you already have files to identify.</li>"
-            "<li>Use <b>Albums → Find missing songs</b> or <b>Discogs</b> to queue downloads.</li>"
-            "<li>Watch <b>Acquisition</b> / <b>Jobs</b> while searches and imports run.</li>"
+            "<li>Use <b>Find &amp; get → Find music</b> (gaps or Discogs) to queue downloads.</li>"
+            "<li>Watch <b>Wishlist</b> / <b>Jobs</b> while searches and imports run.</li>"
             "</ol>"
-            "<p>Re-open this wizard anytime from <b>Help → Setup wizard…</b></p>"
+            "<p>Re-open this wizard anytime from the Dashboard <b>Setup wizard</b> button "
+            "or <b>Help → Setup wizard…</b></p>"
         )
         body.setWordWrap(True)
         layout.addWidget(body)
