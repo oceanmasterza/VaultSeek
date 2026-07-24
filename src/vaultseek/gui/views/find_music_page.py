@@ -21,6 +21,7 @@ from PySide6.QtWidgets import (
 )
 
 from vaultseek.core.container import Container
+from vaultseek.gui.async_task import run_in_background
 from vaultseek.gui.views.discogs_page import DiscogsPage
 from vaultseek.gui.widgets.empty_state import EmptyState
 from vaultseek.services.library_scan_actions import run_missing_scan, run_quality_upgrade_scan
@@ -154,26 +155,64 @@ class _GapsTab(QWidget):
         if self._library_id is None:
             QMessageBox.information(self, "Find music", "Select a library first.")
             return
-        count = run_missing_scan(self._container, self._library_id)
-        QMessageBox.information(
-            self,
-            "Find missing songs",
-            f"Created {count} acquisition job(s). Open Wishlist to download.",
-        )
-        self.refresh()
-        if count:
-            self.navigate_requested.emit("acquisition")
+        library_id = self._library_id
+        self._status.setText("Scanning for missing songs (background)…")
+        self._btn_missing.setEnabled(False)
+        self._btn_upgrades.setEnabled(False)
+
+        def work() -> int:
+            return run_missing_scan(self._container, library_id)
+
+        def done(count: object) -> None:
+            self._btn_missing.setEnabled(True)
+            self._btn_upgrades.setEnabled(True)
+            n = int(count) if isinstance(count, int) else 0
+            QMessageBox.information(
+                self,
+                "Find missing songs",
+                f"Created {n} acquisition job(s). Open Wishlist to download.",
+            )
+            self.refresh()
+            if n:
+                self.navigate_requested.emit("acquisition")
+
+        def failed(msg: str) -> None:
+            self._btn_missing.setEnabled(True)
+            self._btn_upgrades.setEnabled(True)
+            QMessageBox.warning(self, "Find missing songs", msg)
+            self.refresh()
+
+        run_in_background(work, on_finished=done, on_failed=failed)
 
     def _scan_upgrades(self) -> None:
         if self._library_id is None:
             QMessageBox.information(self, "Find music", "Select a library first.")
             return
-        count = run_quality_upgrade_scan(self._container, self._library_id)
-        QMessageBox.information(
-            self,
-            "Find quality upgrades",
-            f"Created {count} upgrade job(s). Open Wishlist to download.",
-        )
-        self.refresh()
-        if count:
-            self.navigate_requested.emit("acquisition")
+        library_id = self._library_id
+        self._status.setText("Scanning for quality upgrades (background)…")
+        self._btn_missing.setEnabled(False)
+        self._btn_upgrades.setEnabled(False)
+
+        def work() -> int:
+            return run_quality_upgrade_scan(self._container, library_id)
+
+        def done(count: object) -> None:
+            self._btn_missing.setEnabled(True)
+            self._btn_upgrades.setEnabled(True)
+            n = int(count) if isinstance(count, int) else 0
+            QMessageBox.information(
+                self,
+                "Find quality upgrades",
+                f"Created {n} upgrade job(s). Open Wishlist to download.",
+            )
+            self.refresh()
+            if n:
+                self.navigate_requested.emit("acquisition")
+
+        def failed(msg: str) -> None:
+            self._btn_missing.setEnabled(True)
+            self._btn_upgrades.setEnabled(True)
+            QMessageBox.warning(self, "Find quality upgrades", msg)
+            self.refresh()
+
+        run_in_background(work, on_finished=done, on_failed=failed)

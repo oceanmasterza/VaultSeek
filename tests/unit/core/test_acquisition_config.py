@@ -80,7 +80,7 @@ def test_migrating_v8_config_adds_auto_acquire_and_http_fields(tmp_path: Path) -
 
     assert config.schema_version == CURRENT_SCHEMA_VERSION
     assert config.acquisition.auto_acquire_threshold == 0.45
-    assert config.acquisition.nicotine_plus.transport == "socket"
+    assert config.acquisition.nicotine_plus.transport == "http"
     assert config.acquisition.nicotine_plus.api_port == 12339
 
 

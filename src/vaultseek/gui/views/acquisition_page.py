@@ -37,6 +37,7 @@ class AcquisitionPage(QWidget):
         self._container = container
         self._library_id: UUID | None = None
         self._job_ids: list[UUID] = []
+        self._last_refresh_fingerprint: tuple[object, ...] | None = None
 
         layout = QVBoxLayout(self)
         heading = QLabel("Wishlist")
@@ -125,6 +126,7 @@ class AcquisitionPage(QWidget):
 
     def set_library(self, library_id: UUID | None) -> None:
         self._library_id = library_id
+        self._last_refresh_fingerprint = None
         self.refresh()
 
     def refresh(self) -> None:
@@ -135,28 +137,55 @@ class AcquisitionPage(QWidget):
             if 0 <= row < len(self._job_ids)
         }
 
-        self._table.setRowCount(0)
-        self._job_ids = []
         threshold = self._container.config.acquisition.auto_acquire_threshold
         if self._library_id is None:
+            self._table.setRowCount(0)
+            self._job_ids = []
             self._summary.setText("No library selected.")
             self._empty.setVisible(True)
             self._table.setVisible(False)
+            self._last_refresh_fingerprint = None
             return
 
         jobs = self._container.acquisition_engine.list_jobs(library_id=self._library_id)
+        fingerprint = (
+            self._library_id,
+            self._show_wanted.isChecked(),
+            tuple(
+                (
+                    job.id,
+                    job.state.value,
+                    job.retry_count,
+                    job.updated_at.isoformat() if job.updated_at else "",
+                    job.error_message or "",
+                )
+                for job in jobs
+            ),
+        )
         wanted_count = sum(1 for job in jobs if is_parked(job))
         if not self._show_wanted.isChecked():
             jobs = [job for job in jobs if not is_parked(job)]
         active = sum(1 for job in jobs if not job.is_terminal)
         waiting = sum(1 for job in jobs if job.state is AcquisitionJobState.WAITING_FOR_USER)
-        wanted_note = f" · {wanted_count} wanted (hidden)" if wanted_count and not self._show_wanted.isChecked() else (
-            f" · {wanted_count} wanted" if wanted_count else ""
+        wanted_note = (
+            f" · {wanted_count} wanted (hidden)"
+            if wanted_count and not self._show_wanted.isChecked()
+            else (f" · {wanted_count} wanted" if wanted_count else "")
         )
         self._summary.setText(
             f"{len(jobs)} shown{wanted_note} · {active} active · {waiting} awaiting choice · "
             f"auto-acquire ≥ {threshold:.0%}"
         )
+
+        # Skip rebuilding the table when only the 2s poll timer re-fired with
+        # identical job rows — rebuilding hundreds of QTableWidgetItems freezes
+        # the UI while searches / downloads are active.
+        if fingerprint == self._last_refresh_fingerprint:
+            return
+        self._last_refresh_fingerprint = fingerprint
+
+        self._table.setRowCount(0)
+        self._job_ids = []
 
         empty = len(jobs) == 0
         self._empty.setVisible(empty)
@@ -422,11 +451,45 @@ class AcquisitionPage(QWidget):
             )
             return
 
-        if not job.extra.get("scored_results") or not job.extra.get("search_results"):
-            self._container.acquisition_runner.search_and_score(job_id)
-            job = self._container.acquisition_engine.get(job_id)
-            if job is None:
+        if job.extra.get("scored_results") and job.extra.get("search_results"):
+            self._open_result_picker(job_id)
+            return
+
+        runner = self._container.acquisition_runner
+        engine = self._container.acquisition_engine
+        self._summary.setText("Searching providers for results (background)…")
+
+        def work() -> str | None:
+            outcome = runner.search_and_score(job_id)
+            if outcome.state is AcquisitionJobState.QUEUED:
+                return outcome.message or "Search deferred (rate limit)."
+            job_after = engine.get(job_id)
+            if job_after is None:
+                return "Job not found."
+            if not job_after.extra.get("scored_results") or not job_after.extra.get(
+                "search_results"
+            ):
+                return outcome.message or "No scored results available to pick."
+            return None
+
+        def done(message: object) -> None:
+            text = str(message) if message else ""
+            if text:
+                QMessageBox.warning(self, "Acquisition", text)
+                self.refresh()
                 return
+            self._open_result_picker(job_id)
+
+        run_in_background(
+            work,
+            on_finished=done,
+            on_failed=lambda msg: QMessageBox.warning(self, "Acquisition", msg),
+        )
+
+    def _open_result_picker(self, job_id: UUID) -> None:
+        job = self._container.acquisition_engine.get(job_id)
+        if job is None:
+            return
 
         search_results_raw = job.extra.get("search_results") or []
         scored_raw = job.extra.get("scored_results") or []
@@ -476,16 +539,22 @@ class AcquisitionPage(QWidget):
         if not picked_result_id:
             return
 
-        try:
-            outcome = self._container.acquisition_runner.start_download_by_result_id(
-                job_id, picked_result_id
-            )
-            QMessageBox.information(
-                self, "Acquisition", outcome.message or outcome.state.value
-            )
-        except (KeyError, ValueError) as exc:
-            QMessageBox.warning(self, "Acquisition", str(exc))
-        self.refresh()
+        runner = self._container.acquisition_runner
+        self._summary.setText("Starting download in the background…")
+
+        def work() -> str:
+            outcome = runner.start_download_by_result_id(job_id, picked_result_id)
+            return outcome.message or outcome.state.value
+
+        def done(message: object) -> None:
+            QMessageBox.information(self, "Acquisition", str(message))
+            self.refresh()
+
+        run_in_background(
+            work,
+            on_finished=done,
+            on_failed=lambda msg: QMessageBox.warning(self, "Acquisition", msg),
+        )
 
     def _cancel_selected(self) -> None:
         for job_id in self._selected_ids():

@@ -25,6 +25,8 @@ from PySide6.QtWidgets import (
 )
 
 from vaultseek.core.container import Container
+from vaultseek.gui.async_task import run_in_background
+from vaultseek.gui.debounce import connect_debounced
 from vaultseek.gui.widgets.browse import (
     HealthColorDelegate,
     apply_track_health_style,
@@ -68,7 +70,7 @@ class LibraryPage(QWidget):
         self._search = QLineEdit()
         self._search.setPlaceholderText("Filter by title or file name…")
         self._search.setClearButtonEnabled(True)
-        self._search.textChanged.connect(self._reload_tracks)
+        connect_debounced(self._search.textChanged, self._reload_tracks, parent=self)
         toolbar.addWidget(self._search, stretch=1)
         scan_btn = QPushButton("Scan incoming")
         scan_btn.setProperty("secondary", True)
@@ -306,27 +308,55 @@ class LibraryPage(QWidget):
         if self._library_id is None:
             QMessageBox.warning(self, "Library", "Select or create a library in Settings first.")
             return
-        count = run_missing_scan(self._container, self._library_id)
-        QMessageBox.information(
-            self,
-            "Find missing songs",
-            f"Created {count} acquisition job(s). Check Find music / Wishlist.",
+        library_id = self._library_id
+        self._counts.setText("Scanning for missing songs (background)…")
+
+        def work() -> int:
+            return run_missing_scan(self._container, library_id)
+
+        def done(count: object) -> None:
+            n = int(count) if isinstance(count, int) else 0
+            QMessageBox.information(
+                self,
+                "Find missing songs",
+                f"Created {n} acquisition job(s). Check Find music / Wishlist.",
+            )
+            self.refresh()
+            if n:
+                self.navigate_requested.emit("acquisition")
+
+        run_in_background(
+            work,
+            on_finished=done,
+            on_failed=lambda msg: QMessageBox.warning(self, "Library", msg),
         )
-        if count:
-            self.navigate_requested.emit("acquisition")
 
     def _scan_upgrades(self) -> None:
         if self._library_id is None:
             QMessageBox.warning(self, "Library", "Select or create a library in Settings first.")
             return
-        count = run_quality_upgrade_scan(self._container, self._library_id)
-        QMessageBox.information(
-            self,
-            "Find quality upgrades",
-            f"Created {count} upgrade job(s). Check Find music / Wishlist.",
+        library_id = self._library_id
+        self._counts.setText("Scanning for quality upgrades (background)…")
+
+        def work() -> int:
+            return run_quality_upgrade_scan(self._container, library_id)
+
+        def done(count: object) -> None:
+            n = int(count) if isinstance(count, int) else 0
+            QMessageBox.information(
+                self,
+                "Find quality upgrades",
+                f"Created {n} upgrade job(s). Check Find music / Wishlist.",
+            )
+            self.refresh()
+            if n:
+                self.navigate_requested.emit("acquisition")
+
+        run_in_background(
+            work,
+            on_finished=done,
+            on_failed=lambda msg: QMessageBox.warning(self, "Library", msg),
         )
-        if count:
-            self.navigate_requested.emit("acquisition")
 
     def _selected_path(self) -> str | None:
         rows = {index.row() for index in self._table.selectedIndexes()}

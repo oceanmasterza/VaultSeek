@@ -17,6 +17,7 @@ from PySide6.QtWidgets import (
 )
 
 from vaultseek.core.container import Container
+from vaultseek.gui.debounce import connect_debounced
 
 
 class ArtworkPage(QWidget):
@@ -44,7 +45,7 @@ class ArtworkPage(QWidget):
         self._search = QLineEdit()
         self._search.setPlaceholderText("Filter by album or artist…")
         self._search.setClearButtonEnabled(True)
-        self._search.textChanged.connect(self.refresh)
+        connect_debounced(self._search.textChanged, self.refresh, parent=self)
         toolbar.addWidget(self._search, stretch=1)
         self._missing_only = QCheckBox("Problems only")
         self._missing_only.setToolTip("Show missing and low-resolution covers only.")
