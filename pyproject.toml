@@ -8,7 +8,7 @@ version = "1.0.0"
 description = "Find what you're missing — music discovery and acquisition companion to MusicVault."
 readme = "README.md"
 license = { text = "MIT" }
-requires-python = ">=3.14"
+requires-python = ">=3.12"
 authors = [{ name = "VaultSeek Contributors" }]
 keywords = ["music", "library", "navidrome", "jellyfin", "plex", "metadata", "musicbrainz"]
 classifiers = [
@@ -16,6 +16,8 @@ classifiers = [
     "Intended Audience :: End Users/Desktop",
     "License :: OSI Approved :: MIT License",
     "Operating System :: Microsoft :: Windows",
+    "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
     "Programming Language :: Python :: 3.14",
     "Topic :: Multimedia :: Sound/Audio :: Editors",
 ]
@@ -35,6 +37,8 @@ dependencies = [
     "Send2Trash>=1.8",
     "psutil>=6.0",
     "loguru>=0.7",
+    # AcoustID fallback: Windows wheels for shazamio-core exist through 3.12.
+    "shazamio>=0.7",
 ]
 
 [project.optional-dependencies]
@@ -62,7 +66,7 @@ vaultseek = "vaultseek.__main__:main"
 where = ["src"]
 
 [tool.ruff]
-target-version = "py314"
+target-version = "py312"
 line-length = 100
 src = ["src", "tests"]
 
@@ -77,17 +81,17 @@ ignore = [
 
 [tool.black]
 line-length = 100
-target-version = ["py314"]
+target-version = ["py312"]
 
 [tool.mypy]
-python_version = "3.14"
+python_version = "3.12"
 strict = true
 packages = ["vaultseek"]
 mypy_path = "src"
 explicit_package_bases = true
 
 [[tool.mypy.overrides]]
-module = ["acoustid.*", "send2trash.*"]
+module = ["acoustid.*", "send2trash.*", "shazamio.*", "shazamio_core.*", "aiohttp_retry.*"]
 ignore_missing_imports = true
 
 [tool.pytest.ini_options]

@@ -1,0 +1,35 @@
+﻿VaultSeek — tester build (2026-07-24)
+=====================================
+
+INSTALL
+-------
+1. Run packaging\output\VaultSeek-Setup.exe (or the copy in this zip).
+2. Install Nicotine+ separately and enable the community HTTP API plugin
+   (api-nicotine-plus) on 127.0.0.1:12339.
+3. In VaultSeek Settings: Discogs token (optional but recommended), Nicotine+
+   transport = http, host 127.0.0.1, API port 12339.
+4. Set Incoming + Library paths, then run Find music → Find missing songs.
+
+WHAT THIS BUILD FIXES
+---------------------
+- Acquisition automation: only truly unavailable Soulseek tracks go to Review.
+  Empty searches, peer offline / not shared, verify hiccups keep retrying.
+- Nicotine search: session check, simpler retry query, download recovery after restart.
+- Discogs browse no longer hard-crashes the app while acquisition is busy
+  (Qt background-task lifetime fix).
+- Artwork UNIQUE race, missing-media ghost tracks, Shazamio fallback (no AcoustID required).
+
+TEST FOCUS
+----------
+1. Leave acquisition running while browsing Discogs — app must stay up.
+2. Find missing on a known album — downloads should land in Incoming then organize.
+3. Review tab should stay mostly empty unless a track is really not on Soulseek
+   after many empty searches (~8 attempts).
+4. Restart mid-download — jobs should resume / recover from Incoming folders.
+
+NOTES
+-----
+- App data: %APPDATA%\VaultSeek
+- Logs: %APPDATA%\VaultSeek\logs (crashes\ for ERROR files; Windows dumps for native crashes)
+- Python runtime is 3.12 (bundled). AcoustID key optional; Shazam used as audio-ID fallback.
+- Rate limits: Soulseek searches are intentionally slow (flood protection).

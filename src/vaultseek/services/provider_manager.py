@@ -70,15 +70,28 @@ class ProviderManager:
         provider_ids: Sequence[str] | None = None,
     ) -> list[SearchResult]:
         results: list[SearchResult] = []
+        connection_errors: list[ConnectionError] = []
         for provider in self._iter_active(provider_ids):
-            if provider.capabilities.search:
+            if not provider.capabilities.search:
+                continue
+            try:
                 batch = provider.search(request)
-                logger.debug(
-                    "Provider {} returned {} result(s)",
+            except ConnectionError as exc:
+                connection_errors.append(exc)
+                logger.warning(
+                    "Provider {} communication error: {}",
                     provider.provider_id,
-                    len(batch),
+                    exc,
                 )
-                results.extend(batch)
+                continue
+            logger.debug(
+                "Provider {} returned {} result(s)",
+                provider.provider_id,
+                len(batch),
+            )
+            results.extend(batch)
+        if not results and connection_errors:
+            raise connection_errors[0]
         return results
 
     def download(self, result: SearchResult) -> DownloadHandle | None:

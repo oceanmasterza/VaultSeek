@@ -77,6 +77,37 @@ def test_upsert_image_deduplicates_by_content_hash(artwork_repo: ArtworkReposito
     assert artwork_repo.get(duplicate.id) is None
 
 
+def test_upsert_image_recovers_from_content_hash_race(
+    artwork_repo: ArtworkRepository, engine: Engine
+) -> None:
+    """Simulate a concurrent insert that won the unique content_hash race."""
+    from sqlalchemy import insert
+
+    from vaultseek.db.tables import artwork as artwork_table
+    from vaultseek.db.uuid_utils import uuid_to_blob
+
+    winner = _make_artwork(content_hash="cd" * 32)
+    with engine.begin() as conn:
+        conn.execute(
+            insert(artwork_table).values(
+                id=uuid_to_blob(winner.id),
+                content_hash_sha256=winner.content_hash_sha256,
+                source=winner.source,
+                source_id=winner.source_id,
+                mime_type=winner.mime_type,
+                width=winner.width,
+                height=winner.height,
+                file_size=winner.file_size,
+                file_path=winner.file_path,
+                created_at=winner.created_at.isoformat(),
+            )
+        )
+
+    loser = _make_artwork(content_hash="cd" * 32)
+    returned = artwork_repo.upsert_image(loser)
+    assert returned == winner.id
+
+
 def test_get_by_content_hash(artwork_repo: ArtworkRepository) -> None:
     art = _make_artwork(content_hash="cd" * 32)
     artwork_repo.upsert_image(art)

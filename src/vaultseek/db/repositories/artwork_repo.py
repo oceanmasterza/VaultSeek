@@ -13,6 +13,7 @@ from typing import Any
 from uuid import UUID
 
 from sqlalchemy import Engine, Row, func, or_, select
+from sqlalchemy.exc import IntegrityError
 
 from vaultseek.db.repositories.base import batch_upsert
 from vaultseek.db.tables import album_artwork, albums, artists, track_artwork
@@ -31,12 +32,24 @@ class ArtworkRepository:
 
     def upsert_image(self, artwork: Artwork) -> UUID:
         """Insert the image row, or return the existing id for the same
-        content hash (images are globally deduplicated)."""
+        content hash (images are globally deduplicated).
+
+        Concurrent workers can race past the pre-check; catch the unique
+        ``content_hash_sha256`` violation and reuse the winner's id.
+        """
         existing = self.get_by_content_hash(artwork.content_hash_sha256)
         if existing is not None:
             return existing.id
-        with self._engine.begin() as conn:
-            batch_upsert(conn, artwork_table, [_to_row(artwork)], conflict_columns=["id"])
+        try:
+            with self._engine.begin() as conn:
+                batch_upsert(
+                    conn, artwork_table, [_to_row(artwork)], conflict_columns=["id"]
+                )
+        except IntegrityError:
+            raced = self.get_by_content_hash(artwork.content_hash_sha256)
+            if raced is not None:
+                return raced.id
+            raise
         return artwork.id
 
     def get(self, artwork_id: UUID) -> Artwork | None:

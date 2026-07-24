@@ -21,6 +21,12 @@ from vaultseek.models.interfaces.acquisition import SearchResult
 from vaultseek.services.acquisition_attention import park_if_attention_needed
 from vaultseek.services.acquisition_engine import AcquisitionEngine
 from vaultseek.services.acquisition_labels import job_label
+from vaultseek.services.acquisition_outcomes import (
+    AcquisitionOutcomeCode,
+    classify_download_message,
+    classify_verification_failures,
+    outcome_extra,
+)
 from vaultseek.services.acquisition_workflow import AcquisitionWorkflow
 from vaultseek.services.download_manager import DownloadManager
 from vaultseek.services.review_queue_service import ReviewQueueService
@@ -93,15 +99,32 @@ class AcquisitionRunner:
             logger.info("Search for {}: {}", job_label(job), message)
             return RunnerOutcome(job_id, AcquisitionJobState.QUEUED, message)
 
+        if job.state is AcquisitionJobState.QUEUED and job.extra.get("search_deferred"):
+            retry_after = float(job.extra.get("search_retry_after_seconds") or 0.0)
+            message = f"deferred — Soulseek search rate limit ({retry_after:.0f}s)"
+            logger.info("Search for {}: {}", job_label(job), message)
+            return RunnerOutcome(job_id, AcquisitionJobState.QUEUED, message)
+
         if job.state is AcquisitionJobState.NO_RESULTS or not results:
             provider_offline = bool(job.extra.get("provider_offline"))
+            exhausted = bool(job.extra.get("search_exhausted"))
             message = (
-                "no acquisition providers connected"
-                if provider_offline
-                else "no provider results"
+                job.error_message
+                or (
+                    "no acquisition providers connected"
+                    if provider_offline
+                    else "no Soulseek hits"
+                )
             )
-            logger.warning("Search for {}: {}", job_label(job), message)
-            self._park_attention(job, message=message, provider_offline=provider_offline)
+            if exhausted:
+                logger.warning("Search for {}: exhausted — {}", job_label(job), message)
+                self._park_attention(job, message=message, provider_offline=False)
+            else:
+                logger.info(
+                    "Search for {}: {} — will retry (not parked in Review)",
+                    job_label(job),
+                    message,
+                )
             return RunnerOutcome(job_id, AcquisitionJobState.NO_RESULTS, message)
 
         self._engine.advance(job_id, AcquisitionJobState.SCORING, note=f"{len(results)} hit(s)")
@@ -285,28 +308,49 @@ class AcquisitionRunner:
             scored = _load_scored(job)
         if not scored:
             self._engine.advance(job_id, AcquisitionJobState.NO_RESULTS, note="nothing to score")
+            self._engine.update_extra(
+                job_id,
+                outcome_extra(
+                    AcquisitionOutcomeCode.SEARCH_EMPTY,
+                    detail="hits filtered to zero by scoring",
+                    search_exhausted=False,
+                ),
+            )
             job = self._engine.get(job_id)
             assert job is not None
-            self._park_attention(job, message="no scored results")
+            logger.info("{}: no scored audio results — will retry", job_label(job))
             return RunnerOutcome(job_id, AcquisitionJobState.NO_RESULTS, "no scored results")
 
         best_result, best_score = scored[0]
-        if best_score < self._threshold:
+        below_attempts = int(job.extra.get("below_threshold_attempts") or 0)
+        # After several below-threshold passes, accept a weaker but still
+        # plausible hit so automation is not stuck forever on quality.
+        effective_threshold = self._threshold
+        if below_attempts >= 3:
+            effective_threshold = min(self._threshold, 0.28)
+
+        if best_score < effective_threshold:
             self._engine.advance(
                 job_id,
                 AcquisitionJobState.WAITING_FOR_USER,
-                note=f"best={best_score:.2f}<{self._threshold:.2f}",
+                note=f"best={best_score:.2f}<{effective_threshold:.2f}",
+            )
+            self._engine.update_extra(
+                job_id,
+                {
+                    **outcome_extra(
+                        AcquisitionOutcomeCode.FOUND_BELOW_THRESHOLD,
+                        detail=f"best {best_score:.0%} < {effective_threshold:.0%}",
+                    ),
+                    "below_threshold_attempts": below_attempts + 1,
+                },
             )
             logger.info(
-                "{}: best score {:.0%} below auto-acquire threshold {:.0%}",
+                "{}: best score {:.0%} below auto-acquire threshold {:.0%} — "
+                "will keep searching (not parked in Review)",
                 job_label(job),
                 best_score,
-                self._threshold,
-            )
-            loaded = self._engine.get(job_id)
-            self._park_attention(
-                loaded,
-                message=f"best score {best_score:.0%} below threshold {self._threshold:.0%}",
+                effective_threshold,
             )
             return RunnerOutcome(
                 job_id,
@@ -346,6 +390,9 @@ class AcquisitionRunner:
             AcquisitionJobState.WAITING_FOR_USER,
             AcquisitionJobState.COLLECTING_RESULTS,
             AcquisitionJobState.DOWNLOADING,
+            AcquisitionJobState.DOWNLOAD_FAILED,
+            AcquisitionJobState.VERIFICATION_FAILED,
+            AcquisitionJobState.IMPORT_FAILED,
         ):
             raise ValueError(
                 f"AcquisitionJob {job_id} cannot start download from {job.state.value}"
@@ -353,14 +400,43 @@ class AcquisitionRunner:
 
         if job.state is AcquisitionJobState.COLLECTING_RESULTS:
             self._engine.advance(job_id, AcquisitionJobState.SCORING)
+        elif job.state in (
+            AcquisitionJobState.DOWNLOAD_FAILED,
+            AcquisitionJobState.VERIFICATION_FAILED,
+            AcquisitionJobState.IMPORT_FAILED,
+        ):
+            self._engine.advance(job_id, AcquisitionJobState.SCORING, note="try next peer")
 
         download_result = self._with_download_folder(job, result)
+        attempted = [
+            str(item) for item in (job.extra.get("attempted_result_ids") or []) if item
+        ]
+        if result.result_id not in attempted:
+            attempted.append(result.result_id)
+        self._engine.update_extra(
+            job_id,
+            {
+                "attempted_result_ids": attempted,
+                "selected_result_id": result.result_id,
+                "selected_provider_id": result.provider_id,
+                "selected_score": score,
+            },
+        )
         handle = self._downloads.start(job_id, download_result)
         if handle is None:
             loaded = self._engine.get(job_id)
             assert loaded is not None
             logger.warning("Download start failed for {}", job_label(loaded))
-            self._park_attention(loaded, message="download start failed")
+            self._engine.update_extra(
+                job_id,
+                outcome_extra(
+                    AcquisitionOutcomeCode.FOUND_DOWNLOAD_FAILED,
+                    detail="download start failed",
+                ),
+            )
+            next_outcome = self._try_next_download_candidate(job_id, auto_import=auto_import)
+            if next_outcome is not None:
+                return next_outcome
             return RunnerOutcome(job_id, loaded.state, "download start failed")
 
         sibling_count = self._enqueue_album_siblings(job, download_result)
@@ -374,15 +450,6 @@ class AcquisitionRunner:
             f" (+{sibling_count} album sibling(s))" if sibling_count else "",
         )
 
-        self._engine.update_extra(
-            job_id,
-            {
-                "selected_result_id": result.result_id,
-                "selected_provider_id": result.provider_id,
-                "selected_score": score,
-            },
-        )
-
         status = self._downloads.poll(job_id)
         if status is not None and status.state == "completed" and status.local_paths:
             logger.info("Download complete for {} — {} file(s)", label, len(status.local_paths))
@@ -390,7 +457,25 @@ class AcquisitionRunner:
             self._workflow.finish_download(job_id, status.local_paths, auto_import=auto_import)
             loaded = self._engine.get(job_id)
             assert loaded is not None
-            self._park_attention(loaded)
+            if loaded.state in (
+                AcquisitionJobState.DOWNLOAD_FAILED,
+                AcquisitionJobState.VERIFICATION_FAILED,
+                AcquisitionJobState.IMPORT_FAILED,
+            ):
+                next_outcome = self._try_next_download_candidate(
+                    job_id, auto_import=auto_import
+                )
+                if next_outcome is not None:
+                    return next_outcome
+            elif loaded.state is AcquisitionJobState.COMPLETED:
+                self._engine.update_extra(
+                    job_id,
+                    outcome_extra(
+                        AcquisitionOutcomeCode.ALREADY_OWNED
+                        if (loaded.extra or {}).get("outcome_code") == "already_owned"
+                        else AcquisitionOutcomeCode.ACQUIRED
+                    ),
+                )
             return RunnerOutcome(job_id, loaded.state, "download completed immediately")
 
         loaded = self._engine.get(job_id)
@@ -441,9 +526,40 @@ class AcquisitionRunner:
         updated = 0
         for job in downloading:
             status = self._downloads.poll(job.id)
+            label = job_label(job)
+            folder_paths = _audio_files_in_download_folder(job)
+
+            # Files already on disk: finish even when the in-memory handle was
+            # lost (app restart) or Nicotine transfer matching lags.
+            if folder_paths and (
+                status is None or status.state in ("queued", "downloading", "completed")
+            ):
+                if status is None or status.state == "completed" or _folder_has_ready_audio(
+                    folder_paths
+                ):
+                    paths = list(status.local_paths) if status and status.local_paths else []
+                    merged = {str(p): p for p in paths}
+                    for path in folder_paths:
+                        merged[str(path)] = path
+                    paths = list(merged.values())
+                    logger.info(
+                        "Download complete for {} — {} file(s){}",
+                        label,
+                        len(paths),
+                        " (recovered from folder)" if status is None else "",
+                    )
+                    self._download_progress_logged.pop(job.id, None)
+                    self._workflow.finish_download(
+                        job.id,
+                        paths,
+                        auto_import=auto_import,
+                    )
+                    self._after_download_finished(job.id, auto_import=auto_import)
+                    updated += 1
+                    continue
+
             if status is None:
                 continue
-            label = job_label(job)
             if status.state not in ("completed", "failed", "cancelled"):
                 milestone = int((status.progress or 0.0) * 100) // 25 * 25
                 last = self._download_progress_logged.get(job.id, -1)
@@ -452,7 +568,6 @@ class AcquisitionRunner:
                     logger.info("Download {}% for {}", milestone, label)
             if status.state == "completed":
                 paths = list(status.local_paths) if status.local_paths else None
-                folder_paths = _audio_files_in_download_folder(job)
                 if folder_paths:
                     merged = {str(p): p for p in (paths or [])}
                     for path in folder_paths:
@@ -466,22 +581,135 @@ class AcquisitionRunner:
                     paths,
                     auto_import=auto_import,
                 )
-                loaded = self._engine.get(job.id)
-                self._park_attention(loaded)
+                self._after_download_finished(job.id, auto_import=auto_import)
                 updated += 1
             elif status.state in ("failed", "cancelled"):
+                # Prefer folder recovery over a stale/sibling failure signal.
+                if folder_paths and _folder_has_ready_audio(folder_paths):
+                    logger.info(
+                        "Download complete for {} — {} file(s) (folder override after {})",
+                        label,
+                        len(folder_paths),
+                        status.state,
+                    )
+                    self._download_progress_logged.pop(job.id, None)
+                    self._workflow.finish_download(
+                        job.id,
+                        folder_paths,
+                        auto_import=auto_import,
+                    )
+                    self._after_download_finished(job.id, auto_import=auto_import)
+                    updated += 1
+                    continue
+                code = classify_download_message(status.message)
                 logger.warning(
-                    "Download {} for {}: {}",
+                    "Download {} for {}: {} [{}]",
                     status.state,
                     label,
                     status.message or status.state,
+                    code.value,
                 )
                 self._download_progress_logged.pop(job.id, None)
                 self._downloads.complete(job.id)
-                loaded = self._engine.get(job.id)
-                self._park_attention(loaded, message=status.message or status.state)
+                self._engine.update_extra(
+                    job.id,
+                    outcome_extra(code, detail=status.message or status.state),
+                )
+                next_outcome = self._try_next_download_candidate(
+                    job.id, auto_import=auto_import
+                )
+                if next_outcome is None:
+                    loaded = self._engine.get(job.id)
+                    logger.info(
+                        "{}: no more peer candidates after {} — will retry later",
+                        label,
+                        code.value,
+                    )
+                    # Do not park — schedule normal retry via automation.
+                    self._park_attention(loaded, message=status.message or status.state)
                 updated += 1
         return updated
+
+    def _after_download_finished(self, job_id: UUID, *, auto_import: bool) -> None:
+        loaded = self._engine.get(job_id)
+        if loaded is None:
+            return
+        if loaded.state is AcquisitionJobState.COMPLETED:
+            code = AcquisitionOutcomeCode.ALREADY_OWNED
+            if (loaded.extra or {}).get("outcome_code") != "already_owned":
+                code = AcquisitionOutcomeCode.ACQUIRED
+            self._engine.update_extra(job_id, outcome_extra(code))
+            return
+        if loaded.state is AcquisitionJobState.VERIFICATION_FAILED:
+            failures = tuple(
+                part
+                for part in (loaded.error_message or "").split(";")
+                if part
+            )
+            code = classify_verification_failures(failures)
+            self._engine.update_extra(
+                job_id, outcome_extra(code, detail=loaded.error_message or "")
+            )
+            if self._try_next_download_candidate(job_id, auto_import=auto_import) is None:
+                logger.info(
+                    "{}: verification failed ({}) — will retry with a fresh search later",
+                    job_label(loaded),
+                    code.value,
+                )
+            return
+        if loaded.state in (
+            AcquisitionJobState.DOWNLOAD_FAILED,
+            AcquisitionJobState.IMPORT_FAILED,
+        ):
+            code = classify_download_message(loaded.error_message)
+            self._engine.update_extra(
+                job_id, outcome_extra(code, detail=loaded.error_message or "")
+            )
+            if self._try_next_download_candidate(job_id, auto_import=auto_import) is None:
+                logger.info(
+                    "{}: {} — will retry later",
+                    job_label(loaded),
+                    code.value,
+                )
+
+    def _try_next_download_candidate(
+        self,
+        job_id: UUID,
+        *,
+        auto_import: bool = True,
+    ) -> RunnerOutcome | None:
+        """Start the next scored peer/result that has not been attempted yet."""
+        job = self._engine.get(job_id)
+        if job is None:
+            return None
+        if job.state not in (
+            AcquisitionJobState.SCORING,
+            AcquisitionJobState.WAITING_FOR_USER,
+            AcquisitionJobState.DOWNLOAD_FAILED,
+            AcquisitionJobState.VERIFICATION_FAILED,
+            AcquisitionJobState.IMPORT_FAILED,
+        ):
+            return None
+
+        attempted = {
+            str(item) for item in (job.extra.get("attempted_result_ids") or []) if item
+        }
+        scored = _load_scored(job)
+        for result, score in scored:
+            if result.result_id in attempted:
+                continue
+            if score < self._threshold:
+                continue
+            logger.info(
+                "{}: trying next peer/result {} (score {:.0%})",
+                job_label(job),
+                result.display_name,
+                score,
+            )
+            return self.start_download(
+                job_id, result, auto_import=auto_import, score=score
+            )
+        return None
 
     def _with_download_folder(self, job: AcquisitionJob, result: SearchResult) -> SearchResult:
         """Point Nicotine downloads into Incoming/vaultseek-nicotine/<job_id>."""
@@ -524,6 +752,8 @@ class AcquisitionRunner:
                 continue
             if _result_folder_key(sibling) != primary_key:
                 continue
+            if not _is_audio_search_result(sibling):
+                continue
             raw = dict(sibling.raw)
             if folder:
                 raw["folder_path"] = str(folder)
@@ -558,6 +788,28 @@ class AcquisitionRunner:
 _AUDIO_SUFFIXES = {".flac", ".mp3", ".m4a", ".aac", ".ogg", ".opus", ".wav", ".aiff", ".wma"}
 
 
+def _is_audio_search_result(result: SearchResult) -> bool:
+    raw = result.raw or {}
+    candidates = [
+        result.format,
+        raw.get("extension"),
+        raw.get("format"),
+        result.display_name,
+        raw.get("file_path"),
+        raw.get("virtual_path"),
+    ]
+    for value in candidates:
+        if not value:
+            continue
+        text = str(value).casefold()
+        if text.lstrip(".") in {suffix.lstrip(".") for suffix in _AUDIO_SUFFIXES}:
+            return True
+        for suffix in _AUDIO_SUFFIXES:
+            if text.endswith(suffix):
+                return True
+    return False
+
+
 def _result_folder_key(result: SearchResult) -> str | None:
     raw = result.raw or {}
     path = str(raw.get("file_path") or raw.get("virtual_path") or result.display_name or "")
@@ -580,12 +832,23 @@ def _audio_files_in_download_folder(job: AcquisitionJob) -> list[Path]:
         return []
     files: list[Path] = []
     try:
-        for path in folder.iterdir():
+        for path in folder.rglob("*"):
             if path.is_file() and path.suffix.casefold() in _AUDIO_SUFFIXES:
                 files.append(path)
     except OSError:
         return []
     return files
+
+
+def _folder_has_ready_audio(paths: list[Path]) -> bool:
+    """True when at least one non-empty audio file is present (download landed)."""
+    for path in paths:
+        try:
+            if path.is_file() and path.stat().st_size > 0:
+                return True
+        except OSError:
+            continue
+    return False
 
 
 def _result_to_dict(result: SearchResult) -> dict[str, Any]:

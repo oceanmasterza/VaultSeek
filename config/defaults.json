@@ -1,5 +1,5 @@
 {
-  "schema_version": 18,
+  "schema_version": 19,
   "log_level": "INFO",
   "theme": "dark",
   "setup_completed": false,
@@ -18,6 +18,7 @@
     "confidence_threshold": 0.9,
     "provider_order": [
       "acoustid",
+      "shazamio",
       "musicbrainz",
       "discogs",
       "local_tags",
@@ -25,6 +26,7 @@
     ],
     "enabled_providers": [
       "acoustid",
+      "shazamio",
       "musicbrainz",
       "discogs",
       "local_tags",

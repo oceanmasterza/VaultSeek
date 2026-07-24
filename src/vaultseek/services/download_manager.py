@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+from typing import Any
 from uuid import UUID
 
 from vaultseek.models.entities.acquisition_job import AcquisitionJobState
@@ -38,6 +39,19 @@ class DownloadManager:
             return None
 
         self._handles[job_id] = handle
+        # Persist the provider handle: in-memory `_handles` is lost on restart,
+        # but Nicotine may still finish into nicotine_download_folder. Poll
+        # rehydrates from this blob so verify/import can complete.
+        self._engine.update_extra(
+            job_id,
+            {
+                "download_handle": {
+                    "provider_id": handle.provider_id,
+                    "download_id": handle.download_id,
+                    "result_id": handle.result_id,
+                }
+            },
+        )
         self._engine.advance(
             job_id,
             AcquisitionJobState.DOWNLOADING,
@@ -46,7 +60,7 @@ class DownloadManager:
         return handle
 
     def poll(self, job_id: UUID) -> DownloadStatus | None:
-        handle = self._handles.get(job_id)
+        handle = self._resolve_handle(job_id)
         if handle is None:
             return None
         return self._providers.get_status(handle)
@@ -130,9 +144,39 @@ class DownloadManager:
         return status
 
     def cancel(self, job_id: UUID) -> bool:
-        handle = self._handles.pop(job_id, None)
+        handle = self._resolve_handle(job_id)
+        self._handles.pop(job_id, None)
         if handle is None:
             return False
         cancelled = self._providers.cancel(handle)
         self._engine.cancel(job_id)
         return cancelled
+
+    def _resolve_handle(self, job_id: UUID) -> DownloadHandle | None:
+        handle = self._handles.get(job_id)
+        if handle is not None:
+            return handle
+        job = self._engine.get(job_id)
+        if job is None:
+            return None
+        raw = job.extra.get("download_handle")
+        restored = _handle_from_extra(raw)
+        if restored is None:
+            return None
+        self._handles[job_id] = restored
+        return restored
+
+
+def _handle_from_extra(raw: Any) -> DownloadHandle | None:
+    if not isinstance(raw, dict):
+        return None
+    provider_id = raw.get("provider_id")
+    download_id = raw.get("download_id")
+    result_id = raw.get("result_id")
+    if not provider_id or not download_id or not result_id:
+        return None
+    return DownloadHandle(
+        provider_id=str(provider_id),
+        download_id=str(download_id),
+        result_id=str(result_id),
+    )

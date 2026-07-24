@@ -198,6 +198,9 @@ class DiscogsPage(QWidget):
         provider = self._provider()
 
         def work() -> list[tuple[str, int]]:
+            from loguru import logger
+
+            logger.info("Discogs browse: searching artists for {!r}", query)
             results = provider.search(query, "artist", limit=15)
             hits: list[tuple[str, int]] = []
             for result in results:
@@ -213,6 +216,7 @@ class DiscogsPage(QWidget):
                             artist_id = None
                 if name and artist_id is not None:
                     hits.append((name, artist_id))
+            logger.info("Discogs browse: {} artist hit(s) for {!r}", len(hits), query)
             return hits
 
         def done(hits: object) -> None:
@@ -230,11 +234,13 @@ class DiscogsPage(QWidget):
             self._status.setText(f"{len(rows)} artist match(es) — select one to load releases.")
             self._artists.selectRow(0)
 
-        run_in_background(
-            work,
-            on_finished=done,
-            on_failed=lambda msg: QMessageBox.warning(self, "Discogs", msg),
-        )
+        def failed(msg: str) -> None:
+            from loguru import logger
+
+            logger.warning("Discogs browse search failed: {}", msg)
+            QMessageBox.warning(self, "Discogs", msg)
+
+        run_in_background(work, on_finished=done, on_failed=failed)
 
     def _on_artist_picked(self) -> None:
         rows = {index.row() for index in self._artists.selectedIndexes()}

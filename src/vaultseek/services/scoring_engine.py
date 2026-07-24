@@ -10,6 +10,9 @@ from vaultseek.models.interfaces.acquisition import SearchResult
 
 _TOKEN_SPLIT = re.compile(r"[\s_\-./\\|()\[\]]+")
 _LOSSLESS = frozenset({"flac", "wav", "aiff", "aif", "alac", "wv", "dsf", "dff"})
+_AUDIO_FORMATS = _LOSSLESS | frozenset(
+    {"mp3", "m4a", "aac", "ogg", "opus", "wma", "ape", "mpc", "tak"}
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -58,13 +61,18 @@ class ScoringEngine:
         return sorted(boosted, key=lambda item: item[1], reverse=True)
 
     def score_one(self, job: AcquisitionJob, result: SearchResult) -> float:
+        fmt = _result_format(result)
+        # Lyrics/cue/image junk often shares album/title tokens in the path.
+        if fmt is not None and fmt not in _AUDIO_FORMATS:
+            return 0.0
+
         score = 0.0
         haystack = _result_haystack(result)
 
-        if job.preferred_codec and result.format:
-            if job.preferred_codec.casefold() == result.format.casefold():
+        if job.preferred_codec and fmt:
+            if job.preferred_codec.casefold() == fmt:
                 score += self._weights.format_match
-        elif result.format and result.format.casefold() in _LOSSLESS:
+        elif fmt and fmt in _LOSSLESS:
             # Soft preference for lossless when the job has no codec preference.
             score += self._weights.format_match * 0.5
 
@@ -121,6 +129,26 @@ def _result_haystack(result: SearchResult) -> str:
         str(raw.get("virtual_path") or ""),
     ]
     return " ".join(part for part in parts if part).casefold()
+
+
+def _result_format(result: SearchResult) -> str | None:
+    """Normalize codec/extension from the hit (``mp3``, ``flac``, …)."""
+    raw = result.raw or {}
+    candidates = [
+        result.format,
+        raw.get("extension"),
+        raw.get("format"),
+    ]
+    path = str(raw.get("file_path") or raw.get("virtual_path") or result.display_name or "")
+    if path and "." in path.replace("\\", "/").rsplit("/", 1)[-1]:
+        candidates.append(path.replace("\\", "/").rsplit(".", 1)[-1])
+    for value in candidates:
+        if not value:
+            continue
+        fmt = str(value).casefold().lstrip(".")
+        if fmt:
+            return fmt
+    return None
 
 
 def _folder_key(result: SearchResult) -> str | None:

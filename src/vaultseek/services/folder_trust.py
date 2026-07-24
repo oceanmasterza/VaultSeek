@@ -190,6 +190,9 @@ class FolderTrustService:
 
 
 def _acoustid_confirmed(result: ArbitrationResult, identity: FileIdentity | None) -> bool:
+    # Sample-mode trust counts AcoustID only — Shazam helps identity but does
+    # not set file_identity.acoustid_id, so treating it as confirmation would
+    # never reach the sample threshold via DB counts.
     if any(item.provider_id == "acoustid" for item in result.provider_results):
         return True
     return identity is not None and bool(identity.acoustid_id)

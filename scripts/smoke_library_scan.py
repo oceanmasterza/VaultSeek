@@ -32,7 +32,6 @@ import time
 import wave
 from datetime import UTC, datetime
 from pathlib import Path
-from uuid import uuid7
 
 from mutagen.wave import WAVE
 
@@ -41,6 +40,7 @@ _ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(_ROOT / "src"))
 
 from vaultseek.app import bootstrap  # noqa: E402
+from vaultseek.db.uuid_utils import uuid7  # noqa: E402
 from vaultseek.models.entities.job import JobStatus, JobType  # noqa: E402
 from vaultseek.models.entities.library import Library  # noqa: E402
 from vaultseek.models.entities.track import LibraryZone  # noqa: E402

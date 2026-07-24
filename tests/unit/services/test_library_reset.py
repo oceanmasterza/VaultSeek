@@ -3,12 +3,13 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
-from uuid import uuid4, uuid7
+from uuid import uuid4
 
 from vaultseek.db.repositories.job_repo import JobRepository
 from vaultseek.db.repositories.library_repo import LibraryRepository
 from vaultseek.db.repositories.review_repo import ReviewRepository
 from vaultseek.db.repositories.track_repo import TrackRepository
+from vaultseek.db.uuid_utils import uuid7
 from vaultseek.models.entities.job import Job, JobStatus, JobType
 from vaultseek.models.entities.library import Library
 from vaultseek.models.entities.review_item import ReviewItem, ReviewStatus, ReviewType

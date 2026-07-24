@@ -3,7 +3,7 @@
 **Find what you're missing** — an intelligent music acquisition platform and companion to [MusicVault](https://github.com/oceanmasterza/MusicVault).
 
 [![CI](https://github.com/oceanmasterza/VaultSeek/actions/workflows/ci.yml/badge.svg)](https://github.com/oceanmasterza/VaultSeek/actions/workflows/ci.yml)
-[![Python 3.14+](https://img.shields.io/badge/python-3.14+-blue.svg)](https://www.python.org/downloads/)
+[![Python 3.12+](https://img.shields.io/badge/python-3.12+-blue.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Platform: Windows](https://img.shields.io/badge/platform-Windows-lightgrey.svg)]()
 
@@ -140,7 +140,7 @@ See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) and [docs/ARCHITECTURAL_UPDATE_
 
 | Layer | Technology |
 |-------|------------|
-| Language | Python 3.14+ |
+| Language | Python 3.12+ |
 | Desktop UI | PySide6 (Qt) |
 | Database | SQLite via SQLAlchemy 2 + Alembic |
 | DI | `Container` (explicit wiring) |

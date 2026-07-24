@@ -49,6 +49,13 @@ datas += pyside_datas
 binaries += pyside_binaries
 hiddenimports += list(pyside_hidden)
 
+# Shazamio + native core (and numpy) for in-process audio recognition fallback.
+for _pkg in ("shazamio", "shazamio_core", "numpy"):
+    _d, _b, _h = collect_all(_pkg)
+    datas += _d
+    binaries += _b
+    hiddenimports += list(_h)
+
 a = Analysis(  # noqa: F821
     [str(SRC / "vaultseek" / "__main__.py")],
     pathex=[str(SRC)],

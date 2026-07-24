@@ -13,8 +13,12 @@ from loguru import logger
 from vaultseek.db.repositories.album_repo import AlbumRepository
 from vaultseek.db.repositories.artist_repo import ArtistRepository
 from vaultseek.db.repositories.track_repo import TrackRepository
-from vaultseek.models.entities.acquisition_job import AcquisitionJob, AcquisitionJobType
-from vaultseek.models.entities.track import LibraryZone, Track
+from vaultseek.models.entities.acquisition_job import (
+    AcquisitionJob,
+    AcquisitionJobState,
+    AcquisitionJobType,
+)
+from vaultseek.models.entities.track import Track
 from vaultseek.plugins.builtin.musicbrainz.provider import MusicBrainzProvider, ReleaseTracklist
 from vaultseek.services.acquisition_engine import AcquisitionEngine
 from vaultseek.services.missing_media_cache import record_scan
@@ -80,10 +84,25 @@ class MissingMediaAnalyzer:
             logger.info("Missing-media scan: no missing tracks found")
             return []
 
+        open_keys = {
+            _job_track_key(job)
+            for job in acquisition_engine.list_jobs(library_id=library_id)
+            if job.state not in _TERMINAL_JOB_STATES
+        }
+
         jobs: list[AcquisitionJob] = []
+        skipped = 0
         by_album: Counter[str] = Counter()
         for gap in track_gaps:
             artist_name = _artist_name_for_album(self._albums, self._artists, gap.album_id)
+            key = (
+                (artist_name or "").casefold(),
+                (gap.album_title or "").casefold(),
+                (gap.track_title or "").casefold(),
+            )
+            if key in open_keys:
+                skipped += 1
+                continue
             job = acquisition_engine.create_job(
                 library_id=library_id,
                 job_type=AcquisitionJobType.MISSING_TRACK,
@@ -96,7 +115,15 @@ class MissingMediaAnalyzer:
             if auto_queue:
                 job = acquisition_engine.queue(job.id)
             jobs.append(job)
+            open_keys.add(key)
             by_album[gap.album_title] += 1
+
+        if not jobs:
+            logger.info(
+                "Missing-media scan: {} gap(s) already have open acquisition job(s)",
+                skipped,
+            )
+            return []
 
         album_parts = [
             f"{count} from {title}" for title, count in sorted(by_album.items(), key=lambda item: (-item[1], item[0]))
@@ -105,11 +132,13 @@ class MissingMediaAnalyzer:
         if len(album_parts) > 5:
             summary += f" (+{len(album_parts) - 5} more albums)"
         queue_note = " (queued for auto-acquire)" if auto_queue else ""
+        skip_note = f" (skipped {skipped} already queued)" if skipped else ""
         logger.info(
-            "Missing-media scan: created {} job(s) — {}{}",
+            "Missing-media scan: created {} job(s) — {}{}{}",
             len(jobs),
             summary,
             queue_note,
+            skip_note,
         )
         return jobs
 
@@ -126,18 +155,22 @@ class MissingMediaAnalyzer:
             return []
 
         library_tracks = self._tracks.list_by_album(library_id, album_id)
+        # Only count tracks whose files still exist — Incoming ghosts (DB row
+        # left after a failed/partial organize) must not hide official gaps.
+        owned_numbers = {
+            track.track_number
+            for track in library_tracks
+            if track.track_number is not None and Path(track.file_path).is_file()
+        }
+        owned_count = sum(1 for track in library_tracks if Path(track.file_path).is_file())
         gaps = _gaps_for_album(
             library_id=library_id,
             album_id=album_id,
             album_title=album.title,
             release_mbid=album.mbid,
             tracklist=tracklist,
-            library_track_numbers={
-                track.track_number
-                for track in library_tracks
-                if track.track_number is not None
-            },
-            library_track_count=len(library_tracks),
+            library_track_numbers=owned_numbers,
+            library_track_count=owned_count,
         )
         _log_album_gap_summary(album.title, tracklist.track_count, gaps, log=log)
         return gaps
@@ -161,7 +194,13 @@ class MissingMediaAnalyzer:
         file_gaps = self.analyze_missing_library_files(library_id, log=log)
         gaps.extend(file_gaps)
 
-        track_gaps = [gap for gap in gaps if gap.kind is MediaGapKind.MISSING_TRACK]
+        track_gaps = _dedupe_track_gaps(
+            [gap for gap in gaps if gap.kind is MediaGapKind.MISSING_TRACK]
+        )
+        # Keep incomplete-album annotations (not deduped with tracks).
+        other = [gap for gap in gaps if gap.kind is not MediaGapKind.MISSING_TRACK]
+        gaps = other + track_gaps
+
         incomplete_albums = albums_scanned - complete_albums
         if skipped_no_mbid and log:
             logger.info(
@@ -199,12 +238,18 @@ class MissingMediaAnalyzer:
     def analyze_missing_library_files(
         self, library_id: UUID, *, log: bool = True
     ) -> list[MediaGap]:
-        """Tracks assigned to library zone whose files are absent on disk."""
+        """Tracks whose files are absent on disk (any zone — Library or Incoming).
+
+        Incoming rows left behind after a partial organize are a common case:
+        the DB still has the track number, so release-gap analysis alone would
+        miss them unless we also scan for dead paths.
+        """
         gaps: list[MediaGap] = []
         offset = 0
         while True:
+            # zone=None → all zones (Incoming ghosts + Library missing files).
             batch = self._tracks.get_by_library(
-                library_id, LibraryZone.LIBRARY, offset=offset, limit=500
+                library_id, None, offset=offset, limit=500
             )
             if not batch:
                 break
@@ -231,8 +276,8 @@ class MissingMediaAnalyzer:
             offset += len(batch)
         if gaps and log:
             logger.warning(
-                "{} library track(s) are missing on disk — queue re-acquisition from "
-                "Acquisition → Scan for missing",
+                "{} track(s) are missing on disk — queue re-acquisition from "
+                "Find music → Find missing songs (or Acquisition → Scan for missing)",
                 len(gaps),
             )
         return gaps
@@ -311,6 +356,19 @@ def _gaps_for_album(
             )
         )
     return gaps
+
+
+_TERMINAL_JOB_STATES = frozenset(
+    {AcquisitionJobState.COMPLETED, AcquisitionJobState.CANCELLED}
+)
+
+
+def _job_track_key(job: AcquisitionJob) -> tuple[str, str, str]:
+    return (
+        (job.artist or "").casefold(),
+        (job.album or "").casefold(),
+        (job.title or "").casefold(),
+    )
 
 
 def _dedupe_track_gaps(gaps: list[MediaGap]) -> list[MediaGap]:

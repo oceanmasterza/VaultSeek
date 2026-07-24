@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 from typing import Any
-from uuid import UUID, uuid7
+from uuid import UUID
 
 import pytest
 import responses
@@ -13,6 +13,7 @@ from sqlalchemy import Engine
 from vaultseek.db.repositories.job_repo import JobRepository
 from vaultseek.db.repositories.media_server_repo import MediaServerStateRepository
 from vaultseek.db.repositories.track_repo import TrackRepository
+from vaultseek.db.uuid_utils import uuid7
 from vaultseek.models.entities.job import Job, JobStatus, JobType
 from vaultseek.models.entities.media_server_state import MediaServerState
 from vaultseek.models.interfaces.media_server import (

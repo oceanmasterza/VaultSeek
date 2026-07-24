@@ -70,17 +70,25 @@ class AcoustIdProvider:
             "duration": max(1, int(round(duration))),
             "fingerprint": fingerprint_text,
         }
-        self._throttle()
-        try:
-            response = self._session.get(
-                _ACOUSTID_LOOKUP_URL,
-                params=params,
-                timeout=self._timeout,
-            )
-            response.raise_for_status()
-            payload = response.json()
-        except (requests.RequestException, ValueError):
-            return None
+        # Hold the lock across throttle + HTTP so metadata workers cannot
+        # burst past the 3 req/s AcoustID guideline on one key/IP.
+        with self._rate_lock:
+            now = time.monotonic()
+            wait = _MIN_INTERVAL_SECONDS - (now - self._last_request_at)
+            if wait > 0:
+                time.sleep(wait)
+            try:
+                response = self._session.get(
+                    _ACOUSTID_LOOKUP_URL,
+                    params=params,
+                    timeout=self._timeout,
+                )
+                response.raise_for_status()
+                payload = response.json()
+            except (requests.RequestException, ValueError):
+                return None
+            finally:
+                self._last_request_at = time.monotonic()
 
         return _parse_acoustid_response(payload, priority=self.priority)
 
@@ -97,14 +105,6 @@ class AcoustIdProvider:
         limit: int = 10,
     ) -> list[ProviderResult]:
         return []
-
-    def _throttle(self) -> None:
-        with self._rate_lock:
-            now = time.monotonic()
-            wait = _MIN_INTERVAL_SECONDS - (now - self._last_request_at)
-            if wait > 0:
-                time.sleep(wait)
-            self._last_request_at = time.monotonic()
 
 
 def _parse_acoustid_response(payload: dict[str, Any], *, priority: int) -> ProviderResult | None:

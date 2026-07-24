@@ -144,8 +144,11 @@ def test_verification_rejects_content_hash_duplicate(
         acq, duplicate_repo=DuplicateRepository(engine)
     ).verify(job_id, [audio])
 
-    assert not result.ok
-    assert any(f.startswith("duplicate_hash:") for f in result.failures)
+    assert result.ok
+    assert "already_owned" in result.checks_passed
+    loaded = acq.get(job_id)
+    assert loaded is not None
+    assert loaded.state is AcquisitionJobState.COMPLETED
 
 
 def test_verification_fingerprint_duplicate(
@@ -196,8 +199,11 @@ def test_verification_fingerprint_duplicate(
         fingerprint_provider=_Fp(),
     ).verify(job_id, [audio])
 
-    assert not result.ok
-    assert any(f.startswith("duplicate_fingerprint:") for f in result.failures)
+    assert result.ok
+    assert "already_owned" in result.checks_passed
+    loaded = acq.get(job_id)
+    assert loaded is not None
+    assert loaded.state is AcquisitionJobState.COMPLETED
 
 
 def test_import_pipeline_completes_after_verification(

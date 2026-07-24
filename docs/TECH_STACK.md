@@ -8,7 +8,7 @@ Technical overview of VaultSeek — what is actually in the repository today.
 
 | Component | Technology | Notes |
 |-----------|------------|-------|
-| **Language** | Python 3.14+ | Requires `uuid.uuid7()` (stdlib) for primary keys |
+| **Language** | Python 3.12+ | UUIDv7 PKs (stdlib on 3.14+, polyfill on 3.12/3.13); 3.12 preferred for Shazamio Windows wheels |
 | **Package** | `vaultseek` | `src/vaultseek/` layout, setuptools |
 | **Desktop UI** | PySide6 (Qt 6) | Windows-first; pages under `vaultseek/gui/` |
 | **Persistence** | SQLite | Single file under `%APPDATA%\VaultSeek\` |
@@ -77,7 +77,7 @@ VaultSeek does **not** embed the Soulseek protocol. Nicotine+ is an external cli
 ### Required tools
 
 - Windows 10/11 (primary target)
-- Python 3.14+
+- Python 3.12+
 - Git
 - [GitHub CLI](https://cli.github.com/) (`gh`) — optional, for issues/projects
 

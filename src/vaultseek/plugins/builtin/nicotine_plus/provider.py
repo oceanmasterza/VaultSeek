@@ -144,10 +144,14 @@ class NicotinePlusProvider:
                 raise SearchThrottled(delay)
         logger.info("Nicotine+ search via {}: {}", transport, query or "(empty query)")
         wait_seconds = float(self._settings.get("search_timeout_seconds") or 30.0)
-        if isinstance(self._rpc, HttpApiRpcClient):
-            hits = self._rpc.search(request, wait_seconds=wait_seconds)
-        else:
-            hits = self._rpc.search(request)
+        try:
+            if isinstance(self._rpc, HttpApiRpcClient):
+                hits = self._rpc.search(request, wait_seconds=wait_seconds)
+            else:
+                hits = self._rpc.search(request)
+        except ConnectionError as exc:
+            logger.warning("Nicotine+ search communication error: {}", exc)
+            raise
         results = hits_to_search_results(hits)
         logger.info("Nicotine+ returned {} hit(s) for {}", len(results), query or "(empty query)")
         return results

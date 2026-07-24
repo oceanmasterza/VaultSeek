@@ -1,4 +1,10 @@
-"""Create Attention-needed review items for acquisition failures."""
+"""Create Attention-needed review items for acquisition failures.
+
+Only escalate when the song appears genuinely unavailable after repeated
+empty Soulseek searches (``EXHAUSTED_NOT_ON_NETWORK``). Transient outcomes
+(empty search, peer offline, not shared, verify hiccups, below threshold)
+must keep retrying in the background — they must not flood Review.
+"""
 
 from __future__ import annotations
 
@@ -9,29 +15,33 @@ from loguru import logger
 from vaultseek.models.entities.acquisition_job import AcquisitionJob, AcquisitionJobState
 from vaultseek.models.entities.review_item import ReviewType
 from vaultseek.services.acquisition_labels import job_label
+from vaultseek.services.acquisition_outcomes import (
+    AcquisitionOutcomeCode,
+    job_outcome_code,
+    outcome_label,
+    should_park_in_review,
+)
 from vaultseek.services.dto.review_dto import ReviewItemCreate
 from vaultseek.services.review_queue_service import ReviewQueueService
 
-_NO_RESULTS_STATES = frozenset({AcquisitionJobState.NO_RESULTS})
-_FAILED_STATES = frozenset(
-    {
-        AcquisitionJobState.DOWNLOAD_FAILED,
-        AcquisitionJobState.VERIFICATION_FAILED,
-        AcquisitionJobState.IMPORT_FAILED,
-    }
-)
-_NEEDS_CHOICE_STATES = frozenset({AcquisitionJobState.WAITING_FOR_USER})
-
 
 def review_type_for_state(state: AcquisitionJobState) -> ReviewType | None:
-    """Map a terminal-ish acquisition failure state to a ReviewType."""
-    if state in _NO_RESULTS_STATES:
+    """Legacy mapper — prefer :func:`should_park_job` + outcome codes."""
+    if state is AcquisitionJobState.NO_RESULTS:
         return ReviewType.ACQUISITION_NO_RESULTS
-    if state in _FAILED_STATES:
-        return ReviewType.ACQUISITION_FAILED
-    if state in _NEEDS_CHOICE_STATES:
-        return ReviewType.ACQUISITION_NEEDS_CHOICE
     return None
+
+
+def should_park_job(job: AcquisitionJob, *, provider_offline: bool = False) -> bool:
+    """Return True only when this job belongs in the human Review queue."""
+    del provider_offline  # offline is retryable; do not park
+    code = job_outcome_code(job)
+    if code is not None:
+        return should_park_in_review(code)
+    # Back-compat: only park NO_RESULTS that were explicitly marked exhausted.
+    if job.state is AcquisitionJobState.NO_RESULTS:
+        return bool(job.extra.get("search_exhausted"))
+    return False
 
 
 def park_acquisition_failure(
@@ -41,66 +51,45 @@ def park_acquisition_failure(
     message: str = "",
     provider_offline: bool = False,
 ) -> UUID | None:
-    """Create or refresh a pending ReviewItem for an acquisition failure.
-
-    Dedupes on ``payload.acquisition_job_id`` so retries do not flood Attention.
-    Returns the review id, or ``None`` when no review is warranted / queue missing.
-    """
+    """Create or refresh a pending ReviewItem when the song is unavailable."""
     if review_queue is None:
         return None
-
-    review_type = review_type_for_state(job.state)
-    if review_type is None and not provider_offline:
+    if not should_park_job(job, provider_offline=provider_offline):
         return None
-    if provider_offline:
-        review_type = ReviewType.ACQUISITION_FAILED
 
-    assert review_type is not None
-
+    code = job_outcome_code(job) or AcquisitionOutcomeCode.EXHAUSTED_NOT_ON_NETWORK
     label = job_label(job)
-    note = (message or job.error_message or "").strip()
-    if provider_offline and not note:
-        note = "No acquisition providers connected (Nicotine+ offline or disabled)."
-    if not note:
-        note = job.state.value.replace("_", " ")
-
-    if review_type is ReviewType.ACQUISITION_NO_RESULTS:
-        title = f"No acquisition results: {label}"
-        description = (
-            f"Search returned nothing for {label}. {note} "
-            "Check Nicotine+ / Soulseek connectivity, or try different search terms."
-        )
-    elif review_type is ReviewType.ACQUISITION_NEEDS_CHOICE:
-        title = f"Acquisition needs your pick: {label}"
-        description = (
-            f"{label} — best match is below the auto-acquire threshold. {note} "
-            "Open Acquisition → Pick result to choose a download."
-        )
-    else:
-        title = f"Acquisition failed: {label}"
-        description = f"{label} — {note}"
+    note = (message or job.error_message or outcome_label(code) or "").strip()
+    title = f"Not on Soulseek: {label}"
+    description = (
+        f"{label} — {note or 'no hits after repeated searches'}. "
+        "Automation will keep a slow recheck, but this likely needs a different source."
+    )
 
     review_id = review_queue.create_item(
         ReviewItemCreate(
             library_id=job.library_id,
-            review_type=review_type,
+            review_type=ReviewType.ACQUISITION_NO_RESULTS,
             title=title,
             description=description,
             payload={
                 "acquisition_job_id": str(job.id),
                 "acquisition_state": job.state.value,
+                "outcome_code": code.value,
+                "outcome_label": outcome_label(code),
                 "artist": job.artist,
                 "album": job.album,
                 "title": job.title,
-                "provider_offline": provider_offline,
+                "provider_offline": False,
+                "empty_search_attempts": int(job.extra.get("empty_search_attempts") or 0),
             },
         )
     )
-    logger.debug(
-        "Parked acquisition attention review {} for job {} ({})",
+    logger.info(
+        "Parked unavailable-song review {} for job {} ({})",
         review_id,
         job.id,
-        job.state.value,
+        code.value,
     )
     return review_id
 
@@ -112,14 +101,14 @@ def park_if_attention_needed(
     message: str = "",
     provider_offline: bool = False,
 ) -> UUID | None:
-    """Convenience wrapper when the job may be missing."""
+    """Park only exhausted unavailability — never transient acquisition issues."""
     if job is None:
         return None
-    if provider_offline or review_type_for_state(job.state) is not None:
-        return park_acquisition_failure(
-            review_queue,
-            job,
-            message=message,
-            provider_offline=provider_offline,
-        )
-    return None
+    if not should_park_job(job, provider_offline=provider_offline):
+        return None
+    return park_acquisition_failure(
+        review_queue,
+        job,
+        message=message,
+        provider_offline=provider_offline,
+    )

@@ -136,13 +136,15 @@ def test_resolve_ties_break_by_provider_priority() -> None:
     assert result.needs_review is False
 
 
-def test_resolve_skips_acoustid_when_tags_already_strong() -> None:
+def test_resolve_skips_acoustid_when_mb_recording_already_linked() -> None:
+    """Strong tags + MB recording ID → no AcoustID (quota saved)."""
     local = ProviderResult(
         provider_id="local_tags",
         fields=[
             ProviderFieldResult("artist", "Radiohead", 0.92),
             ProviderFieldResult("album", "OK Computer", 0.92),
             ProviderFieldResult("title", "Karma Police", 0.92),
+            ProviderFieldResult("mb_recording_id", "mbid-already", 0.95),
         ],
         overall_confidence=0.92,
         lookup_method="tags",
@@ -173,7 +175,21 @@ def test_resolve_skips_acoustid_when_tags_already_strong() -> None:
             return []
 
     arbitrator = MetadataArbitrator(
-        [_FakeProvider("local_tags", 50, by_tags=local), _Acoustid()],
+        [
+            _FakeProvider("local_tags", 50, by_tags=local),
+            _FakeProvider(
+                "musicbrainz",
+                10,
+                by_tags=ProviderResult(
+                    provider_id="musicbrainz",
+                    fields=[ProviderFieldResult("mb_recording_id", "mbid-already", 0.95)],
+                    overall_confidence=0.95,
+                    lookup_method="tags",
+                    priority=10,
+                ),
+            ),
+            _Acoustid(),
+        ],
         confidence_threshold=0.90,
     )
     fingerprint = FingerprintData(fingerprint_data=b"fp", duration_seconds=120.0)
@@ -183,6 +199,61 @@ def test_resolve_skips_acoustid_when_tags_already_strong() -> None:
     assert calls["fp"] == 0
     assert result.needs_review is False
     assert result.fields["artist"].value == "Radiohead"
+
+
+def test_resolve_uses_acoustid_when_tags_strong_but_no_mbid() -> None:
+    """Strong tags without MusicBrainz ID still run AcoustID for linkage."""
+    local = ProviderResult(
+        provider_id="local_tags",
+        fields=[
+            ProviderFieldResult("artist", "Radiohead", 0.92),
+            ProviderFieldResult("album", "OK Computer", 0.92),
+            ProviderFieldResult("title", "Karma Police", 0.92),
+        ],
+        overall_confidence=0.92,
+        lookup_method="tags",
+        priority=50,
+    )
+    calls = {"fp": 0}
+
+    class _Acoustid:
+        provider_id = "acoustid"
+        priority = 5
+
+        def lookup_by_fingerprint(self, fingerprint: bytes, duration: float) -> ProviderResult:
+            calls["fp"] += 1
+            return ProviderResult(
+                provider_id="acoustid",
+                fields=[ProviderFieldResult("mb_recording_id", "from-acoustid", 0.97)],
+                overall_confidence=0.97,
+                lookup_method="fingerprint",
+                priority=5,
+            )
+
+        def lookup_by_tags(self, query: MetadataQuery) -> None:
+            return None
+
+        def lookup_by_id(self, external_id: str, id_type: str) -> None:
+            return None
+
+        def search(
+            self,
+            query: str,
+            entity_type: Literal["artist", "album", "recording"],
+            limit: int = 10,
+        ) -> list[ProviderResult]:
+            return []
+
+    arbitrator = MetadataArbitrator(
+        [_FakeProvider("local_tags", 50, by_tags=local), _Acoustid()],
+        confidence_threshold=0.90,
+    )
+    fingerprint = FingerprintData(fingerprint_data=b"fp", duration_seconds=120.0)
+
+    result = arbitrator.resolve(_track(), fingerprint)
+
+    assert calls["fp"] == 1
+    assert result.fields["mb_recording_id"].value == "from-acoustid"
 
 
 def test_resolve_uses_acoustid_when_tags_are_weak() -> None:
@@ -230,6 +301,156 @@ def test_resolve_uses_acoustid_when_tags_are_weak() -> None:
     assert result.fields["title"].value == "Resolved"
     assert result.fields["mb_recording_id"].value == mbid
     assert result.needs_review is False
+
+
+def test_resolve_falls_back_to_shazamio_when_acoustid_misses() -> None:
+    weak = ProviderResult(
+        provider_id="local_tags",
+        fields=[ProviderFieldResult("title", "Maybe", 0.40)],
+        overall_confidence=0.40,
+        lookup_method="tags",
+        priority=50,
+    )
+    shazam_hit = ProviderResult(
+        provider_id="shazamio",
+        fields=[
+            ProviderFieldResult("artist", "Shazam Artist", 0.93),
+            ProviderFieldResult("album", "Shazam Album", 0.93),
+            ProviderFieldResult("title", "Shazam Title", 0.93),
+        ],
+        overall_confidence=0.93,
+        lookup_method="audio",
+        priority=6,
+    )
+    calls = {"shazam": 0, "acoustid": 0}
+
+    class _Acoustid:
+        provider_id = "acoustid"
+        priority = 5
+
+        def lookup_by_fingerprint(self, fingerprint: bytes, duration: float) -> None:
+            calls["acoustid"] += 1
+            return None
+
+        def lookup_by_tags(self, query: MetadataQuery) -> None:
+            return None
+
+        def lookup_by_id(self, external_id: str, id_type: str) -> None:
+            return None
+
+        def search(
+            self,
+            query: str,
+            entity_type: Literal["artist", "album", "recording"],
+            limit: int = 10,
+        ) -> list[ProviderResult]:
+            return []
+
+    class _Shazam:
+        provider_id = "shazamio"
+        priority = 6
+
+        def recognize_file(self, file_path: str) -> ProviderResult:
+            calls["shazam"] += 1
+            assert file_path
+            return shazam_hit
+
+        def lookup_by_fingerprint(self, fingerprint: bytes, duration: float) -> None:
+            return None
+
+        def lookup_by_tags(self, query: MetadataQuery) -> None:
+            return None
+
+        def lookup_by_id(self, external_id: str, id_type: str) -> None:
+            return None
+
+        def search(
+            self,
+            query: str,
+            entity_type: Literal["artist", "album", "recording"],
+            limit: int = 10,
+        ) -> list[ProviderResult]:
+            return []
+
+    arbitrator = MetadataArbitrator(
+        [
+            _FakeProvider("local_tags", 50, by_tags=weak),
+            _Acoustid(),
+            _Shazam(),
+        ],
+        confidence_threshold=0.90,
+    )
+    fingerprint = FingerprintData(fingerprint_data=b"fp", duration_seconds=120.0)
+
+    result = arbitrator.resolve(_track(), fingerprint)
+
+    assert calls["acoustid"] == 1
+    assert calls["shazam"] == 1
+    assert result.fields["title"].value == "Shazam Title"
+    assert result.fields["title"].source == "shazamio"
+    assert result.needs_review is False
+
+
+def test_resolve_skips_shazamio_when_acoustid_hits() -> None:
+    weak = ProviderResult(
+        provider_id="local_tags",
+        fields=[ProviderFieldResult("title", "Maybe", 0.40)],
+        overall_confidence=0.40,
+        lookup_method="tags",
+        priority=50,
+    )
+    acoustid = ProviderResult(
+        provider_id="acoustid",
+        fields=[
+            ProviderFieldResult("artist", "A", 0.95),
+            ProviderFieldResult("album", "B", 0.95),
+            ProviderFieldResult("title", "From AcoustID", 0.95),
+        ],
+        overall_confidence=0.95,
+        lookup_method="fingerprint",
+        priority=5,
+    )
+    calls = {"shazam": 0}
+
+    class _Shazam:
+        provider_id = "shazamio"
+        priority = 6
+
+        def recognize_file(self, file_path: str) -> ProviderResult | None:
+            calls["shazam"] += 1
+            return None
+
+        def lookup_by_fingerprint(self, fingerprint: bytes, duration: float) -> None:
+            return None
+
+        def lookup_by_tags(self, query: MetadataQuery) -> None:
+            return None
+
+        def lookup_by_id(self, external_id: str, id_type: str) -> None:
+            return None
+
+        def search(
+            self,
+            query: str,
+            entity_type: Literal["artist", "album", "recording"],
+            limit: int = 10,
+        ) -> list[ProviderResult]:
+            return []
+
+    arbitrator = MetadataArbitrator(
+        [
+            _FakeProvider("local_tags", 50, by_tags=weak),
+            _FakeProvider("acoustid", 5, fingerprint=acoustid),
+            _Shazam(),
+        ],
+        confidence_threshold=0.90,
+    )
+    fingerprint = FingerprintData(fingerprint_data=b"fp", duration_seconds=120.0)
+
+    result = arbitrator.resolve(_track(), fingerprint)
+
+    assert calls["shazam"] == 0
+    assert result.fields["title"].value == "From AcoustID"
 
 
 def test_resolve_empty_providers_marks_needs_review() -> None:

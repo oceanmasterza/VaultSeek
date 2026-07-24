@@ -18,12 +18,17 @@ from typing import Any
 
 from vaultseek.core.exceptions import ConfigError, ConfigMigrationError, ConfigVersionError
 
-CURRENT_SCHEMA_VERSION = 18
+CURRENT_SCHEMA_VERSION = 19
 
 
 @dataclass(frozen=True)
 class AcoustIdEndpointConfig:
-    """One AcoustID application key with optional HTTP proxy."""
+    """One AcoustID application key with optional HTTP proxy.
+
+    Proxy URLs are also reused by the Shazamio fallback (direct route + each
+    configured proxy) so fingerprint and audio-recognition share the same
+    multi-IP throughput setup from Settings.
+    """
 
     api_key: str = ""
     proxy_url: str = ""
@@ -124,6 +129,7 @@ class MetadataConfig:
     confidence_threshold: float = 0.90
     provider_order: tuple[str, ...] = (
         "acoustid",
+        "shazamio",
         "musicbrainz",
         "discogs",
         "local_tags",
@@ -131,6 +137,7 @@ class MetadataConfig:
     )
     enabled_providers: tuple[str, ...] = (
         "acoustid",
+        "shazamio",
         "musicbrainz",
         "discogs",
         "local_tags",
@@ -138,7 +145,9 @@ class MetadataConfig:
     )
     acoustid_api_key: str = ""
     discogs_user_token: str = ""
-    # Up to several keys, each with its own proxy — 3 req/s per endpoint.
+    # Up to several keys, each with its own proxy — 3 req/s per AcoustID
+    # endpoint. The same proxy URLs also feed the Shazamio route pool
+    # (direct + proxies at ≤1 req/s each).
     acoustid_endpoints: tuple[AcoustIdEndpointConfig, ...] = ()
     # "all" = Chromaprint every file. "sample" = fingerprint until an album
     # folder is confirmed, then trust remaining siblings by tags/filenames.
@@ -402,6 +411,23 @@ def _migrate_v17_to_v18(raw: dict[str, Any]) -> dict[str, Any]:
     return migrated
 
 
+def _migrate_v18_to_v19(raw: dict[str, Any]) -> dict[str, Any]:
+    """Enable Shazamio as AcoustID audio-recognition fallback."""
+    migrated = dict(raw)
+    migrated["schema_version"] = 19
+    metadata = dict(migrated.get("metadata") or asdict(MetadataConfig()))
+    for key in ("provider_order", "enabled_providers"):
+        values = list(metadata.get(key) or [])
+        if "shazamio" not in values:
+            if "acoustid" in values:
+                values.insert(values.index("acoustid") + 1, "shazamio")
+            else:
+                values.insert(0, "shazamio")
+        metadata[key] = values
+    migrated["metadata"] = metadata
+    return migrated
+
+
 _MIGRATIONS: dict[int, Callable[[dict[str, Any]], dict[str, Any]]] = {
     1: _migrate_v1_to_v2,
     2: _migrate_v2_to_v3,
@@ -420,6 +446,7 @@ _MIGRATIONS: dict[int, Callable[[dict[str, Any]], dict[str, Any]]] = {
     15: _migrate_v15_to_v16,
     16: _migrate_v16_to_v17,
     17: _migrate_v17_to_v18,
+    18: _migrate_v18_to_v19,
 }
 
 

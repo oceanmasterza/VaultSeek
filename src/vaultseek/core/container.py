@@ -46,6 +46,7 @@ from vaultseek.models.services.duplicate_matcher import DuplicateMatcher
 from vaultseek.models.services.organize_engine import OrganizeEngine
 from vaultseek.models.services.quality_scorer import DEFAULT_WEIGHTS, QualityScorer
 from vaultseek.plugins.builtin.acoustid import AcoustIdProvider, AcoustIdProviderPool, build_acoustid_endpoints
+from vaultseek.plugins.builtin.shazamio import ShazamioProviderPool, build_shazam_routes
 from vaultseek.plugins.builtin.acquisition_stub import StubAcquisitionProvider
 from vaultseek.plugins.builtin.ampache import AmpachePlugin
 from vaultseek.plugins.builtin.chromaprint.provider import ChromaprintFingerprintProvider
@@ -523,6 +524,13 @@ def _build_metadata_providers(metadata: MetadataConfig) -> list[MetadataProvider
                 providers.append(AcoustIdProviderPool(endpoints))
         else:
             providers.append(AcoustIdProvider(api_key=None))
+    # Shazamio reuses AcoustID account proxy URLs (direct + up to 3 proxies).
+    if "shazamio" in enabled:
+        routes = build_shazam_routes(endpoints=metadata.acoustid_endpoints)
+        if len(routes) == 1:
+            providers.append(routes[0])
+        else:
+            providers.append(ShazamioProviderPool(routes))
     if "musicbrainz" in enabled:
         providers.append(MusicBrainzProvider())
     if "discogs" in enabled:

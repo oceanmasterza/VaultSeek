@@ -193,33 +193,83 @@ def test_create_jobs_for_library_persists_missing_track_jobs(
     assert jobs[0].preferred_codec == "FLAC"
 
 
-def test_analyze_missing_library_files_detects_absent_paths(
+def test_analyze_missing_library_files_detects_incoming_ghosts(
     engine: Engine,
     library_id: UUID,
     artist_id: UUID,
 ) -> None:
+    """Incoming rows with deleted files must still create re-acquire gaps."""
     album_id = _seed_album(engine, library_id, artist_id)
     track = Track(
         id=generate_uuid7(),
         library_id=library_id,
-        zone=LibraryZone.LIBRARY,
-        file_path="C:/library/ghost/01 - Ghost Track.flac",
-        file_name="01 - Ghost Track.flac",
+        zone=LibraryZone.INCOMING,
+        file_path="C:/incoming/ghost/03 - Ghost Incoming.flac",
+        file_name="03 - Ghost Incoming.flac",
         file_size=1024,
         file_modified=_NOW,
         created_at=_NOW,
         updated_at=_NOW,
         album_id=album_id,
         artist_id=artist_id,
-        title="Ghost Track",
-        track_number=1,
+        title="Ghost Incoming",
+        track_number=3,
     )
     TrackRepository(engine).upsert(track)
     musicbrainz = MagicMock()
-    musicbrainz.lookup_release_tracklist.return_value = None
 
     gaps = _analyzer(engine, musicbrainz).analyze_missing_library_files(library_id)
 
     assert len(gaps) == 1
-    assert gaps[0].track_title == "Ghost Track"
-    assert gaps[0].kind is MediaGapKind.MISSING_TRACK
+    assert gaps[0].track_number == 3
+    assert gaps[0].track_title == "Ghost Incoming"
+
+
+def test_analyze_album_ignores_ghost_paths_when_counting_owned(
+    engine: Engine,
+    library_id: UUID,
+    artist_id: UUID,
+) -> None:
+    """DB rows whose files are gone must not hide official tracklist gaps."""
+    album_id = _seed_album(engine, library_id, artist_id)
+    _insert_track(
+        engine,
+        library_id=library_id,
+        album_id=album_id,
+        artist_id=artist_id,
+        track_number=1,
+        title="First",
+    )
+    # Ghost "owned" track #2 — file never created.
+    ghost = Track(
+        id=generate_uuid7(),
+        library_id=library_id,
+        zone=LibraryZone.INCOMING,
+        file_path="C:/incoming/missing/02 - Second.flac",
+        file_name="02 - Second.flac",
+        file_size=1024,
+        file_modified=_NOW,
+        created_at=_NOW,
+        updated_at=_NOW,
+        album_id=album_id,
+        artist_id=artist_id,
+        title="Second",
+        track_number=2,
+    )
+    TrackRepository(engine).upsert(ghost)
+    tracklist = ReleaseTracklist(
+        release_mbid=_RELEASE_MBID,
+        title="Test Album",
+        artist="Test Artist",
+        tracks=(
+            OfficialTrack(number=1, title="First"),
+            OfficialTrack(number=2, title="Second"),
+        ),
+    )
+    musicbrainz = MagicMock()
+    musicbrainz.lookup_release_tracklist.return_value = tracklist
+
+    gaps = _analyzer(engine, musicbrainz).analyze_album(library_id, album_id)
+    missing = [gap for gap in gaps if gap.kind is MediaGapKind.MISSING_TRACK]
+
+    assert {gap.track_number for gap in missing} == {2}

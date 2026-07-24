@@ -208,3 +208,32 @@ def test_poll_active_jobs_finishes_download(
     assert updated == 1
     assert loaded is not None
     assert loaded.state is AcquisitionJobState.COMPLETED
+
+
+def test_poll_active_jobs_recovers_from_download_folder(
+    engine: Engine, library_id: UUID, tmp_path: Path
+) -> None:
+    """Finish DOWNLOADING when files landed but the in-memory handle is gone."""
+    audio = tmp_path / "song.mp3"
+    audio.write_bytes(b"mp3-bytes")
+
+    runner, acq = _runner(engine, threshold=0.50)
+    job = acq.create_job(
+        library_id=library_id,
+        job_type=AcquisitionJobType.MISSING_TRACK,
+        title="Song",
+        preferred_codec="MP3",
+    )
+    acq.queue(job.id)
+    acq.advance(job.id, AcquisitionJobState.SEARCHING)
+    acq.advance(job.id, AcquisitionJobState.COLLECTING_RESULTS)
+    acq.advance(job.id, AcquisitionJobState.SCORING)
+    acq.advance(job.id, AcquisitionJobState.DOWNLOADING, note="provider lost handle")
+    acq.update_extra(job.id, {"nicotine_download_folder": str(tmp_path)})
+
+    updated = runner.poll_active_jobs(library_id)
+
+    loaded = acq.get(job.id)
+    assert updated == 1
+    assert loaded is not None
+    assert loaded.state is AcquisitionJobState.COMPLETED

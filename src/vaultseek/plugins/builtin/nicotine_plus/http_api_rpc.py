@@ -20,12 +20,16 @@ DEFAULT_SEARCH_POLL_INTERVAL = 1.5
 
 _STATUS_MAP = {
     "finished": "completed",
+    "complete": "completed",
+    "completed": "completed",
     "queued": "queued",
     "getting status": "queued",
     "transferring": "downloading",
     "paused": "downloading",
     "cancelled": "cancelled",
     "filtered": "failed",
+    "file not shared": "failed",
+    "file not shared.": "failed",
     "user logged off": "failed",
     "connection closed": "failed",
     "connection timeout": "failed",
@@ -77,6 +81,17 @@ class HttpApiRpcClient:
             return False
         return data.get("status") == "ok"
 
+    def is_soulseek_connected(self) -> bool:
+        """True when api-nicotine-plus reports an active Soulseek login."""
+        try:
+            data = self._get("/status")
+        except (OSError, requests.RequestException, ValueError):
+            return False
+        if not data.get("connected"):
+            return False
+        # login_status: 2 = logged in (plugin versions vary; treat truthy connected as ok)
+        return True
+
     def search(
         self,
         request: SearchRequest,
@@ -89,11 +104,43 @@ class HttpApiRpcClient:
         ``POST /search`` only *starts* the search; hits trickle in over several
         seconds. Fetching ``/search/results`` once immediately almost always
         returns an empty list.
+
+        Soulseek occasionally returns zero hits for a full wait window even for
+        popular tracks; when that happens we retry once with a simplified query
+        (artist + title, dropping a redundant album token). Callers must treat
+        ``ConnectionError`` as a transport problem (retry), not "song missing".
         """
-        query_parts = [p for p in (request.artist, request.album, request.title) if p]
-        query = " ".join(query_parts) if query_parts else (request.artist or "")
-        if not query.strip():
+        # Probe login before opening a search tab — searching while disconnected
+        # burns the wait window and looks like a false "no results".
+        if not self.is_soulseek_connected():
+            raise ConnectionError(
+                f"Nicotine+ Soulseek session not connected at {self.base_url}"
+            )
+
+        primary = _build_search_query(request)
+        if not primary:
             return []
+
+        hits = self._search_query(
+            primary, wait_seconds=wait_seconds, poll_interval=poll_interval
+        )
+        if hits:
+            return hits
+
+        alternate = _simplified_search_query(request)
+        if alternate and alternate.casefold() != primary.casefold():
+            hits = self._search_query(
+                alternate, wait_seconds=wait_seconds, poll_interval=poll_interval
+            )
+        return hits
+
+    def _search_query(
+        self,
+        query: str,
+        *,
+        wait_seconds: float,
+        poll_interval: float,
+    ) -> list[RpcSearchHit]:
         try:
             started = self._post(
                 "/search",
@@ -101,24 +148,34 @@ class HttpApiRpcClient:
             )
             token = started.get("token")
             if token is None:
-                return []
+                raise ValueError("search response missing token")
             token_i = int(token)
-        except (OSError, requests.RequestException, ValueError):
-            return []
+        except (OSError, requests.RequestException, ValueError) as exc:
+            raise ConnectionError(f"Nicotine+ search start failed: {exc}") from exc
 
         deadline = time.monotonic() + max(0.0, float(wait_seconds))
         interval = max(0.2, float(poll_interval))
         hits: list[RpcSearchHit] = []
         last_count = -1
         stable_rounds = 0
+        poll_errors = 0
         while True:
             try:
                 results = self._get(
                     "/search/results",
                     params={"token": token_i, "limit": 200, "offset": 0},
                 )
+                poll_errors = 0
             except (OSError, requests.RequestException, ValueError):
-                return hits
+                poll_errors += 1
+                # Transient API blips are common — keep waiting until deadline.
+                if poll_errors >= 8:
+                    break
+                remaining = deadline - time.monotonic()
+                if remaining <= 0:
+                    break
+                time.sleep(min(interval, remaining))
+                continue
 
             hits = []
             for index, item in enumerate(results.get("items") or []):
@@ -130,7 +187,7 @@ class HttpApiRpcClient:
             if hits:
                 if len(hits) == last_count:
                     stable_rounds += 1
-                    if stable_rounds >= 1:
+                    if stable_rounds >= 2:
                         break
                 else:
                     stable_rounds = 0
@@ -140,6 +197,11 @@ class HttpApiRpcClient:
             if remaining <= 0:
                 break
             time.sleep(min(interval, remaining))
+
+        try:
+            self.close_search(token_i)
+        except (OSError, requests.RequestException, ValueError):
+            pass
         return hits
 
     def enqueue_download(self, result_id: str, *, raw: dict[str, Any] | None = None) -> str:
@@ -293,21 +355,49 @@ def _hit_from_http_item(item: dict[str, Any], *, token: int, index: int) -> RpcS
                     bitrate = int(attrs[key])
                 except (TypeError, ValueError):
                     pass
+    extension = item.get("extension")
+    if not extension and file_path:
+        name = PurePosixPath(file_path.replace("\\", "/")).name
+        if "." in name:
+            extension = name.rsplit(".", 1)[-1]
     raw = {**item, "token": token, "index": index}
     if bitrate is not None:
         raw["bitrate"] = bitrate
+    if extension:
+        raw["extension"] = extension
     return RpcSearchHit(
         result_id=f"{token}:{index}",
         display_name=display,
         artist=artist,
         album=album,
         title=stem,
-        format=str(item.get("extension") or ""),
+        format=str(extension or ""),
         bit_depth=bit_depth,
         size_bytes=int(item.get("size") or 0) or None,
         source_user=str(item.get("username") or "") or None,
         raw=raw,
     )
+
+
+def _build_search_query(request: SearchRequest) -> str:
+    """Join artist/album/title, dropping a redundant album when it equals artist."""
+    parts: list[str] = []
+    artist = (request.artist or "").strip()
+    album = (request.album or "").strip()
+    title = (request.title or "").strip()
+    if artist:
+        parts.append(artist)
+    if album and album.casefold() != artist.casefold():
+        parts.append(album)
+    if title:
+        parts.append(title)
+    return " ".join(parts).strip()
+
+
+def _simplified_search_query(request: SearchRequest) -> str:
+    """Artist + title only — often yields hits when the full query is empty."""
+    parts = [p for p in ((request.artist or "").strip(), (request.title or "").strip()) if p]
+    return " ".join(parts).strip()
 
 
 def _find_transfer(download_id: str, items: list[Any]) -> dict[str, Any] | None:

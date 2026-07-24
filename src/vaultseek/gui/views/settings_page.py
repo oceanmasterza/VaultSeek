@@ -5,7 +5,7 @@ from __future__ import annotations
 from dataclasses import replace
 from datetime import UTC, datetime
 from pathlib import Path
-from uuid import UUID, uuid7
+from uuid import UUID
 
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
@@ -26,6 +26,7 @@ from PySide6.QtWidgets import (
 
 from vaultseek.core.config import save_config
 from vaultseek.core.container import Container
+from vaultseek.db.uuid_utils import generate_uuid7
 from vaultseek.gui.views.rules_page import RulesPage
 from vaultseek.gui.widgets.desktop import open_path
 from vaultseek.gui.widgets.path_picker import PathPickerRow
@@ -336,28 +337,31 @@ class SettingsPage(QWidget):
         discogs_help.setOpenExternalLinks(True)
         prefs_form.addRow(discogs_help)
         self._acoustid_rows: list[tuple[QLineEdit, QLineEdit, QLineEdit]] = []
-        acoustid_box = QGroupBox("AcoustID accounts (fingerprint lookups)")
+        acoustid_box = QGroupBox("AcoustID accounts + Shazamio proxies")
         acoustid_form = QFormLayout(acoustid_box)
         for index in range(3):
             label = QLineEdit()
             label.setPlaceholderText(f"Account {index + 1}")
             key = QLineEdit()
-            key.setPlaceholderText("Application API key")
+            key.setPlaceholderText("Application API key (optional if using Shazam only)")
             key.setEchoMode(QLineEdit.EchoMode.Password)
             proxy = QLineEdit()
             proxy.setPlaceholderText("http://user:pass@host:port (optional)")
             proxy.setToolTip(
-                "HTTP(S) proxy for this AcoustID key. Use a different proxy per account "
-                "so each gets its own 3 requests/sec limit."
+                "HTTP(S) proxy for this slot. Used by AcoustID (when a key is set) and "
+                "by the Shazamio fallback. Different proxies = different public IPs = "
+                "higher combined request throughput."
             )
             self._acoustid_rows.append((label, key, proxy))
             acoustid_form.addRow(f"Label {index + 1}", label)
             acoustid_form.addRow(f"API key {index + 1}", key)
             acoustid_form.addRow(f"Proxy {index + 1}", proxy)
         acoustid_help = QLabel(
-            "Each AcoustID application key allows ~3 fingerprint lookups/sec (per key + IP). "
-            "Add up to 3 keys with separate proxies for ~9/sec combined. "
-            "Register keys at https://acoustid.org/new-applications. Restart after saving."
+            "AcoustID: each application key allows ~3 fingerprint lookups/sec "
+            "(per key + IP). Register keys at https://acoustid.org/new-applications. "
+            "Shazamio fallback: used when no AcoustID key is set or AcoustID returns "
+            "no match. Rotates the direct connection plus these proxies at ≤1 req/sec "
+            "per IP (community-safe Shazam rate). Restart after saving."
         )
         acoustid_help.setWordWrap(True)
         acoustid_help.setProperty("muted", True)
@@ -710,7 +714,7 @@ class SettingsPage(QWidget):
             if existing is not None:
                 created_at = existing.created_at
         else:
-            library_id = uuid7()
+            library_id = generate_uuid7()
 
         try:
             for path in (incoming, staging, library_path, archive):
@@ -788,16 +792,19 @@ class SettingsPage(QWidget):
         endpoint_rows: list[AcoustIdEndpointConfig] = []
         for index, (label_edit, key_edit, proxy_edit) in enumerate(self._acoustid_rows, start=1):
             api_key = key_edit.text().strip()
-            if not api_key:
+            proxy_url = proxy_edit.text().strip()
+            label = label_edit.text().strip() or f"Account {index}"
+            # Keep proxy-only rows so Shazamio can rotate IPs without AcoustID keys.
+            if not api_key and not proxy_url:
                 continue
             endpoint_rows.append(
                 AcoustIdEndpointConfig(
                     api_key=api_key,
-                    proxy_url=proxy_edit.text().strip(),
-                    label=label_edit.text().strip() or f"Account {index}",
+                    proxy_url=proxy_url,
+                    label=label,
                 )
             )
-        primary_key = endpoint_rows[0].api_key if endpoint_rows else ""
+        primary_key = next((row.api_key for row in endpoint_rows if row.api_key), "")
 
         enabled = list(self._container.config.acquisition.enabled_providers)
         if self._nicotine_enabled.isChecked():
@@ -818,6 +825,8 @@ class SettingsPage(QWidget):
             fingerprint_sample_min=int(self._fingerprint_sample_min.value()),
         )
         # Keep discogs in provider lists when a token is present.
+        # Shazamio stays whatever the config already has (defaults / migration
+        # enable it; do not re-force on every save so users can disable it).
         meta_enabled = list(metadata.enabled_providers)
         meta_order = list(metadata.provider_order)
         if metadata.discogs_user_token:
@@ -877,8 +886,8 @@ class SettingsPage(QWidget):
         QMessageBox.information(
             self,
             "Settings",
-            "Preferences saved. Restart VaultSeek so Discogs, fingerprinting, and AcoustID "
-            "settings take effect.",
+            "Preferences saved. Restart VaultSeek so Discogs, fingerprinting, AcoustID, "
+            "and Shazamio settings take effect.",
         )
 
     def _test_nicotine_connection(self) -> None:
@@ -915,7 +924,7 @@ class SettingsPage(QWidget):
             if row.plugin_id == plugin_id
         ]
         prior = existing[0] if existing else None
-        state_id = prior.id if prior is not None else uuid7()
+        state_id = prior.id if prior is not None else generate_uuid7()
         self._container.media_server_repo.upsert(
             MediaServerState(
                 id=state_id,

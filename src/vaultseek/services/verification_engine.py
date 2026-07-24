@@ -104,6 +104,15 @@ class VerificationEngine:
                 passed.append(f"file_present:{path.name}")
                 present.append(path)
 
+        # Sibling album downloads often list paths that Nicotine never finished.
+        # Verify against files that actually landed; missing siblings are notes.
+        if present and failures and all(
+            f.startswith("missing_file:") or f.startswith("not_a_file:") for f in failures
+        ):
+            notes.extend(failures)
+            failures.clear()
+            notes.append("ignored_missing_sibling_paths")
+
         meta_ok, meta_notes = self._check_metadata(job, present)
         notes.extend(meta_notes)
         if meta_ok:
@@ -127,13 +136,37 @@ class VerificationEngine:
         else:
             notes.append("release_id_absent")
 
+        # Missing-track acquisition: hash/fingerprint already in the library means
+        # the gap is filled (or we re-downloaded an owned copy). Treat as success
+        # (COMPLETED / already_owned) — never park Review for duplicates.
+        already_owned = bool(failures) and all(f.startswith("duplicate_") for f in failures)
+        if already_owned:
+            notes.extend(failures)
+            notes.append("already_owned_duplicate")
+            failures.clear()
+            passed.append("already_owned")
+
         ok = not failures
         if ok:
-            self._engine.advance(
-                job_id,
-                AcquisitionJobState.IMPORTING,
-                note=",".join(passed[:5]) or "verified",
-            )
+            if already_owned or "already_owned" in passed:
+                self._engine.update_extra(
+                    job_id,
+                    {
+                        "outcome_code": "already_owned",
+                        "outcome_label": "Already in library (duplicate match)",
+                    },
+                )
+                self._engine.advance(
+                    job_id,
+                    AcquisitionJobState.COMPLETED,
+                    note="already_owned",
+                )
+            else:
+                self._engine.advance(
+                    job_id,
+                    AcquisitionJobState.IMPORTING,
+                    note=",".join(passed[:5]) or "verified",
+                )
         else:
             self._engine.advance(
                 job_id,
@@ -144,7 +177,7 @@ class VerificationEngine:
         return VerificationResult(
             ok=ok,
             job_id=job_id,
-            local_paths=tuple(paths),
+            local_paths=tuple(present if present else paths),
             checks_passed=tuple(passed),
             failures=tuple(failures),
             notes=tuple(notes),

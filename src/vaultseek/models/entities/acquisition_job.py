@@ -88,6 +88,7 @@ ACQUISITION_TRANSITIONS: dict[AcquisitionJobState, frozenset[AcquisitionJobState
     AcquisitionJobState.VERIFYING: frozenset(
         {
             AcquisitionJobState.IMPORTING,
+            AcquisitionJobState.COMPLETED,  # already owned (duplicate match)
             AcquisitionJobState.VERIFICATION_FAILED,
             AcquisitionJobState.CANCELLED,
         }
@@ -103,13 +104,28 @@ ACQUISITION_TRANSITIONS: dict[AcquisitionJobState, frozenset[AcquisitionJobState
         {AcquisitionJobState.RETRY_SCHEDULED, AcquisitionJobState.CANCELLED}
     ),
     AcquisitionJobState.DOWNLOAD_FAILED: frozenset(
-        {AcquisitionJobState.RETRY_SCHEDULED, AcquisitionJobState.CANCELLED}
+        {
+            AcquisitionJobState.RETRY_SCHEDULED,
+            AcquisitionJobState.CANCELLED,
+            AcquisitionJobState.SCORING,
+            AcquisitionJobState.DOWNLOADING,
+        }
     ),
     AcquisitionJobState.VERIFICATION_FAILED: frozenset(
-        {AcquisitionJobState.RETRY_SCHEDULED, AcquisitionJobState.CANCELLED}
+        {
+            AcquisitionJobState.RETRY_SCHEDULED,
+            AcquisitionJobState.CANCELLED,
+            AcquisitionJobState.SCORING,
+            AcquisitionJobState.DOWNLOADING,
+        }
     ),
     AcquisitionJobState.IMPORT_FAILED: frozenset(
-        {AcquisitionJobState.RETRY_SCHEDULED, AcquisitionJobState.CANCELLED}
+        {
+            AcquisitionJobState.RETRY_SCHEDULED,
+            AcquisitionJobState.CANCELLED,
+            AcquisitionJobState.SCORING,
+            AcquisitionJobState.DOWNLOADING,
+        }
     ),
     AcquisitionJobState.RETRY_SCHEDULED: frozenset(
         {AcquisitionJobState.QUEUED, AcquisitionJobState.CANCELLED}

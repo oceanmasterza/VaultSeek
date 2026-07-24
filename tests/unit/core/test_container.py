@@ -164,7 +164,14 @@ def test_bootstrap_wires_the_phase_6_metadata_stack(
     assert isinstance(container.rules_engine, RulesEngine)
     assert isinstance(container.rule_worker, RuleWorker)
     provider_ids = {p.provider_id for p in container.plugin_manager.get_metadata_providers()}
-    assert provider_ids == {"acoustid", "musicbrainz", "local_tags", "filename_parser"}
+    assert provider_ids == {
+        "acoustid",
+        "shazamio",
+        "musicbrainz",
+        "discogs",
+        "local_tags",
+        "filename_parser",
+    }
     container.close()
 
 

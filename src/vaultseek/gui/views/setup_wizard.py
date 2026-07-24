@@ -11,7 +11,7 @@ from __future__ import annotations
 from dataclasses import replace
 from datetime import UTC, datetime
 from pathlib import Path
-from uuid import UUID, uuid7
+from uuid import UUID
 
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
@@ -35,6 +35,7 @@ from vaultseek.core.config import (
     save_config,
 )
 from vaultseek.core.container import Container
+from vaultseek.db.uuid_utils import generate_uuid7
 from vaultseek.gui.widgets.path_picker import PathPickerRow
 from vaultseek.models.entities.library import Library
 from vaultseek.services.acquisition_bootstrap import (
@@ -121,7 +122,7 @@ class SetupWizard(QWizard):
             self._container.library_repo.upsert(updated)
             library_id = library.id
         else:
-            library_id = uuid7()
+            library_id = generate_uuid7()
             library = Library(
                 id=library_id,
                 name=name,

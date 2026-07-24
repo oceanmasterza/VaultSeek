@@ -5,12 +5,15 @@ See docs/architecture/04-service-layer.md and docs/architecture/10-revision-v2.m
 
 1. Local embedded tags
 2. MusicBrainz by existing recording ID / by tags (seeded from tags)
-3. Filename parser (only if core identity is still weak)
-4. AcoustID fingerprint → MusicBrainz by ID — **only when** tags/MB did not
-   already produce a strong identify (saves API quota on large libraries)
+3. Discogs by tags — when MusicBrainz did not attach a recording MBID
+4. Filename parser (only if core identity is still weak)
+5. AcoustID fingerprint → MusicBrainz by ID — when no recording MBID yet
+   (strong tags alone are not enough; missing-media needs MusicBrainz links)
+6. Shazamio audio recognition — when AcoustID has no key / returns nothing
 
-AcoustID itself enforces ≤ 3 requests/second. Overall confidence uses
-**core** fields only (artist, album, title).
+AcoustID itself enforces ≤ 3 requests/second. Shazamio routes enforce ≤ 1
+request/second per public IP (direct + configured proxies). Overall
+confidence uses **core** fields only (artist, album, title).
 """
 
 from __future__ import annotations
@@ -30,6 +33,7 @@ from vaultseek.models.value_objects.field_confidence import FieldConfidence
 
 _LOOKUP_METHOD_RANK = {
     "fingerprint": 0,
+    "audio": 0,  # Shazamio — same rank as Chromaprint/AcoustID hits
     "id": 1,
     "tags": 2,
     "filename": 3,
@@ -100,7 +104,7 @@ class MetadataArbitrator:
         results: list[ProviderResult] = []
         query = _query_from_track(track)
 
-        # 1. Embedded tags — free, fast, seeds MusicBrainz search.
+        # 1. Embedded tags — free, fast, seeds MusicBrainz / Discogs search.
         local = self._by_id.get("local_tags")
         if local is not None:
             tags_hit = local.lookup_by_tags(query)
@@ -116,13 +120,29 @@ class MetadataArbitrator:
                 if by_id is not None:
                     results.append(_with_priority(by_id, musicbrainz.priority))
                     query = _enrich_query(query, by_id)
-            # 2b. Tag search (artist + title required by the provider).
-            tags_hit = musicbrainz.lookup_by_tags(query)
-            if tags_hit is not None:
-                results.append(_with_priority(tags_hit, musicbrainz.priority))
-                query = _enrich_query(query, tags_hit)
+            # 2b. Tag search — skip when we already have a recording MBID.
+            if not _has_recording_mbid(results, track=track):
+                tags_hit = musicbrainz.lookup_by_tags(query)
+                if tags_hit is not None:
+                    results.append(_with_priority(tags_hit, musicbrainz.priority))
+                    query = _enrich_query(query, tags_hit)
 
-        # 3. Filename only when core identity is still weak.
+        # 3. Discogs — when MusicBrainz did not attach a recording MBID.
+        if not _has_recording_mbid(results, track=track):
+            discogs = self._by_id.get("discogs")
+            if discogs is not None:
+                discogs_hit = discogs.lookup_by_tags(query)
+                if discogs_hit is not None:
+                    results.append(_with_priority(discogs_hit, discogs.priority))
+                    query = _enrich_query(query, discogs_hit)
+                    # Retry MusicBrainz with Discogs-enriched artist/album/title.
+                    if musicbrainz is not None:
+                        mb_retry = musicbrainz.lookup_by_tags(query)
+                        if mb_retry is not None:
+                            results.append(_with_priority(mb_retry, musicbrainz.priority))
+                            query = _enrich_query(query, mb_retry)
+
+        # 4. Filename only when core identity is still weak.
         if not _identity_is_strong(results, self._threshold):
             filename = self._by_id.get("filename_parser")
             if filename is not None:
@@ -131,24 +151,48 @@ class MetadataArbitrator:
                     results.append(_with_priority(tags_hit, filename.priority))
                     query = _enrich_query(query, tags_hit)
 
-        # 4. AcoustID — normally only when tags/MB did not settle identity;
-        #    sampling mode forces it until the album folder is trusted.
-        if fingerprint is not None and (
-            force_acoustid
-            or _should_use_acoustid(results, track=track, threshold=self._threshold)
-        ):
+        # 5. AcoustID — whenever we still lack a recording MBID, or sampling
+        #    forces fingerprint confirmation. Strong tags alone are not enough
+        #    for missing-media (needs MusicBrainz release linkage).
+        want_audio_id = force_acoustid or _should_use_acoustid(results, track=track)
+        acoustid_hit: ProviderResult | None = None
+        if fingerprint is not None and want_audio_id:
             acoustid = self._by_id.get("acoustid")
             if acoustid is not None:
-                hit = acoustid.lookup_by_fingerprint(
+                acoustid_hit = acoustid.lookup_by_fingerprint(
                     fingerprint.fingerprint_data, fingerprint.duration_seconds
                 )
-                if hit is not None:
-                    results.append(_with_priority(hit, acoustid.priority))
-                    mbid = _field_value(hit, "mb_recording_id")
+                if acoustid_hit is not None:
+                    results.append(_with_priority(acoustid_hit, acoustid.priority))
+                    mbid = _field_value(acoustid_hit, "mb_recording_id")
                     if isinstance(mbid, str) and mbid and musicbrainz is not None:
                         by_id = musicbrainz.lookup_by_id(mbid, "recording")
                         if by_id is not None:
                             results.append(_with_priority(by_id, musicbrainz.priority))
+
+        # 6. Shazamio fallback — AcoustID miss / no key, same fingerprint gate.
+        if (
+            fingerprint is not None
+            and want_audio_id
+            and acoustid_hit is None
+            and track.file_path
+        ):
+            shazam = self._by_id.get("shazamio")
+            if shazam is not None:
+                recognize = getattr(shazam, "recognize_file", None)
+                if callable(recognize):
+                    shazam_hit = recognize(track.file_path)
+                else:
+                    shazam_hit = shazam.lookup_by_tags(query)
+                if shazam_hit is not None:
+                    results.append(_with_priority(shazam_hit, shazam.priority))
+                    query = _enrich_query(query, shazam_hit)
+                    if musicbrainz is not None:
+                        mb_from_shazam = musicbrainz.lookup_by_tags(query)
+                        if mb_from_shazam is not None:
+                            results.append(
+                                _with_priority(mb_from_shazam, musicbrainz.priority)
+                            )
 
         return results
 
@@ -189,15 +233,20 @@ def _should_use_acoustid(
     results: Sequence[ProviderResult],
     *,
     track: Track,
-    threshold: float,
 ) -> bool:
-    """True when fingerprint lookup is still worth an AcoustID API call."""
-    if track.mb_recording_id:
-        return False
+    """True when fingerprint / Shazam lookup is still worth an API call."""
+    # Skip only when a MusicBrainz recording is already linked.
+    return not _has_recording_mbid(results, track=track)
+
+
+def _has_recording_mbid(results: Sequence[ProviderResult], *, track: Track) -> bool:
+    if track.mb_recording_id and str(track.mb_recording_id).strip():
+        return True
     for result in results:
-        if isinstance(_field_value(result, "mb_recording_id"), str):
-            return False
-    return not _identity_is_strong(results, threshold)
+        value = _field_value(result, "mb_recording_id")
+        if isinstance(value, str) and value.strip():
+            return True
+    return False
 
 
 def _identity_is_strong(results: Sequence[ProviderResult], threshold: float) -> bool:

@@ -40,14 +40,10 @@ _FAILURE_STATES: tuple[AcquisitionJobState, ...] = (
     AcquisitionJobState.IMPORT_FAILED,
 )
 
-# Only terminal failures that may not have been parked at transition time.
-# NO_RESULTS / WAITING_FOR_USER are parked once by AcquisitionRunner — re-parking
-# hundreds of them every tick floods the event bus and freezes the UI.
-_ATTENTION_STATES: tuple[AcquisitionJobState, ...] = (
-    AcquisitionJobState.DOWNLOAD_FAILED,
-    AcquisitionJobState.VERIFICATION_FAILED,
-    AcquisitionJobState.IMPORT_FAILED,
-)
+# Only escalate Review for exhausted "not on network". Transient download /
+# verify failures keep retrying via outcome codes — do not re-park them.
+_ATTENTION_STATES: tuple[AcquisitionJobState, ...] = ()
+
 
 _ATTENTION_PARK_BUDGET_PER_CYCLE = 10
 
@@ -166,11 +162,12 @@ class AcquisitionAutomationService:
         # 1) Retry policy first — it may move jobs back to queued.
         self._schedule_retries(library_id)
 
-        # 2) Recover downloads orphaned by an app restart (in-memory handles lost).
-        self._recover_orphaned_downloads(library_id)
-
-        # 3) Poll active downloads and chain verify → import.
+        # 2) Poll active downloads (also recovers files after restart via folder /
+        #    persisted download_handle) and chain verify → import.
         self._runner.poll_active_jobs(library_id)
+
+        # 3) Truly orphaned DOWNLOADING jobs (no handle, nothing on disk) → fail/retry.
+        self._recover_orphaned_downloads(library_id)
 
         # 4) Re-score waiting jobs (may start downloads without a new search).
         self._rescore_waiting(library_id)
@@ -343,6 +340,17 @@ class AcquisitionAutomationService:
             return False
 
     def _recover_orphaned_downloads(self, library_id: UUID) -> None:
+        """Fail DOWNLOADING jobs that have neither a live handle nor files on disk.
+
+        Call after :meth:`AcquisitionRunner.poll_active_jobs` so folder recovery
+        and persisted ``download_handle`` rehydration can finish successful
+        transfers first.
+        """
+        from vaultseek.services.acquisition_runner import (
+            _audio_files_in_download_folder,
+            _folder_has_ready_audio,
+        )
+
         downloading = self._jobs.list_by_library(
             library_id=library_id, state=AcquisitionJobState.DOWNLOADING
         )
@@ -350,7 +358,11 @@ class AcquisitionAutomationService:
             status = self._runner._downloads.poll(job.id)  # noqa: SLF001
             if status is not None:
                 continue
-            # No in-memory handle (typical after restart) — fail and retry.
+            folder_paths = _audio_files_in_download_folder(job)
+            if folder_paths and _folder_has_ready_audio(folder_paths):
+                # Files landed; next poll cycle (or this cycle if poll already ran)
+                # will import them — do not wipe a successful download.
+                continue
             try:
                 self._engine.advance(
                     job.id,

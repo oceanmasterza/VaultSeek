@@ -37,7 +37,8 @@ gh auth refresh -h github.com -s project,read:project
 
 ## Development Setup
 
-Requires Python 3.14+ (stdlib `uuid.uuid7()` for primary keys).
+Requires Python 3.12+ (UUIDv7 primary keys via stdlib on 3.14+, polyfill on 3.12/3.13;
+single runtime so Shazamio installs in-process on Windows).
 
 ```powershell
 git clone https://github.com/oceanmasterza/VaultSeek.git

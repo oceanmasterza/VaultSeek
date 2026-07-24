@@ -4,11 +4,11 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 from pathlib import Path
-from uuid import uuid7
 
 import pytest
 
 from vaultseek.core.container import Container
+from vaultseek.db.uuid_utils import uuid7
 from vaultseek.gui.bridge.qt_event_bridge import QtEventBridge
 from vaultseek.gui.main_window import MainWindow
 from vaultseek.gui.theme import apply_theme

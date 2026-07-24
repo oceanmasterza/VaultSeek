@@ -55,6 +55,27 @@ class AcquisitionWorkflow:
             paths = [Path(p) for p in raw]
 
         verification = self._verify.verify(job_id, paths)
+        job = self._engine.get(job_id)
+        if job is None:
+            raise KeyError(f"AcquisitionJob {job_id} not found")
+
+        if job.state is AcquisitionJobState.COMPLETED:
+            logger.info(
+                "Already owned — marked complete for {} ({})",
+                job_label(job),
+                "; ".join(verification.notes[:2]) or "duplicate",
+            )
+            return verification, None
+
+        if job.state is not AcquisitionJobState.VERIFYING and job.state is not AcquisitionJobState.IMPORTING:
+            if not verification.ok:
+                logger.warning(
+                    "Verification failed for {}: {}",
+                    job_label(job),
+                    "; ".join(verification.failures[:3]) or "checks failed",
+                )
+            return verification, None
+
         if verification.ok:
             logger.info(
                 "Verified {} — {} file(s) passed pre-import checks",
