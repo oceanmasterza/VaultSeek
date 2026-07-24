@@ -496,9 +496,7 @@ def _from_dict(raw: dict[str, Any]) -> AppConfig:
         if "acoustid_endpoints" in coerced and isinstance(coerced["acoustid_endpoints"], list):
             endpoint_fields = set(AcoustIdEndpointConfig.__dataclass_fields__)
             coerced["acoustid_endpoints"] = tuple(
-                AcoustIdEndpointConfig(
-                    **{k: v for k, v in item.items() if k in endpoint_fields}
-                )
+                AcoustIdEndpointConfig(**{k: v for k, v in item.items() if k in endpoint_fields})
                 for item in coerced["acoustid_endpoints"]
                 if isinstance(item, dict)
             )

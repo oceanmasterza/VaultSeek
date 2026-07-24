@@ -125,9 +125,7 @@ class ArtistsPage(QWidget):
         artist_id = self._selected_artist_id()
         if artist_id is None or self._library_id is None:
             return
-        tracks = self._container.track_repo.list_by_artist(
-            self._library_id, artist_id, limit=500
-        )
+        tracks = self._container.track_repo.list_by_artist(self._library_id, artist_id, limit=500)
         artist = self._container.artist_repo.get(artist_id)
         name = artist.name if artist else "Artist"
         self._tracks_label.setText(f"Tracks for {name} ({len(tracks)})")

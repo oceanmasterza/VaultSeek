@@ -132,9 +132,7 @@ class AcquisitionPage(QWidget):
     def refresh(self) -> None:
         selected_rows = {index.row() for index in self._table.selectedIndexes()}
         previous_ids = {
-            self._job_ids[row]
-            for row in selected_rows
-            if 0 <= row < len(self._job_ids)
+            self._job_ids[row] for row in selected_rows if 0 <= row < len(self._job_ids)
         }
 
         threshold = self._container.config.acquisition.auto_acquire_threshold

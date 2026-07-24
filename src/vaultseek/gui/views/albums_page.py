@@ -92,7 +92,8 @@ class AlbumsPage(QWidget):
         toolbar.addWidget(find_music)
         layout.addLayout(toolbar)
         legend = QLabel(
-            "Colors: green = complete & meets quality · orange = missing songs or below quality prefs"
+            "Colors: green = complete & meets quality · "
+            "orange = missing songs or below quality prefs"
         )
         legend.setProperty("muted", True)
         legend.setWordWrap(True)
@@ -165,9 +166,7 @@ class AlbumsPage(QWidget):
         self._cover_image = QLabel()
         self._cover_image.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self._cover_image.setMinimumSize(220, 220)
-        self._cover_image.setSizePolicy(
-            QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding
-        )
+        self._cover_image.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         self._cover_image.setScaledContents(False)
         cover_layout.addWidget(self._cover_image, stretch=1)
         self._cover_source = QLabel("")
@@ -188,7 +187,8 @@ class AlbumsPage(QWidget):
         wanted_title.setProperty("panelTitle", True)
         wanted_layout.addWidget(wanted_title)
         wanted_help = QLabel(
-            "Parked Discogs picks waiting for download. Add from Find music → Discogs → Add to Wanted."
+            "Parked Discogs picks waiting for download. "
+            "Add from Find music → Discogs → Add to Wanted."
         )
         wanted_help.setWordWrap(True)
         wanted_help.setProperty("muted", True)
@@ -377,9 +377,7 @@ class AlbumsPage(QWidget):
         if album_id is None or self._library_id is None:
             self._clear_cover()
             return
-        tracks = self._container.track_repo.list_by_album(
-            self._library_id, album_id, limit=500
-        )
+        tracks = self._container.track_repo.list_by_album(self._library_id, album_id, limit=500)
         album = self._container.album_repo.get(album_id)
         title = album.title if album else "Album"
         prefs = self._container.config.acquisition

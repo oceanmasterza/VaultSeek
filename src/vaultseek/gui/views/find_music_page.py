@@ -104,9 +104,7 @@ class _GapsTab(QWidget):
         self._btn_upgrades.clicked.connect(self._scan_upgrades)
         self._btn_wishlist = QPushButton("Open wishlist")
         self._btn_wishlist.setProperty("secondary", True)
-        self._btn_wishlist.clicked.connect(
-            lambda: self.navigate_requested.emit("acquisition")
-        )
+        self._btn_wishlist.clicked.connect(lambda: self.navigate_requested.emit("acquisition"))
         actions.addWidget(self._btn_missing)
         actions.addWidget(self._btn_upgrades)
         actions.addWidget(self._btn_wishlist)

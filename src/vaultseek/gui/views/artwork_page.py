@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from uuid import UUID
 
-from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
     QCheckBox,
     QHBoxLayout,
@@ -105,6 +104,4 @@ class ArtworkPage(QWidget):
         ok = sum(1 for row in rows if row.status == "ok")
         missing = sum(1 for row in rows if row.status == "missing")
         low = sum(1 for row in rows if row.status == "low_res")
-        self._status.setText(
-            f"{len(rows)} album(s) · {ok} OK · {low} low-res · {missing} missing"
-        )
+        self._status.setText(f"{len(rows)} album(s) · {ok} OK · {low} low-res · {missing} missing")

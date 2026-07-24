@@ -37,13 +37,16 @@ def run_in_background(
     fn: Callable[[], Any],
     *,
     on_finished: Callable[[Any], None],
-    on_failed: Callable[[str], None] | None = None,
+    on_failed: Callable[[str], object] | None = None,
 ) -> _TaskSignals:
     """Run ``fn`` on the global Qt thread pool; callbacks fire on the UI thread.
 
     Retains the signal QObject until the task settles so it cannot be garbage
     collected mid-flight (a common cause of hard Qt/Python crashes when Discogs
     browse or other UI searches run alongside acquisition workers).
+
+    ``on_failed`` may return anything (e.g. ``QMessageBox.warning``'s button
+    enum); the return value is ignored.
     """
     signals = _TaskSignals()
     _LIVE_SIGNALS.add(signals)
@@ -54,7 +57,11 @@ def run_in_background(
     signals.finished.connect(on_finished)
     signals.finished.connect(_release)
     if on_failed is not None:
-        signals.failed.connect(on_failed)
+
+        def _failed(msg: str) -> None:
+            on_failed(msg)
+
+        signals.failed.connect(_failed)
     # Always release on failure even when the caller omitted on_failed.
     signals.failed.connect(_release)
 

@@ -113,9 +113,7 @@ class LibraryPage(QWidget):
         self._tree = QTreeWidget()
         self._tree.setHeaderHidden(True)
         self._tree.setMinimumWidth(200)
-        self._tree.setSizePolicy(
-            QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding
-        )
+        self._tree.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         self._tree.currentItemChanged.connect(self._on_tree_selection)
         left_layout.addWidget(self._tree, stretch=1)
         splitter.addWidget(left)
@@ -124,18 +122,14 @@ class LibraryPage(QWidget):
         right_layout = QVBoxLayout(right)
         right_layout.setContentsMargins(0, 0, 0, 0)
         self._table = QTableWidget(0, 5)
-        self._table.setHorizontalHeaderLabels(
-            ["Title", "Zone", "File", "Confidence", "Quality"]
-        )
+        self._table.setHorizontalHeaderLabels(["Title", "Zone", "File", "Confidence", "Quality"])
         self._table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
         self._table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
         self._table.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self._table.customContextMenuRequested.connect(self._context_menu)
         self._table.doubleClicked.connect(self._reveal_selected)
         self._table.horizontalHeader().setStretchLastSection(True)
-        self._table.setSizePolicy(
-            QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding
-        )
+        self._table.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         HealthColorDelegate().install_on(self._table)
         right_layout.addWidget(self._table, stretch=1)
         splitter.addWidget(right)
@@ -239,9 +233,7 @@ class LibraryPage(QWidget):
             )
         else:
             tracks = list(
-                self._container.track_repo.get_by_library(
-                    self._library_id, zone=zone, limit=500
-                )
+                self._container.track_repo.get_by_library(self._library_id, zone=zone, limit=500)
             )
         if needle:
             tracks = [
@@ -273,8 +265,7 @@ class LibraryPage(QWidget):
         if self._folder_prefix:
             folder_note = f" · folder: {Path(self._folder_prefix).name}"
         self._counts.setText(
-            f"{len(tracks)} shown{folder_note} · "
-            + (" · ".join(parts) if parts else "empty")
+            f"{len(tracks)} shown{folder_note} · " + (" · ".join(parts) if parts else "empty")
         )
 
     def _fill_table(self, tracks: list[Track]) -> None:
@@ -284,9 +275,7 @@ class LibraryPage(QWidget):
         for row, track in enumerate(tracks):
             self._file_paths.append(track.file_path)
             conf = (
-                f"{track.overall_confidence:.0%}"
-                if track.overall_confidence is not None
-                else "—"
+                f"{track.overall_confidence:.0%}" if track.overall_confidence is not None else "—"
             )
             quality = str(track.quality_score) if track.quality_score is not None else "—"
             cells = [
@@ -296,9 +285,7 @@ class LibraryPage(QWidget):
                 QTableWidgetItem(conf),
                 QTableWidgetItem(quality),
             ]
-            cells[4].setTextAlignment(
-                Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter
-            )
+            cells[4].setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
             health = effective_track_health(track, prefs)
             for col, item in enumerate(cells):
                 apply_track_health_style(item, health)
