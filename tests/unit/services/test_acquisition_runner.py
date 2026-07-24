@@ -62,7 +62,9 @@ class _HighScoreProvider(StubAcquisitionProvider):
         )
 
 
-def _runner(engine: Engine, *, threshold: float = 0.50) -> tuple[AcquisitionRunner, AcquisitionEngine]:
+def _runner(
+    engine: Engine, *, threshold: float = 0.50
+) -> tuple[AcquisitionRunner, AcquisitionEngine]:
     manager = ProviderManager([_HighScoreProvider()])
     manager.connect(AcquisitionProviderConfig(provider_id="high", enabled=True))
     acq = AcquisitionEngine(manager, AcquisitionJobRepository(engine))
@@ -99,9 +101,7 @@ def test_auto_acquire_starts_download_when_above_threshold(
     assert loaded.extra.get("scored_results")
 
 
-def test_auto_acquire_waits_for_user_when_below_threshold(
-    engine: Engine, library_id: UUID
-) -> None:
+def test_auto_acquire_waits_for_user_when_below_threshold(engine: Engine, library_id: UUID) -> None:
     runner, acq = _runner(engine, threshold=0.99)
     job = acq.create_job(
         library_id=library_id,
@@ -237,3 +237,67 @@ def test_poll_active_jobs_recovers_from_download_folder(
     assert updated == 1
     assert loaded is not None
     assert loaded.state is AcquisitionJobState.COMPLETED
+
+
+def test_auto_acquire_from_retry_scheduled_with_empty_results(
+    engine: Engine, library_id: UUID
+) -> None:
+    """Regression: retry_scheduled must re-enter search via queued, not jump to no_results."""
+
+    class _EmptyProvider(StubAcquisitionProvider):
+        provider_id = "empty"
+        display_name = "Empty"
+
+        def search(self, request: SearchRequest) -> list[SearchResult]:
+            return []
+
+    manager = ProviderManager([_EmptyProvider()])
+    manager.connect(AcquisitionProviderConfig(provider_id="empty", enabled=True))
+    acq = AcquisitionEngine(manager, AcquisitionJobRepository(engine))
+    search = SearchDispatcher(manager, acq)
+    downloads = DownloadManager(manager, acq)
+    verify = VerificationEngine(acq)
+    imports = ImportPipeline(acq)
+    workflow = AcquisitionWorkflow(acq, downloads, verify, imports)
+    runner = AcquisitionRunner(
+        acq, search, ScoringEngine(), downloads, workflow, auto_acquire_threshold=0.50
+    )
+    job = acq.create_job(
+        library_id=library_id,
+        job_type=AcquisitionJobType.MISSING_TRACK,
+        artist="Artist",
+        title="Song",
+    )
+    acq.queue(job.id)
+    acq.advance(job.id, AcquisitionJobState.SEARCHING)
+    acq.advance(job.id, AcquisitionJobState.NO_RESULTS, note="first miss")
+    acq.schedule_retry(job.id, note="auto retry")
+
+    outcome = runner.try_auto_acquire(job.id)
+
+    loaded = acq.get(job.id)
+    assert loaded is not None
+    assert outcome.state is AcquisitionJobState.NO_RESULTS
+    assert loaded.state is AcquisitionJobState.NO_RESULTS
+
+
+def test_start_download_while_already_downloading_is_idempotent(
+    engine: Engine, library_id: UUID
+) -> None:
+    runner, acq = _runner(engine, threshold=0.50)
+    job = acq.create_job(
+        library_id=library_id,
+        job_type=AcquisitionJobType.MISSING_TRACK,
+        artist="Artist",
+        title="Song",
+        preferred_codec="FLAC",
+    )
+    first = runner.try_auto_acquire(job.id)
+    assert first.state is AcquisitionJobState.DOWNLOADING
+
+    second = runner.try_auto_acquire(job.id)
+    loaded = acq.get(job.id)
+    assert second.state is AcquisitionJobState.DOWNLOADING
+    assert second.message == "already downloading"
+    assert loaded is not None
+    assert loaded.state is AcquisitionJobState.DOWNLOADING

@@ -42,7 +42,7 @@ class NicotinePlusConfig:
     enabled: bool = False
     host: str = "127.0.0.1"
     port: int = 22024
-    transport: str = "socket"  # socket | http
+    transport: str = "http"  # socket | http
     api_port: int = 12339
     api_token: str = ""
     username: str = ""
@@ -265,7 +265,7 @@ def _migrate_v8_to_v9(raw: dict[str, Any]) -> dict[str, Any]:
     acq.setdefault("auto_acquire_threshold", 0.90)
     acq.setdefault("auto_queue_jobs", True)
     nicotine = dict(acq.get("nicotine_plus") or asdict(NicotinePlusConfig()))
-    nicotine.setdefault("transport", "socket")
+    nicotine.setdefault("transport", "http")
     nicotine.setdefault("api_port", 12339)
     nicotine.setdefault("api_token", "")
     acq["nicotine_plus"] = nicotine
@@ -496,9 +496,7 @@ def _from_dict(raw: dict[str, Any]) -> AppConfig:
         if "acoustid_endpoints" in coerced and isinstance(coerced["acoustid_endpoints"], list):
             endpoint_fields = set(AcoustIdEndpointConfig.__dataclass_fields__)
             coerced["acoustid_endpoints"] = tuple(
-                AcoustIdEndpointConfig(
-                    **{k: v for k, v in item.items() if k in endpoint_fields}
-                )
+                AcoustIdEndpointConfig(**{k: v for k, v in item.items() if k in endpoint_fields})
                 for item in coerced["acoustid_endpoints"]
                 if isinstance(item, dict)
             )

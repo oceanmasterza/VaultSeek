@@ -17,6 +17,7 @@ from PySide6.QtWidgets import (
 )
 
 from vaultseek.core.container import Container
+from vaultseek.gui.debounce import connect_debounced
 from vaultseek.gui.widgets.browse import fill_track_table
 from vaultseek.gui.widgets.desktop import reveal_in_explorer
 
@@ -50,7 +51,7 @@ class ArtistsPage(QWidget):
         self._search = QLineEdit()
         self._search.setPlaceholderText("Filter by artist name…")
         self._search.setClearButtonEnabled(True)
-        self._search.textChanged.connect(self.refresh)
+        connect_debounced(self._search.textChanged, self.refresh, parent=self)
         toolbar.addWidget(self._search, stretch=1)
         layout.addLayout(toolbar)
 
@@ -124,9 +125,7 @@ class ArtistsPage(QWidget):
         artist_id = self._selected_artist_id()
         if artist_id is None or self._library_id is None:
             return
-        tracks = self._container.track_repo.list_by_artist(
-            self._library_id, artist_id, limit=500
-        )
+        tracks = self._container.track_repo.list_by_artist(self._library_id, artist_id, limit=500)
         artist = self._container.artist_repo.get(artist_id)
         name = artist.name if artist else "Artist"
         self._tracks_label.setText(f"Tracks for {name} ({len(tracks)})")

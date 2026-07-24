@@ -101,7 +101,11 @@ ACQUISITION_TRANSITIONS: dict[AcquisitionJobState, frozenset[AcquisitionJobState
         }
     ),
     AcquisitionJobState.NO_RESULTS: frozenset(
-        {AcquisitionJobState.RETRY_SCHEDULED, AcquisitionJobState.CANCELLED}
+        {
+            AcquisitionJobState.RETRY_SCHEDULED,
+            AcquisitionJobState.QUEUED,  # manual / auto re-search
+            AcquisitionJobState.CANCELLED,
+        }
     ),
     AcquisitionJobState.DOWNLOAD_FAILED: frozenset(
         {
@@ -176,7 +180,9 @@ def can_transition(source: AcquisitionJobState, target: AcquisitionJobState) -> 
 
 def validate_transition(source: AcquisitionJobState, target: AcquisitionJobState) -> None:
     if not can_transition(source, target):
-        allowed = ", ".join(sorted(s.value for s in ACQUISITION_TRANSITIONS.get(source, frozenset())))
+        allowed = ", ".join(
+            sorted(s.value for s in ACQUISITION_TRANSITIONS.get(source, frozenset()))
+        )
         raise ValueError(
             f"Illegal AcquisitionJob transition {source.value} -> {target.value} "
             f"(allowed from {source.value}: {allowed or 'none'})"

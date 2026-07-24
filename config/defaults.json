@@ -67,7 +67,7 @@
       "enabled": false,
       "host": "127.0.0.1",
       "port": 22024,
-      "transport": "socket",
+      "transport": "http",
       "api_port": 12339,
       "api_token": "",
       "username": "",

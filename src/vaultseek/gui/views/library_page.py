@@ -25,6 +25,8 @@ from PySide6.QtWidgets import (
 )
 
 from vaultseek.core.container import Container
+from vaultseek.gui.async_task import run_in_background
+from vaultseek.gui.debounce import connect_debounced
 from vaultseek.gui.widgets.browse import (
     HealthColorDelegate,
     apply_track_health_style,
@@ -68,7 +70,7 @@ class LibraryPage(QWidget):
         self._search = QLineEdit()
         self._search.setPlaceholderText("Filter by title or file name…")
         self._search.setClearButtonEnabled(True)
-        self._search.textChanged.connect(self._reload_tracks)
+        connect_debounced(self._search.textChanged, self._reload_tracks, parent=self)
         toolbar.addWidget(self._search, stretch=1)
         scan_btn = QPushButton("Scan incoming")
         scan_btn.setProperty("secondary", True)
@@ -111,9 +113,7 @@ class LibraryPage(QWidget):
         self._tree = QTreeWidget()
         self._tree.setHeaderHidden(True)
         self._tree.setMinimumWidth(200)
-        self._tree.setSizePolicy(
-            QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding
-        )
+        self._tree.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         self._tree.currentItemChanged.connect(self._on_tree_selection)
         left_layout.addWidget(self._tree, stretch=1)
         splitter.addWidget(left)
@@ -122,18 +122,14 @@ class LibraryPage(QWidget):
         right_layout = QVBoxLayout(right)
         right_layout.setContentsMargins(0, 0, 0, 0)
         self._table = QTableWidget(0, 5)
-        self._table.setHorizontalHeaderLabels(
-            ["Title", "Zone", "File", "Confidence", "Quality"]
-        )
+        self._table.setHorizontalHeaderLabels(["Title", "Zone", "File", "Confidence", "Quality"])
         self._table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
         self._table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
         self._table.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self._table.customContextMenuRequested.connect(self._context_menu)
         self._table.doubleClicked.connect(self._reveal_selected)
         self._table.horizontalHeader().setStretchLastSection(True)
-        self._table.setSizePolicy(
-            QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding
-        )
+        self._table.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         HealthColorDelegate().install_on(self._table)
         right_layout.addWidget(self._table, stretch=1)
         splitter.addWidget(right)
@@ -237,9 +233,7 @@ class LibraryPage(QWidget):
             )
         else:
             tracks = list(
-                self._container.track_repo.get_by_library(
-                    self._library_id, zone=zone, limit=500
-                )
+                self._container.track_repo.get_by_library(self._library_id, zone=zone, limit=500)
             )
         if needle:
             tracks = [
@@ -271,8 +265,7 @@ class LibraryPage(QWidget):
         if self._folder_prefix:
             folder_note = f" · folder: {Path(self._folder_prefix).name}"
         self._counts.setText(
-            f"{len(tracks)} shown{folder_note} · "
-            + (" · ".join(parts) if parts else "empty")
+            f"{len(tracks)} shown{folder_note} · " + (" · ".join(parts) if parts else "empty")
         )
 
     def _fill_table(self, tracks: list[Track]) -> None:
@@ -282,9 +275,7 @@ class LibraryPage(QWidget):
         for row, track in enumerate(tracks):
             self._file_paths.append(track.file_path)
             conf = (
-                f"{track.overall_confidence:.0%}"
-                if track.overall_confidence is not None
-                else "—"
+                f"{track.overall_confidence:.0%}" if track.overall_confidence is not None else "—"
             )
             quality = str(track.quality_score) if track.quality_score is not None else "—"
             cells = [
@@ -294,9 +285,7 @@ class LibraryPage(QWidget):
                 QTableWidgetItem(conf),
                 QTableWidgetItem(quality),
             ]
-            cells[4].setTextAlignment(
-                Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter
-            )
+            cells[4].setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
             health = effective_track_health(track, prefs)
             for col, item in enumerate(cells):
                 apply_track_health_style(item, health)
@@ -306,27 +295,55 @@ class LibraryPage(QWidget):
         if self._library_id is None:
             QMessageBox.warning(self, "Library", "Select or create a library in Settings first.")
             return
-        count = run_missing_scan(self._container, self._library_id)
-        QMessageBox.information(
-            self,
-            "Find missing songs",
-            f"Created {count} acquisition job(s). Check Find music / Wishlist.",
+        library_id = self._library_id
+        self._counts.setText("Scanning for missing songs (background)…")
+
+        def work() -> int:
+            return run_missing_scan(self._container, library_id)
+
+        def done(count: object) -> None:
+            n = int(count) if isinstance(count, int) else 0
+            QMessageBox.information(
+                self,
+                "Find missing songs",
+                f"Created {n} acquisition job(s). Check Find music / Wishlist.",
+            )
+            self.refresh()
+            if n:
+                self.navigate_requested.emit("acquisition")
+
+        run_in_background(
+            work,
+            on_finished=done,
+            on_failed=lambda msg: QMessageBox.warning(self, "Library", msg),
         )
-        if count:
-            self.navigate_requested.emit("acquisition")
 
     def _scan_upgrades(self) -> None:
         if self._library_id is None:
             QMessageBox.warning(self, "Library", "Select or create a library in Settings first.")
             return
-        count = run_quality_upgrade_scan(self._container, self._library_id)
-        QMessageBox.information(
-            self,
-            "Find quality upgrades",
-            f"Created {count} upgrade job(s). Check Find music / Wishlist.",
+        library_id = self._library_id
+        self._counts.setText("Scanning for quality upgrades (background)…")
+
+        def work() -> int:
+            return run_quality_upgrade_scan(self._container, library_id)
+
+        def done(count: object) -> None:
+            n = int(count) if isinstance(count, int) else 0
+            QMessageBox.information(
+                self,
+                "Find quality upgrades",
+                f"Created {n} upgrade job(s). Check Find music / Wishlist.",
+            )
+            self.refresh()
+            if n:
+                self.navigate_requested.emit("acquisition")
+
+        run_in_background(
+            work,
+            on_finished=done,
+            on_failed=lambda msg: QMessageBox.warning(self, "Library", msg),
         )
-        if count:
-            self.navigate_requested.emit("acquisition")
 
     def _selected_path(self) -> str | None:
         rows = {index.row() for index in self._table.selectedIndexes()}

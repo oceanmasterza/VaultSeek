@@ -52,11 +52,21 @@ class DownloadManager:
                 }
             },
         )
-        self._engine.advance(
-            job_id,
-            AcquisitionJobState.DOWNLOADING,
-            note=f"{result.provider_id}:{result.result_id}",
-        )
+        # Idempotent: re-starting the same (or a replacement) download while
+        # already DOWNLOADING must not re-enter the state machine.
+        if job.state is not AcquisitionJobState.DOWNLOADING:
+            self._engine.advance(
+                job_id,
+                AcquisitionJobState.DOWNLOADING,
+                note=f"{result.provider_id}:{result.result_id}",
+            )
+        else:
+            self._engine.update_extra(
+                job_id,
+                {
+                    "download_note": f"restarted {result.provider_id}:{result.result_id}",
+                },
+            )
         return handle
 
     def poll(self, job_id: UUID) -> DownloadStatus | None:
@@ -80,8 +90,7 @@ class DownloadManager:
             raise KeyError(f"AcquisitionJob {job_id} not found")
         if job.state is not AcquisitionJobState.DOWNLOADING:
             raise ValueError(
-                f"AcquisitionJob {job_id} must be DOWNLOADING "
-                f"(current: {job.state.value})"
+                f"AcquisitionJob {job_id} must be DOWNLOADING " f"(current: {job.state.value})"
             )
 
         status = self.poll(job_id)

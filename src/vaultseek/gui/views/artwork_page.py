@@ -4,7 +4,6 @@ from __future__ import annotations
 
 from uuid import UUID
 
-from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
     QCheckBox,
     QHBoxLayout,
@@ -17,6 +16,7 @@ from PySide6.QtWidgets import (
 )
 
 from vaultseek.core.container import Container
+from vaultseek.gui.debounce import connect_debounced
 
 
 class ArtworkPage(QWidget):
@@ -44,7 +44,7 @@ class ArtworkPage(QWidget):
         self._search = QLineEdit()
         self._search.setPlaceholderText("Filter by album or artist…")
         self._search.setClearButtonEnabled(True)
-        self._search.textChanged.connect(self.refresh)
+        connect_debounced(self._search.textChanged, self.refresh, parent=self)
         toolbar.addWidget(self._search, stretch=1)
         self._missing_only = QCheckBox("Problems only")
         self._missing_only.setToolTip("Show missing and low-resolution covers only.")
@@ -104,6 +104,4 @@ class ArtworkPage(QWidget):
         ok = sum(1 for row in rows if row.status == "ok")
         missing = sum(1 for row in rows if row.status == "missing")
         low = sum(1 for row in rows if row.status == "low_res")
-        self._status.setText(
-            f"{len(rows)} album(s) · {ok} OK · {low} low-res · {missing} missing"
-        )
+        self._status.setText(f"{len(rows)} album(s) · {ok} OK · {low} low-res · {missing} missing")
