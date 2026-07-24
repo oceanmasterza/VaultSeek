@@ -36,12 +36,16 @@ def normalize_nicotine_settings(settings: dict[str, Any]) -> dict[str, Any]:
 
 
 def resolve_enabled_acquisition_providers(config: AcquisitionConfig) -> set[str]:
-    """Enabled provider ids for connect — Nicotine+ replaces the stub placeholder."""
+    """Enabled provider ids for connect — real providers replace the stub."""
     enabled = set(config.enabled_providers)
     if config.nicotine_plus.enabled:
         enabled.add("nicotine_plus")
         enabled.discard("stub")
-    elif not enabled:
+    # Prowlarr+qBittorrent is a paired backend: both halves must be enabled.
+    if config.prowlarr.enabled and config.qbittorrent.enabled:
+        enabled.add("prowlarr_qbit")
+        enabled.discard("stub")
+    if not enabled:
         enabled.add("stub")
     return enabled
 
@@ -117,8 +121,20 @@ def connect_acquisition_providers(
             "search_timeout_seconds": config.search_timeout_seconds,
         }
     )
-    settings_by_id = {
+    prowlarr_qbit_settings = {
+        "prowlarr_base_url": config.prowlarr.base_url,
+        "prowlarr_api_key": config.prowlarr.api_key,
+        "categories": config.prowlarr.categories,
+        "min_seeders": config.prowlarr.min_seeders,
+        "qbit_base_url": config.qbittorrent.base_url,
+        "qbit_username": config.qbittorrent.username,
+        "qbit_password": config.qbittorrent.password,
+        "qbit_category": config.qbittorrent.category,
+        "qbit_save_path": config.qbittorrent.save_path,
+    }
+    settings_by_id: dict[str, dict[str, Any]] = {
         "nicotine_plus": nicotine_settings,
+        "prowlarr_qbit": prowlarr_qbit_settings,
         "stub": {},
     }
     enabled = resolve_enabled_acquisition_providers(config)
@@ -135,6 +151,14 @@ def connect_acquisition_providers(
                 settings=settings_by_id.get(provider_id, {}),
             )
         )
+        if provider_id == "prowlarr_qbit":
+            if ok:
+                logger.debug("Prowlarr+qBittorrent connected ({})", config.prowlarr.base_url)
+            else:
+                logger.warning(
+                    "Prowlarr+qBittorrent enabled but did not connect. Check Prowlarr "
+                    "API key and qBittorrent WebUI credentials in Settings → Plugins."
+                )
         if provider_id == "nicotine_plus" and config.nicotine_plus.enabled:
             transport = str(nicotine_settings.get("transport") or "socket")
             if ok:
@@ -142,9 +166,11 @@ def connect_acquisition_providers(
                     "Nicotine+ connected via {} ({}:{})",
                     transport,
                     nicotine_settings.get("host"),
-                    nicotine_settings.get("api_port")
-                    if transport == "http"
-                    else nicotine_settings.get("port"),
+                    (
+                        nicotine_settings.get("api_port")
+                        if transport == "http"
+                        else nicotine_settings.get("port")
+                    ),
                 )
             else:
                 logger.warning(

@@ -18,7 +18,7 @@ from typing import Any
 
 from vaultseek.core.exceptions import ConfigError, ConfigMigrationError, ConfigVersionError
 
-CURRENT_SCHEMA_VERSION = 19
+CURRENT_SCHEMA_VERSION = 20
 
 
 @dataclass(frozen=True)
@@ -53,11 +53,37 @@ class NicotinePlusConfig:
 
 
 @dataclass(frozen=True)
+class ProwlarrConfig:
+    """Prowlarr indexer-aggregator settings for torrent/usenet search."""
+
+    enabled: bool = False
+    base_url: str = "http://127.0.0.1:9696"
+    api_key: str = ""
+    # Torznab category ids to search. 3000 = Audio (all sub-categories).
+    categories: tuple[int, ...] = (3000,)
+    min_seeders: int = 1
+
+
+@dataclass(frozen=True)
+class QbittorrentConfig:
+    """qBittorrent WebUI settings — where Prowlarr results are downloaded."""
+
+    enabled: bool = False
+    base_url: str = "http://127.0.0.1:8080"
+    username: str = "admin"
+    password: str = ""
+    # Torrents added by VaultSeek are tagged with this category for tracking.
+    category: str = "vaultseek"
+    # Optional explicit save path; blank uses qBittorrent's default.
+    save_path: str = ""
+
+
+@dataclass(frozen=True)
 class AcquisitionConfig:
     """Acquisition Engine provider enablement and dispatch tunables."""
 
     enabled_providers: tuple[str, ...] = ("stub",)
-    provider_order: tuple[str, ...] = ("nicotine_plus", "stub")
+    provider_order: tuple[str, ...] = ("prowlarr_qbit", "nicotine_plus", "stub")
     search_timeout_seconds: float = 30.0
     auto_queue_jobs: bool = True
     auto_acquire_threshold: float = 0.45
@@ -70,6 +96,8 @@ class AcquisitionConfig:
     # 0 = search wishlist as often as rate limits allow; >0 = at most one search pass per N hours.
     wishlist_search_interval_hours: float = 0.0
     nicotine_plus: NicotinePlusConfig = field(default_factory=NicotinePlusConfig)
+    prowlarr: ProwlarrConfig = field(default_factory=ProwlarrConfig)
+    qbittorrent: QbittorrentConfig = field(default_factory=QbittorrentConfig)
 
 
 @dataclass(frozen=True)
@@ -156,6 +184,44 @@ class MetadataConfig:
 
 
 @dataclass(frozen=True)
+class LastfmConfig:
+    """Last.fm API settings for the similar-music recommender."""
+
+    enabled: bool = False
+    api_key: str = ""
+    # How many similar artists to pull per seed artist in your library.
+    similar_artist_limit: int = 5
+    # Top albums to suggest per discovered similar artist.
+    top_albums_per_artist: int = 2
+
+
+@dataclass(frozen=True)
+class SpotifyConfig:
+    """Spotify Web API settings for the playlist-sync recommender.
+
+    Uses the Client Credentials flow (no user login) which can read public
+    playlists. Create an app at https://developer.spotify.com/dashboard.
+    """
+
+    enabled: bool = False
+    client_id: str = ""
+    client_secret: str = ""
+    # Playlist share links or spotify:playlist: URIs to mirror into Wanted.
+    playlist_urls: tuple[str, ...] = ()
+
+
+@dataclass(frozen=True)
+class RecommendationConfig:
+    """Discovery recommenders that feed the Wanted shelf (all opt-in)."""
+
+    enabled_recommenders: tuple[str, ...] = ()
+    # Safety cap on how many new Wanted entries a single run may create.
+    max_new_per_run: int = 25
+    lastfm: LastfmConfig = field(default_factory=LastfmConfig)
+    spotify: SpotifyConfig = field(default_factory=SpotifyConfig)
+
+
+@dataclass(frozen=True)
 class AppConfig:
     """Root application configuration."""
 
@@ -171,6 +237,7 @@ class AppConfig:
     watch: WatchConfig = field(default_factory=WatchConfig)
     artwork: ArtworkConfig = field(default_factory=ArtworkConfig)
     acquisition: AcquisitionConfig = field(default_factory=AcquisitionConfig)
+    recommendations: RecommendationConfig = field(default_factory=RecommendationConfig)
 
     def to_dict(self) -> dict[str, Any]:
         """Return a plain-dict representation suitable for JSON serialization."""
@@ -190,6 +257,17 @@ class AppConfig:
                 value = acquisition.get(key)
                 if isinstance(value, tuple):
                     acquisition[key] = list(value)
+            prowlarr = acquisition.get("prowlarr")
+            if isinstance(prowlarr, dict) and isinstance(prowlarr.get("categories"), tuple):
+                prowlarr["categories"] = list(prowlarr["categories"])
+        recommendations = data.get("recommendations")
+        if isinstance(recommendations, dict):
+            value = recommendations.get("enabled_recommenders")
+            if isinstance(value, tuple):
+                recommendations["enabled_recommenders"] = list(value)
+            spotify = recommendations.get("spotify")
+            if isinstance(spotify, dict) and isinstance(spotify.get("playlist_urls"), tuple):
+                spotify["playlist_urls"] = list(spotify["playlist_urls"])
         return data
 
 
@@ -428,6 +506,22 @@ def _migrate_v18_to_v19(raw: dict[str, Any]) -> dict[str, Any]:
     return migrated
 
 
+def _migrate_v19_to_v20(raw: dict[str, Any]) -> dict[str, Any]:
+    """Add opt-in recommenders (Last.fm/Spotify) and Prowlarr+qBittorrent provider."""
+    migrated = dict(raw)
+    migrated["schema_version"] = 20
+    migrated.setdefault("recommendations", asdict(RecommendationConfig()))
+    acq = dict(migrated.get("acquisition") or asdict(AcquisitionConfig()))
+    acq.setdefault("prowlarr", asdict(ProwlarrConfig()))
+    acq.setdefault("qbittorrent", asdict(QbittorrentConfig()))
+    order = list(acq.get("provider_order") or [])
+    if "prowlarr_qbit" not in order:
+        order.insert(0, "prowlarr_qbit")
+    acq["provider_order"] = order
+    migrated["acquisition"] = acq
+    return migrated
+
+
 _MIGRATIONS: dict[int, Callable[[dict[str, Any]], dict[str, Any]]] = {
     1: _migrate_v1_to_v2,
     2: _migrate_v2_to_v3,
@@ -447,6 +541,7 @@ _MIGRATIONS: dict[int, Callable[[dict[str, Any]], dict[str, Any]]] = {
     16: _migrate_v16_to_v17,
     17: _migrate_v17_to_v18,
     18: _migrate_v18_to_v19,
+    19: _migrate_v19_to_v20,
 }
 
 
@@ -532,7 +627,53 @@ def _from_dict(raw: dict[str, Any]) -> AppConfig:
             coerced["nicotine_plus"] = NicotinePlusConfig(
                 **{key: value for key, value in nicotine_raw.items() if key in nicotine_fields}
             )
+        prowlarr_raw = coerced.get("prowlarr")
+        if isinstance(prowlarr_raw, dict):
+            prowlarr_fields = set(ProwlarrConfig.__dataclass_fields__)
+            prowlarr_coerced = {
+                key: value for key, value in prowlarr_raw.items() if key in prowlarr_fields
+            }
+            if isinstance(prowlarr_coerced.get("categories"), list):
+                prowlarr_coerced["categories"] = tuple(
+                    int(c) for c in prowlarr_coerced["categories"]
+                )
+            coerced["prowlarr"] = ProwlarrConfig(**prowlarr_coerced)
+        qbittorrent_raw = coerced.get("qbittorrent")
+        if isinstance(qbittorrent_raw, dict):
+            qbittorrent_fields = set(QbittorrentConfig.__dataclass_fields__)
+            coerced["qbittorrent"] = QbittorrentConfig(
+                **{
+                    key: value
+                    for key, value in qbittorrent_raw.items()
+                    if key in qbittorrent_fields
+                }
+            )
         filtered["acquisition"] = AcquisitionConfig(**coerced)
+
+    recommendations_raw = filtered.get("recommendations")
+    if isinstance(recommendations_raw, dict):
+        rec_fields = set(RecommendationConfig.__dataclass_fields__)
+        rec_coerced = {
+            key: value for key, value in recommendations_raw.items() if key in rec_fields
+        }
+        if isinstance(rec_coerced.get("enabled_recommenders"), list):
+            rec_coerced["enabled_recommenders"] = tuple(rec_coerced["enabled_recommenders"])
+        lastfm_raw = rec_coerced.get("lastfm")
+        if isinstance(lastfm_raw, dict):
+            lastfm_fields = set(LastfmConfig.__dataclass_fields__)
+            rec_coerced["lastfm"] = LastfmConfig(
+                **{key: value for key, value in lastfm_raw.items() if key in lastfm_fields}
+            )
+        spotify_raw = rec_coerced.get("spotify")
+        if isinstance(spotify_raw, dict):
+            spotify_fields = set(SpotifyConfig.__dataclass_fields__)
+            spotify_coerced = {
+                key: value for key, value in spotify_raw.items() if key in spotify_fields
+            }
+            if isinstance(spotify_coerced.get("playlist_urls"), list):
+                spotify_coerced["playlist_urls"] = tuple(spotify_coerced["playlist_urls"])
+            rec_coerced["spotify"] = SpotifyConfig(**spotify_coerced)
+        filtered["recommendations"] = RecommendationConfig(**rec_coerced)
 
     return AppConfig(**filtered)
 
