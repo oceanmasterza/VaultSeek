@@ -6,7 +6,7 @@ from uuid import UUID
 
 from loguru import logger
 
-from vaultseek.models.entities.acquisition_job import AcquisitionJobState
+from vaultseek.models.entities.acquisition_job import AcquisitionJob, AcquisitionJobState
 from vaultseek.models.interfaces.acquisition import SearchRequest, SearchResult
 from vaultseek.plugins.builtin.nicotine_plus.search_rate_gate import SearchThrottled
 from vaultseek.services.acquisition_engine import AcquisitionEngine
@@ -62,15 +62,7 @@ class SearchDispatcher:
         if job is None:
             raise KeyError(f"AcquisitionJob {job_id} not found")
 
-        if job.state is AcquisitionJobState.CREATED:
-            self._engine.queue(job_id)
-            job = self._engine.get(job_id)
-            assert job is not None
-
-        if job.state is AcquisitionJobState.QUEUED:
-            self._engine.advance(job_id, AcquisitionJobState.SEARCHING)
-            job = self._engine.get(job_id)
-            assert job is not None
+        job = self._prepare_for_search(job_id, job)
 
         request = SearchRequest(
             artist=job.artist,
@@ -182,3 +174,28 @@ class SearchDispatcher:
             },
         )
         return results
+
+    def _prepare_for_search(self, job_id: UUID, job: AcquisitionJob) -> AcquisitionJob:
+        """Move the job into SEARCHING from any state that may re-enter search.
+
+        Auto-acquire / retries often call dispatch while still in ``retry_scheduled``
+        or ``no_results``. Those states cannot jump straight to ``no_results`` again,
+        so normalize through QUEUED → SEARCHING first.
+        """
+        if job.state is AcquisitionJobState.SEARCHING:
+            return job
+
+        if job.state in (
+            AcquisitionJobState.CREATED,
+            AcquisitionJobState.RETRY_SCHEDULED,
+            AcquisitionJobState.NO_RESULTS,
+            AcquisitionJobState.WAITING_FOR_USER,
+        ):
+            job = self._engine.queue(job_id)
+
+        if job.state is AcquisitionJobState.QUEUED:
+            job = self._engine.advance(job_id, AcquisitionJobState.SEARCHING)
+
+        if job.state is not AcquisitionJobState.SEARCHING:
+            raise ValueError(f"AcquisitionJob {job_id} cannot search from {job.state.value}")
+        return job

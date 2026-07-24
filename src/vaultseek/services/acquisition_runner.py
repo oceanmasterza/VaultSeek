@@ -108,13 +108,8 @@ class AcquisitionRunner:
         if job.state is AcquisitionJobState.NO_RESULTS or not results:
             provider_offline = bool(job.extra.get("provider_offline"))
             exhausted = bool(job.extra.get("search_exhausted"))
-            message = (
-                job.error_message
-                or (
-                    "no acquisition providers connected"
-                    if provider_offline
-                    else "no Soulseek hits"
-                )
+            message = job.error_message or (
+                "no acquisition providers connected" if provider_offline else "no Soulseek hits"
             )
             if exhausted:
                 logger.warning("Search for {}: exhausted — {}", job_label(job), message)
@@ -169,6 +164,20 @@ class AcquisitionRunner:
                 "parked on Wanted shelf — use Start download to search",
             )
 
+        # Already mid-pipeline — don't re-search / re-advance illegally.
+        if job.state in (
+            AcquisitionJobState.DOWNLOADING,
+            AcquisitionJobState.VERIFYING,
+            AcquisitionJobState.IMPORTING,
+            AcquisitionJobState.COMPLETED,
+            AcquisitionJobState.CANCELLED,
+        ):
+            return RunnerOutcome(
+                job_id,
+                job.state,
+                f"already {job.state.value}",
+            )
+
         outcome = self.search_and_score(job_id)
         job = self._engine.get(job_id)
         if job is None:
@@ -194,7 +203,12 @@ class AcquisitionRunner:
         if is_parked(job):
             return None
 
-        if job.state in (AcquisitionJobState.CREATED, AcquisitionJobState.QUEUED):
+        if job.state in (
+            AcquisitionJobState.CREATED,
+            AcquisitionJobState.QUEUED,
+            AcquisitionJobState.RETRY_SCHEDULED,
+            AcquisitionJobState.NO_RESULTS,
+        ):
             return self.try_auto_acquire(job_id, auto_import=auto_import)
 
         if job.state is AcquisitionJobState.SCORING:
@@ -266,9 +280,7 @@ class AcquisitionRunner:
             best_score,
             self._threshold,
         )
-        return self.start_download(
-            job_id, scored[0][0], auto_import=auto_import, score=best_score
-        )
+        return self.start_download(job_id, scored[0][0], auto_import=auto_import, score=best_score)
 
     def _auto_acquire_from_scored(
         self,
@@ -408,9 +420,7 @@ class AcquisitionRunner:
             self._engine.advance(job_id, AcquisitionJobState.SCORING, note="try next peer")
 
         download_result = self._with_download_folder(job, result)
-        attempted = [
-            str(item) for item in (job.extra.get("attempted_result_ids") or []) if item
-        ]
+        attempted = [str(item) for item in (job.extra.get("attempted_result_ids") or []) if item]
         if result.result_id not in attempted:
             attempted.append(result.result_id)
         self._engine.update_extra(
@@ -462,9 +472,7 @@ class AcquisitionRunner:
                 AcquisitionJobState.VERIFICATION_FAILED,
                 AcquisitionJobState.IMPORT_FAILED,
             ):
-                next_outcome = self._try_next_download_candidate(
-                    job_id, auto_import=auto_import
-                )
+                next_outcome = self._try_next_download_candidate(job_id, auto_import=auto_import)
                 if next_outcome is not None:
                     return next_outcome
             elif loaded.state is AcquisitionJobState.COMPLETED:
@@ -534,8 +542,10 @@ class AcquisitionRunner:
             if folder_paths and (
                 status is None or status.state in ("queued", "downloading", "completed")
             ):
-                if status is None or status.state == "completed" or _folder_has_ready_audio(
-                    folder_paths
+                if (
+                    status is None
+                    or status.state == "completed"
+                    or _folder_has_ready_audio(folder_paths)
                 ):
                     paths = list(status.local_paths) if status and status.local_paths else []
                     merged = {str(p): p for p in paths}
@@ -615,9 +625,7 @@ class AcquisitionRunner:
                     job.id,
                     outcome_extra(code, detail=status.message or status.state),
                 )
-                next_outcome = self._try_next_download_candidate(
-                    job.id, auto_import=auto_import
-                )
+                next_outcome = self._try_next_download_candidate(job.id, auto_import=auto_import)
                 if next_outcome is None:
                     loaded = self._engine.get(job.id)
                     logger.info(
@@ -641,11 +649,7 @@ class AcquisitionRunner:
             self._engine.update_extra(job_id, outcome_extra(code))
             return
         if loaded.state is AcquisitionJobState.VERIFICATION_FAILED:
-            failures = tuple(
-                part
-                for part in (loaded.error_message or "").split(";")
-                if part
-            )
+            failures = tuple(part for part in (loaded.error_message or "").split(";") if part)
             code = classify_verification_failures(failures)
             self._engine.update_extra(
                 job_id, outcome_extra(code, detail=loaded.error_message or "")
@@ -691,9 +695,7 @@ class AcquisitionRunner:
         ):
             return None
 
-        attempted = {
-            str(item) for item in (job.extra.get("attempted_result_ids") or []) if item
-        }
+        attempted = {str(item) for item in (job.extra.get("attempted_result_ids") or []) if item}
         scored = _load_scored(job)
         for result, score in scored:
             if result.result_id in attempted:
@@ -706,9 +708,7 @@ class AcquisitionRunner:
                 result.display_name,
                 score,
             )
-            return self.start_download(
-                job_id, result, auto_import=auto_import, score=score
-            )
+            return self.start_download(job_id, result, auto_import=auto_import, score=score)
         return None
 
     def _with_download_folder(self, job: AcquisitionJob, result: SearchResult) -> SearchResult:
@@ -758,9 +758,7 @@ class AcquisitionRunner:
             if folder:
                 raw["folder_path"] = str(folder)
             try:
-                self._downloads._providers.download(  # noqa: SLF001
-                    replace(sibling, raw=raw)
-                )
+                self._downloads._providers.download(replace(sibling, raw=raw))  # noqa: SLF001
                 count += 1
             except Exception:
                 logger.debug("Sibling enqueue skipped for {}", sibling.result_id)
