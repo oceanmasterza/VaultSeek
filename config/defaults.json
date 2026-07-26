@@ -1,5 +1,5 @@
 {
-  "schema_version": 20,
+  "schema_version": 21,
   "log_level": "INFO",
   "theme": "dark",
   "setup_completed": false,
@@ -51,7 +51,7 @@
       "stub"
     ],
     "provider_order": [
-      "prowlarr_qbit",
+      "prowlarr",
       "nicotine_plus",
       "stub"
     ],
@@ -87,11 +87,17 @@
     },
     "qbittorrent": {
       "enabled": false,
-      "base_url": "http://127.0.0.1:8080",
+      "base_url": "http://127.0.0.1:8081",
       "username": "admin",
       "password": "",
       "category": "vaultseek",
       "save_path": ""
+    },
+    "sabnzbd": {
+      "enabled": false,
+      "base_url": "http://127.0.0.1:8080",
+      "api_key": "",
+      "category": "vaultseek"
     }
   },
   "recommendations": {

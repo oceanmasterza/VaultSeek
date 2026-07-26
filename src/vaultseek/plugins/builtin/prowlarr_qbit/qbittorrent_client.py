@@ -97,9 +97,28 @@ class QbittorrentClient:
         except requests.RequestException:
             self._logged_in = False
             return False
-        ok = response.status_code == 200 and response.text.strip() == "Ok."
-        self._logged_in = ok
-        return ok
+        body = response.text.strip()
+        # Classic WebUI: 200 + "Ok.". qBittorrent 5.x with localhost / subnet
+        # bypass often returns 204 (or empty body) while the session is already usable.
+        if response.status_code == 200 and body == "Ok.":
+            self._logged_in = True
+            return True
+        if response.status_code in (200, 204) and self._version_reachable():
+            self._logged_in = True
+            return True
+        self._logged_in = False
+        return False
+
+    def _version_reachable(self) -> bool:
+        try:
+            response = self._session.get(
+                f"{self._base_url}/api/v2/app/version",
+                headers={"Referer": self._base_url},
+                timeout=self._timeout,
+            )
+        except requests.RequestException:
+            return False
+        return response.status_code == 200 and bool(response.text.strip())
 
     def probe(self) -> bool:
         return self.login()

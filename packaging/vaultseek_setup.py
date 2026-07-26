@@ -26,7 +26,7 @@ from datetime import datetime
 from pathlib import Path
 
 APP_NAME = "VaultSeek"
-APP_VERSION = "1.0.0"
+APP_VERSION = "1.1.0"
 PUBLISHER = "VaultSeek"
 PAYLOAD = "VaultSeekApp.zip"
 # Per-user ARP key (no elevation required for LocalAppData installs).

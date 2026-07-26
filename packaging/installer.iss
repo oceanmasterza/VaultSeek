@@ -13,7 +13,7 @@
 ; Output: packaging\output\VaultSeek-Setup.exe
 
 #define MyAppName "VaultSeek"
-#define MyAppVersion "1.0.0"
+#define MyAppVersion "1.1.0"
 #define MyAppPublisher "VaultSeek Contributors"
 #define MyAppURL "https://github.com/oceanmasterza/VaultSeek"
 #define MyAppExeName "VaultSeek.exe"

@@ -233,9 +233,12 @@ def build_dashboard_snapshot(
 
 
 def _acquisition_stats(container: Container, library_id: UUID) -> AcquisitionDashboardStat:
-    jobs = container.acquisition_engine.list_jobs(library_id=library_id)
-    if not jobs:
+    counts = container.acquisition_engine.count_by_state(library_id)
+    if not counts:
         return AcquisitionDashboardStat()
+
+    def _sum(states: set[AcquisitionJobState]) -> int:
+        return sum(counts.get(state.value, 0) for state in states)
 
     failed_states = {
         AcquisitionJobState.DOWNLOAD_FAILED,
@@ -256,22 +259,29 @@ def _acquisition_stats(container: Container, library_id: UUID) -> AcquisitionDas
         AcquisitionJobState.CREATED,
         AcquisitionJobState.QUEUED,
     }
+    terminal_states = {
+        AcquisitionJobState.COMPLETED,
+        AcquisitionJobState.CANCELLED,
+        AcquisitionJobState.DOWNLOAD_FAILED,
+        AcquisitionJobState.VERIFICATION_FAILED,
+        AcquisitionJobState.IMPORT_FAILED,
+        AcquisitionJobState.NO_RESULTS,
+    }
 
     start_of_today = datetime.now(UTC).replace(hour=0, minute=0, second=0, microsecond=0)
-    waiting = sum(1 for job in jobs if job.state is AcquisitionJobState.WAITING_FOR_USER)
-    failed = sum(1 for job in jobs if job.state in failed_states)
-    completed = sum(1 for job in jobs if job.state is AcquisitionJobState.COMPLETED)
-    completed_today = sum(
-        1
-        for job in jobs
-        if job.state is AcquisitionJobState.COMPLETED and job.updated_at >= start_of_today
+    total = sum(counts.values())
+    completed = counts.get(AcquisitionJobState.COMPLETED.value, 0)
+    completed_today = container.acquisition_engine.count_completed_since(
+        library_id, start_of_today
     )
-    in_progress = sum(1 for job in jobs if job.state in in_progress_states)
-    queued = sum(1 for job in jobs if job.state in queued_states)
-    active = sum(1 for job in jobs if not job.is_terminal)
+    waiting = counts.get(AcquisitionJobState.WAITING_FOR_USER.value, 0)
+    failed = _sum(failed_states)
+    in_progress = _sum(in_progress_states)
+    queued = _sum(queued_states)
+    active = total - _sum(terminal_states)
 
     return AcquisitionDashboardStat(
-        total=len(jobs),
+        total=total,
         active=active,
         waiting_for_user=waiting,
         in_progress=in_progress,

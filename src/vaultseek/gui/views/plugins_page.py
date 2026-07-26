@@ -31,6 +31,7 @@ from vaultseek.core.config import (
     ProwlarrConfig,
     QbittorrentConfig,
     RecommendationConfig,
+    SabnzbdConfig,
     SpotifyConfig,
     save_config,
 )
@@ -38,6 +39,7 @@ from vaultseek.core.container import Container, _build_recommenders
 from vaultseek.gui.async_task import run_in_background
 from vaultseek.gui.widgets.scrollable import wrap_scrollable
 from vaultseek.plugins.builtin.prowlarr_qbit import ProwlarrClient, QbittorrentClient
+from vaultseek.plugins.builtin.sabnzbd import SabnzbdClient
 from vaultseek.services.acquisition_bootstrap import connect_acquisition_providers
 from vaultseek.services.recommendation_service import RecommendationService
 
@@ -160,7 +162,7 @@ class PluginsPage(QWidget):
         return box
 
     def _build_torrent_box(self) -> QGroupBox:
-        box = QGroupBox("Torrents — Prowlarr + qBittorrent")
+        box = QGroupBox("Indexers — Prowlarr + qBittorrent / SABnzbd")
         form = QFormLayout(box)
         self._prowlarr_enabled = QCheckBox("Enable Prowlarr search")
         self._prowlarr_url = QLineEdit()
@@ -171,10 +173,15 @@ class PluginsPage(QWidget):
         self._prowlarr_seeders = QSpinBox()
         self._prowlarr_seeders.setRange(0, 1000)
         self._prowlarr_seeders.setValue(1)
-        self._prowlarr_seeders.setToolTip("Skip results with fewer seeders than this.")
-        self._qbit_enabled = QCheckBox("Enable qBittorrent downloads")
+        self._prowlarr_seeders.setToolTip(
+            "Skip torrent results with fewer seeders than this (NZBs ignore seeders)."
+        )
+        self._qbit_enabled = QCheckBox("Enable qBittorrent downloads (torrents)")
         self._qbit_url = QLineEdit()
-        self._qbit_url.setPlaceholderText("http://127.0.0.1:8080")
+        self._qbit_url.setPlaceholderText("http://127.0.0.1:8081")
+        self._qbit_url.setToolTip(
+            "Use a port that does not conflict with SABnzbd (often 8080). Default 8081."
+        )
         self._qbit_username = QLineEdit()
         self._qbit_username.setPlaceholderText("WebUI username")
         self._qbit_password = QLineEdit()
@@ -184,16 +191,28 @@ class PluginsPage(QWidget):
         self._qbit_category.setPlaceholderText("vaultseek")
         self._qbit_save_path = QLineEdit()
         self._qbit_save_path.setPlaceholderText("Optional save path (blank = qBittorrent default)")
+        self._sab_enabled = QCheckBox("Enable SABnzbd downloads (Usenet / NZB)")
+        self._sab_url = QLineEdit()
+        self._sab_url.setPlaceholderText("http://127.0.0.1:8080")
+        self._sab_key = QLineEdit()
+        self._sab_key.setEchoMode(QLineEdit.EchoMode.Password)
+        self._sab_key.setPlaceholderText("SABnzbd API key (Config → General)")
+        self._sab_category = QLineEdit()
+        self._sab_category.setPlaceholderText("vaultseek")
         form.addRow(self._prowlarr_enabled)
         form.addRow("Prowlarr URL", self._prowlarr_url)
         form.addRow("Prowlarr API key", self._prowlarr_key)
-        form.addRow("Minimum seeders", self._prowlarr_seeders)
+        form.addRow("Minimum torrent seeders", self._prowlarr_seeders)
         form.addRow(self._qbit_enabled)
         form.addRow("qBittorrent URL", self._qbit_url)
         form.addRow("qBittorrent user", self._qbit_username)
         form.addRow("qBittorrent password", self._qbit_password)
-        form.addRow("Category", self._qbit_category)
-        form.addRow("Save path", self._qbit_save_path)
+        form.addRow("qBittorrent category", self._qbit_category)
+        form.addRow("qBittorrent save path", self._qbit_save_path)
+        form.addRow(self._sab_enabled)
+        form.addRow("SABnzbd URL", self._sab_url)
+        form.addRow("SABnzbd API key", self._sab_key)
+        form.addRow("SABnzbd category", self._sab_category)
         test_row = QHBoxLayout()
         test_prowlarr = QPushButton("Test Prowlarr")
         test_prowlarr.setProperty("secondary", True)
@@ -201,14 +220,19 @@ class PluginsPage(QWidget):
         test_qbit = QPushButton("Test qBittorrent")
         test_qbit.setProperty("secondary", True)
         test_qbit.clicked.connect(self._test_qbittorrent)
+        test_sab = QPushButton("Test SABnzbd")
+        test_sab.setProperty("secondary", True)
+        test_sab.clicked.connect(self._test_sabnzbd)
         test_row.addWidget(test_prowlarr)
         test_row.addWidget(test_qbit)
+        test_row.addWidget(test_sab)
         test_row.addStretch(1)
         form.addRow(test_row)
         help_label = QLabel(
-            "Both halves must be enabled to use this backend: Prowlarr finds torrents, "
-            "qBittorrent downloads them. Completed downloads are verified and imported "
-            "like any other source. Restart VaultSeek after enabling."
+            "Enable Prowlarr plus at least one download client. Torrents go to "
+            "qBittorrent; NZBs go to SABnzbd. Completed downloads are verified and "
+            "imported like Nicotine+. Prefer qBittorrent on port 8081 if SABnzbd "
+            "already uses 8080."
         )
         help_label.setWordWrap(True)
         help_label.setProperty("muted", True)
@@ -242,6 +266,10 @@ class PluginsPage(QWidget):
         self._qbit_password.setText(acq.qbittorrent.password)
         self._qbit_category.setText(acq.qbittorrent.category)
         self._qbit_save_path.setText(acq.qbittorrent.save_path)
+        self._sab_enabled.setChecked(acq.sabnzbd.enabled)
+        self._sab_url.setText(acq.sabnzbd.base_url)
+        self._sab_key.setText(acq.sabnzbd.api_key)
+        self._sab_category.setText(acq.sabnzbd.category)
 
     # --------------------------------------------------------------- actions --
     def _collect_recommendations(self) -> RecommendationConfig:
@@ -283,22 +311,37 @@ class PluginsPage(QWidget):
         )
         qbittorrent = QbittorrentConfig(
             enabled=self._qbit_enabled.isChecked(),
-            base_url=self._qbit_url.text().strip() or "http://127.0.0.1:8080",
+            base_url=self._qbit_url.text().strip() or "http://127.0.0.1:8081",
             username=self._qbit_username.text().strip(),
             password=self._qbit_password.text(),
             category=self._qbit_category.text().strip() or "vaultseek",
             save_path=self._qbit_save_path.text().strip(),
         )
-        enabled = [p for p in acq.enabled_providers if p not in ("stub", "prowlarr_qbit")]
-        if prowlarr.enabled and qbittorrent.enabled:
-            enabled.append("prowlarr_qbit")
+        sabnzbd = SabnzbdConfig(
+            enabled=self._sab_enabled.isChecked(),
+            base_url=self._sab_url.text().strip() or "http://127.0.0.1:8080",
+            api_key=self._sab_key.text().strip(),
+            category=self._sab_category.text().strip() or "vaultseek",
+        )
+        enabled = [
+            p
+            for p in acq.enabled_providers
+            if p not in ("stub", "prowlarr", "prowlarr_qbit")
+        ]
+        if prowlarr.enabled and (qbittorrent.enabled or sabnzbd.enabled):
+            enabled.append("prowlarr")
         if not enabled:
             enabled = ["stub"]
+        order = ["prowlarr" if p == "prowlarr_qbit" else p for p in acq.provider_order]
+        if "prowlarr" not in order:
+            order = ["prowlarr", *order]
         return replace(
             acq,
             enabled_providers=tuple(dict.fromkeys(enabled)),
+            provider_order=tuple(dict.fromkeys(order)),
             prowlarr=prowlarr,
             qbittorrent=qbittorrent,
+            sabnzbd=sabnzbd,
         )
 
     def _save(self) -> None:
@@ -390,7 +433,7 @@ class PluginsPage(QWidget):
 
     def _test_qbittorrent(self) -> None:
         client = QbittorrentClient(
-            base_url=self._qbit_url.text().strip() or "http://127.0.0.1:8080",
+            base_url=self._qbit_url.text().strip() or "http://127.0.0.1:8081",
             username=self._qbit_username.text().strip(),
             password=self._qbit_password.text(),
         )
@@ -401,5 +444,21 @@ class PluginsPage(QWidget):
                 self,
                 "qBittorrent",
                 "Could not log in. Enable the qBittorrent WebUI "
-                "(Tools → Options → Web UI) and check the URL/credentials.",
+                "(Tools → Options → Web UI), use a free port (e.g. 8081 if "
+                "SABnzbd owns 8080), and check the URL/credentials.",
+            )
+
+    def _test_sabnzbd(self) -> None:
+        client = SabnzbdClient(
+            base_url=self._sab_url.text().strip() or "http://127.0.0.1:8080",
+            api_key=self._sab_key.text().strip(),
+        )
+        if client.probe():
+            QMessageBox.information(self, "SABnzbd", "Connected to SABnzbd.")
+        else:
+            QMessageBox.warning(
+                self,
+                "SABnzbd",
+                "Could not reach SABnzbd. Check the URL and API key "
+                "(SABnzbd → Config → General → API Key).",
             )

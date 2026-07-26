@@ -26,11 +26,36 @@ class ProwlarrResult:
     size_bytes: int | None = None
     seeders: int | None = None
     categories: tuple[int, ...] = field(default_factory=tuple)
+    protocol: str = ""  # torrent | usenet | …
+
+    @property
+    def is_torrent(self) -> bool:
+        protocol = self.protocol.casefold()
+        if protocol == "torrent":
+            return True
+        if protocol == "usenet":
+            return False
+        if self.magnet_url or self.info_hash:
+            return True
+        url = (self.download_url or "").casefold()
+        return url.startswith("magnet:") or url.endswith(".torrent")
+
+    @property
+    def is_nzb(self) -> bool:
+        protocol = self.protocol.casefold()
+        if protocol == "usenet":
+            return True
+        if protocol == "torrent":
+            return False
+        url = (self.download_url or "").casefold()
+        return ".nzb" in url or "nzb" in (self.indexer or "").casefold()
 
     @property
     def link(self) -> str:
-        """Preferred hand-off to qBittorrent — magnet first, then .torrent URL."""
-        return self.magnet_url or self.download_url
+        """Preferred hand-off URL — magnet first for torrents, else download URL."""
+        if self.is_torrent:
+            return self.magnet_url or self.download_url
+        return self.download_url or self.magnet_url
 
 
 class ProwlarrClient:
@@ -42,7 +67,7 @@ class ProwlarrClient:
         api_key: str,
         *,
         session: requests.Session | None = None,
-        timeout_seconds: float = 15.0,
+        timeout_seconds: float = 60.0,
     ) -> None:
         self._base_url = base_url.rstrip("/")
         self._api_key = api_key
@@ -116,4 +141,5 @@ class ProwlarrClient:
             size_bytes=int(size) if isinstance(size, (int, float)) else None,
             seeders=int(seeders) if isinstance(seeders, (int, float)) else None,
             categories=tuple(categories),
+            protocol=str(row.get("protocol") or "").strip().casefold(),
         )

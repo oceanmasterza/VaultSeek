@@ -18,7 +18,7 @@ from typing import Any
 
 from vaultseek.core.exceptions import ConfigError, ConfigMigrationError, ConfigVersionError
 
-CURRENT_SCHEMA_VERSION = 20
+CURRENT_SCHEMA_VERSION = 21
 
 
 @dataclass(frozen=True)
@@ -66,10 +66,11 @@ class ProwlarrConfig:
 
 @dataclass(frozen=True)
 class QbittorrentConfig:
-    """qBittorrent WebUI settings — where Prowlarr results are downloaded."""
+    """qBittorrent WebUI settings — where Prowlarr torrent results are downloaded."""
 
     enabled: bool = False
-    base_url: str = "http://127.0.0.1:8080"
+    # Default 8081 avoids clashing with SABnzbd's common WebUI port 8080.
+    base_url: str = "http://127.0.0.1:8081"
     username: str = "admin"
     password: str = ""
     # Torrents added by VaultSeek are tagged with this category for tracking.
@@ -79,11 +80,21 @@ class QbittorrentConfig:
 
 
 @dataclass(frozen=True)
+class SabnzbdConfig:
+    """SABnzbd settings — where Prowlarr NZB / Usenet results are downloaded."""
+
+    enabled: bool = False
+    base_url: str = "http://127.0.0.1:8080"
+    api_key: str = ""
+    category: str = "vaultseek"
+
+
+@dataclass(frozen=True)
 class AcquisitionConfig:
     """Acquisition Engine provider enablement and dispatch tunables."""
 
     enabled_providers: tuple[str, ...] = ("stub",)
-    provider_order: tuple[str, ...] = ("prowlarr_qbit", "nicotine_plus", "stub")
+    provider_order: tuple[str, ...] = ("prowlarr", "nicotine_plus", "stub")
     search_timeout_seconds: float = 30.0
     auto_queue_jobs: bool = True
     auto_acquire_threshold: float = 0.45
@@ -98,6 +109,7 @@ class AcquisitionConfig:
     nicotine_plus: NicotinePlusConfig = field(default_factory=NicotinePlusConfig)
     prowlarr: ProwlarrConfig = field(default_factory=ProwlarrConfig)
     qbittorrent: QbittorrentConfig = field(default_factory=QbittorrentConfig)
+    sabnzbd: SabnzbdConfig = field(default_factory=SabnzbdConfig)
 
 
 @dataclass(frozen=True)
@@ -522,6 +534,30 @@ def _migrate_v19_to_v20(raw: dict[str, Any]) -> dict[str, Any]:
     return migrated
 
 
+def _migrate_v20_to_v21(raw: dict[str, Any]) -> dict[str, Any]:
+    """Add SABnzbd and rename provider id prowlarr_qbit → prowlarr."""
+    migrated = dict(raw)
+    migrated["schema_version"] = 21
+    acq = dict(migrated.get("acquisition") or asdict(AcquisitionConfig()))
+    acq.setdefault("sabnzbd", asdict(SabnzbdConfig()))
+    order = ["prowlarr" if p == "prowlarr_qbit" else p for p in (acq.get("provider_order") or [])]
+    if "prowlarr" not in order:
+        order.insert(0, "prowlarr")
+    acq["provider_order"] = order
+    enabled = ["prowlarr" if p == "prowlarr_qbit" else p for p in (acq.get("enabled_providers") or [])]
+    acq["enabled_providers"] = enabled or ["stub"]
+    # Prefer 8081 for qBit when still on the SAB-clashing default 8080.
+    qbit = dict(acq.get("qbittorrent") or asdict(QbittorrentConfig()))
+    if str(qbit.get("base_url") or "").rstrip("/") in {
+        "http://127.0.0.1:8080",
+        "http://localhost:8080",
+    }:
+        qbit["base_url"] = "http://127.0.0.1:8081"
+    acq["qbittorrent"] = qbit
+    migrated["acquisition"] = acq
+    return migrated
+
+
 _MIGRATIONS: dict[int, Callable[[dict[str, Any]], dict[str, Any]]] = {
     1: _migrate_v1_to_v2,
     2: _migrate_v2_to_v3,
@@ -542,6 +578,7 @@ _MIGRATIONS: dict[int, Callable[[dict[str, Any]], dict[str, Any]]] = {
     17: _migrate_v17_to_v18,
     18: _migrate_v18_to_v19,
     19: _migrate_v19_to_v20,
+    20: _migrate_v20_to_v21,
 }
 
 
@@ -647,6 +684,12 @@ def _from_dict(raw: dict[str, Any]) -> AppConfig:
                     for key, value in qbittorrent_raw.items()
                     if key in qbittorrent_fields
                 }
+            )
+        sabnzbd_raw = coerced.get("sabnzbd")
+        if isinstance(sabnzbd_raw, dict):
+            sabnzbd_fields = set(SabnzbdConfig.__dataclass_fields__)
+            coerced["sabnzbd"] = SabnzbdConfig(
+                **{key: value for key, value in sabnzbd_raw.items() if key in sabnzbd_fields}
             )
         filtered["acquisition"] = AcquisitionConfig(**coerced)
 

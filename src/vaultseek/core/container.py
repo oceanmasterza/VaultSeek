@@ -74,7 +74,7 @@ from vaultseek.plugins.builtin.musicbrainz import MusicBrainzProvider
 from vaultseek.plugins.builtin.navidrome import NavidromePlugin
 from vaultseek.plugins.builtin.nicotine_plus import NicotinePlusProvider
 from vaultseek.plugins.builtin.plex import PlexPlugin
-from vaultseek.plugins.builtin.prowlarr_qbit import ProwlarrQbittorrentProvider
+from vaultseek.plugins.builtin.prowlarr_qbit import ProwlarrProvider
 from vaultseek.plugins.builtin.shazamio import ShazamioProviderPool, build_shazam_routes
 from vaultseek.plugins.builtin.spotify import SpotifyPlaylistRecommender
 from vaultseek.plugins.builtin.subsonic import SubsonicPlugin
@@ -596,11 +596,11 @@ def _build_media_server_plugins() -> list[MediaServerPlugin]:
 
 
 def _build_acquisition_providers() -> list[AcquisitionProvider]:
-    """Construct acquisition providers (stub + Nicotine+ + Prowlarr/qBittorrent)."""
+    """Construct acquisition providers (stub + Nicotine+ + Prowlarr)."""
     return [
         StubAcquisitionProvider(),
         NicotinePlusProvider(),
-        ProwlarrQbittorrentProvider(),
+        ProwlarrProvider(),
     ]
 
 

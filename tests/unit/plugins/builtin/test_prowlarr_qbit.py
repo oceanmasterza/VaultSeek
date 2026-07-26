@@ -74,6 +74,15 @@ def test_prowlarr_probe() -> None:
 
 # ------------------------------------------------------------- qBittorrent ---
 @responses.activate
+def test_qbittorrent_login_bypass_204() -> None:
+    """qBittorrent 5.x localhost bypass often returns 204 on /auth/login."""
+    base = "http://qb:8081"
+    responses.add(responses.POST, f"{base}/api/v2/auth/login", status=204, body="")
+    responses.add(responses.GET, f"{base}/api/v2/app/version", body="v5.2.3")
+    assert QbittorrentClient(base, "admin", "").probe() is True
+
+
+@responses.activate
 def test_qbittorrent_login_add_and_files() -> None:
     base = "http://qb:8080"
     responses.add(responses.POST, f"{base}/api/v2/auth/login", body="Ok.")
@@ -171,9 +180,13 @@ class _FakeQbit:
 def _connect(provider: ProwlarrQbittorrentProvider) -> None:
     provider.connect(
         AcquisitionProviderConfig(
-            provider_id="prowlarr_qbit",
+            provider_id="prowlarr",
             enabled=True,
-            settings={"min_seeders": 5, "qbit_category": "vaultseek"},
+            settings={
+                "min_seeders": 5,
+                "qbit_category": "vaultseek",
+                "qbit_enabled": True,
+            },
         )
     )
 
@@ -181,24 +194,36 @@ def _connect(provider: ProwlarrQbittorrentProvider) -> None:
 def test_provider_search_filters_low_seeders() -> None:
     results = [
         ProwlarrResult(
-            title="Good", guid="g1", magnet_url=f"magnet:?xt=urn:btih:{_HASH}", seeders=10
+            title="Good",
+            guid="g1",
+            magnet_url=f"magnet:?xt=urn:btih:{_HASH}",
+            seeders=10,
+            protocol="torrent",
         ),
-        ProwlarrResult(title="Starved", guid="g2", magnet_url="magnet:?xt=urn:btih:z", seeders=1),
-        ProwlarrResult(title="NoLink", guid="g3", seeders=100),
+        ProwlarrResult(
+            title="Starved",
+            guid="g2",
+            magnet_url="magnet:?xt=urn:btih:z",
+            seeders=1,
+            protocol="torrent",
+        ),
+        ProwlarrResult(title="NoLink", guid="g3", seeders=100, protocol="torrent"),
     ]
-    provider = ProwlarrQbittorrentProvider(prowlarr=_FakeProwlarr(results), qbittorrent=_FakeQbit())
+    provider = ProwlarrQbittorrentProvider(
+        prowlarr=_FakeProwlarr(results), qbittorrent=_FakeQbit()
+    )
     _connect(provider)
 
     hits = provider.search(SearchRequest(artist="A", album="B"))
 
     assert [h.display_name for h in hits] == ["Good"]
-    assert hits[0].provider_id == "prowlarr_qbit"
+    assert hits[0].provider_id == "prowlarr"
 
 
 def test_provider_download_resolves_infohash() -> None:
     qbit = _FakeQbit()
     result = SearchResult(
-        provider_id="prowlarr_qbit",
+        provider_id="prowlarr",
         result_id="g1",
         display_name="Good",
         raw={
@@ -238,7 +263,7 @@ def test_provider_status_builds_audio_local_paths() -> None:
     provider = ProwlarrQbittorrentProvider(prowlarr=_FakeProwlarr([]), qbittorrent=qbit)
     _connect(provider)
 
-    status = provider.get_status(DownloadHandle("prowlarr_qbit", _HASH, "g1"))
+    status = provider.get_status(DownloadHandle("prowlarr", _HASH, "g1"))
 
     assert status.state == "completed"
     assert status.local_paths == (Path("D:/dl") / "Album" / "01.flac",)
@@ -248,5 +273,5 @@ def test_provider_cancel_deletes_without_files() -> None:
     qbit = _FakeQbit()
     provider = ProwlarrQbittorrentProvider(prowlarr=_FakeProwlarr([]), qbittorrent=qbit)
     _connect(provider)
-    assert provider.cancel(DownloadHandle("prowlarr_qbit", _HASH, "g1")) is True
+    assert provider.cancel(DownloadHandle("prowlarr", _HASH, "g1")) is True
     assert qbit.deleted == [_HASH]

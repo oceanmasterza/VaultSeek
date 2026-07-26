@@ -1,178 +1,81 @@
 # VaultSeek
 
-**Find what you're missing** — an intelligent music acquisition platform and companion to [MusicVault](https://github.com/oceanmasterza/MusicVault).
+**Find what you're missing** — a Windows desktop app that completes and improves your music library through searchable download sources, verification, and the same organize / artwork / media-server pipeline you already use day to day.
 
 [![CI](https://github.com/oceanmasterza/VaultSeek/actions/workflows/ci.yml/badge.svg)](https://github.com/oceanmasterza/VaultSeek/actions/workflows/ci.yml)
 [![Python 3.12+](https://img.shields.io/badge/python-3.12+-blue.svg)](https://www.python.org/downloads/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Platform: Windows](https://img.shields.io/badge/platform-Windows-lightgrey.svg)]()
+[![Version](https://img.shields.io/badge/version-1.1.0-informational.svg)](CHANGELOG.md)
 
-> **MusicVault** — Organise what you have.  
-> **VaultSeek** — Find what you're missing.
+VaultSeek is an **Acquisition Engine**: it analyses your library, finds missing or improvable releases, searches external sources through pluggable **providers**, scores hits, downloads, **verifies** every file, imports into Incoming, and refreshes media servers.
 
-VaultSeek is **not** a Soulseek client or a simple downloader. It is an **Acquisition Engine**: it analyses your existing library, identifies missing or improvable releases, searches external sources through pluggable **Providers**, scores results, sorts, **verifies** every file, imports through the same pipeline as MusicVault, and refreshes your media servers.
-
----
-
-## Project overview
-
-| | |
-|---|---|
-| **What** | Windows desktop app that completes and improves music libraries through provider-driven acquisition |
-| **Why** | MusicVault organises what you already own; VaultSeek finds what is missing or worth upgrading |
-| **How** | `AcquisitionJob` objects flow through the Acquisition Engine — from gap detection to verified import |
-
-VaultSeek reuses MusicVault’s library pipeline (fingerprint, identify, organise, artwork, media-server sync) and adds acquisition on top. Data lives in a separate app directory: `%APPDATA%\VaultSeek`.
+Data lives under `%APPDATA%\VaultSeek`.
 
 ---
 
 ## Features
 
-### Implemented
+### Library & processing
 
-Inherited from the MusicVault fork (working today):
+- Watch Incoming, scan, hash, fingerprint, identify
+- Metadata: MusicBrainz, AcoustID, Shazamio fallback, Discogs, local tags, filename parser
+- Review queue, rules, organize into Library, artwork (embedded + Cover Art Archive)
+- Browse UI: Library, Artists, Albums, Artwork, Duplicates
+- Media servers: Navidrome, Jellyfin, Plex, Emby, Subsonic, Ampache, Koel, Funkwhale, Lyrion
+- Dashboard, Jobs, Activity, Reports, Setup wizard
 
-- Watch folder / scan Incoming, hash, fingerprint, identify
-- Multi-provider metadata (MusicBrainz, AcoustID, local tags, filename parser)
-- Review queue, rules engine, organize into Library
-- Artwork (embedded, Cover Art Archive)
-- Browse UI (Library, Artists, Albums, Artwork)
-- Media server rescan (Navidrome, Jellyfin, Plex, Emby, Subsonic, Ampache, Koel, Funkwhale, Lyrion)
-- Duplicate detection, rollback, operation history
+### Acquisition
 
-VaultSeek-specific foundation:
+- **Wishlist** — park albums, auto-search / download when ready
+- **Nicotine+** — Soulseek search & download (HTTP api-nicotine-plus or NDJSON socket)
+- **Prowlarr** — indexer search with downloads via **qBittorrent** (torrents) and/or **SABnzbd** (Usenet / NZB)
+- Missing-media & quality-upgrade scans
+- Scoring, verification, import pipeline
 
-- **AcquisitionJob** entity and state machine (persisted to SQLite)
-- **AcquisitionEngine** — create, queue, cancel, advance with DB persistence
-- **Missing Media Analyzer** — MusicBrainz tracklist gap detection + job creation
-- **Provider Framework** — config-driven providers, `ProviderManager`, stub + Nicotine+
-- **SearchDispatcher / ScoringEngine / DownloadManager** — acquisition pipeline
-- **AcquisitionRunner** — search, score, auto-acquire above threshold, poll downloads
-- **AcquisitionAutomationService** — background auto-acquire, download polling, retry backoff
-- **Acquisition UI** — wishlist page with missing-media scan, result picker, retries/history column
-- **LocalSocketRpcClient** — NDJSON socket protocol for Nicotine+ (port 22024)
-- **HttpApiRpcClient** — api-nicotine-plus HTTP adapter (port 12339)
-- **NDJSON proxy** — `scripts/nicotine_plus_ndjson_proxy.py` (socket → HTTP bridge)
-- **VerificationEngine** — path, tags, content-hash / fingerprint duplicate checks
-- **ImportPipeline** — stage into Incoming and enqueue scan (organize/artwork/media-server chain)
-- Planning docs, ADRs, architectural update (`ARCHITECTURAL_UPDATE_001`)
+### Discovery (opt-in Plugins page)
 
-### In development
+- **Similar music (Last.fm)** — albums by artists similar to your library
+- **Spotify playlist sync** — mirror public playlists into the Wishlist
 
-- Quality-upgrade AcquisitionJobs
-- Dashboard acquisition job summary
-- Reports viewer UI (currently stub page)
-- Plugin manager UI (currently stub page)
-
-### Planned
-
-- Additional providers (local archive, SMB, Lidarr, native Soulseek, …)
-- Discogs metadata/artwork provider (schema columns exist; provider deferred)
-- Shared `MusicVault.Core` library extraction
-- Persist verification digests on `AcquisitionJob.extra`
-- Nicotine+ in-process plugin (vs external proxy script)
+Everything on the Plugins page is **off by default** so the core stays lean.
 
 ---
 
-## Architecture
+## Architecture (short)
 
 ```mermaid
-flowchart TB
-    subgraph library [MusicVault Library]
-        MV[Existing tracks and albums]
-    end
-
-    subgraph engine [Acquisition Engine]
-        MMA[Missing Media Analyzer]
-        AJS[Acquisition Job Scheduler]
-        SD[Search Dispatcher]
-        PM[Provider Manager]
-        RC[Result Collector]
-        SE[Scoring Engine]
-        DM[Download Manager]
-        VE[Verification Engine]
-        IP[Import Pipeline]
-    end
-
-    subgraph providers [Provider Framework]
-        P1[Nicotine+]
-        P2[Future providers]
-    end
-
-  MV --> MMA
-  MMA --> AJS
-  AJS --> SD
-  SD --> PM
-  PM --> P1
-  PM --> P2
-  P1 --> RC
-  P2 --> RC
-  RC --> SE
-  SE --> DM
-  DM --> VE
-  VE --> IP
-  IP --> MV
+flowchart LR
+  Library[Library gaps] --> Engine[Acquisition Engine]
+  Engine --> Search[Search Dispatcher]
+  Search --> Providers[Nicotine+ / Prowlarr]
+  Providers --> Score[Scoring]
+  Score --> DL[Download Manager]
+  DL --> QBit[qBittorrent]
+  DL --> SAB[SABnzbd]
+  DL --> Nic[Nicotine+]
+  QBit --> Verify[Verify and import]
+  SAB --> Verify
+  Nic --> Verify
+  Verify --> Library
 ```
 
-**Acquisition Job lifecycle** (single source of truth for workflow status):
-
-```mermaid
-stateDiagram-v2
-    [*] --> Created
-    Created --> Queued
-    Queued --> Searching
-    Searching --> CollectingResults
-    CollectingResults --> Scoring
-    Scoring --> WaitingForUser: optional
-    Scoring --> Downloading
-    WaitingForUser --> Downloading
-    Downloading --> Verifying
-    Verifying --> Importing
-    Importing --> Completed
-    Completed --> [*]
-```
-
-See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) and [docs/ARCHITECTURAL_UPDATE_001.md](docs/ARCHITECTURAL_UPDATE_001.md) for full detail.
+Details: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md), [docs/USER_GUIDE.md](docs/USER_GUIDE.md).
 
 ---
 
-## Technology stack
-
-| Layer | Technology |
-|-------|------------|
-| Language | Python 3.12+ |
-| Desktop UI | PySide6 (Qt) |
-| Database | SQLite via SQLAlchemy 2 + Alembic |
-| DI | `Container` (explicit wiring) |
-| Plugins | `typing.Protocol` (metadata, artwork, acquisition, media servers) |
-| Logging | loguru |
-| Testing | pytest, pytest-qt, responses |
-| Lint / types | ruff, black, mypy, import-linter |
-| Packaging | PyInstaller (Windows installer) |
-
-Metadata: MusicBrainz, AcoustID. Artwork: Cover Art Archive, embedded tags. Discogs provider planned.
-
-Full reference: [docs/TECH_STACK.md](docs/TECH_STACK.md).
-
----
-
-## Development status
-
-| | |
-|---|---|
-| **Maturity** | Early active development (post-fork, acquisition pipeline wired) |
-| **Phase** | Phases 4–6 largely complete; Nicotine+ live + automation |
-| **Tests** | 608 unit/integration tests passing |
-| **Roadmap** | [docs/ROADMAP.md](docs/ROADMAP.md) (public) · [docs/DEVELOPMENT_ROADMAP.md](docs/DEVELOPMENT_ROADMAP.md) (internal / AI) · [Project board](https://github.com/users/oceanmasterza/projects/1) |
+## Quick start
 
 ```powershell
 git clone https://github.com/oceanmasterza/VaultSeek.git
 cd VaultSeek
 python -m pip install -e ".[dev]"
-python -m pytest -q
+python -m vaultseek
 ```
 
-Contributing: [CONTRIBUTING.md](CONTRIBUTING.md)
+Or download a Windows build from [Releases](https://github.com/oceanmasterza/VaultSeek/releases).
+
+**First run:** create a library (Incoming / Staging / Library / Archive), then enable providers under **System → Plugins** and **Settings**.
 
 ---
 
@@ -180,16 +83,28 @@ Contributing: [CONTRIBUTING.md](CONTRIBUTING.md)
 
 | Document | Purpose |
 |----------|---------|
-| [docs/PROJECT_PLAN.md](docs/PROJECT_PLAN.md) | Product vision and workflow |
-| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | Layers, pipelines, diagrams |
-| [docs/ARCHITECTURAL_UPDATE_001.md](docs/ARCHITECTURAL_UPDATE_001.md) | Acquisition Engine model (authoritative) |
-| [docs/DECISIONS.md](docs/DECISIONS.md) | Architecture Decision Records |
-| [docs/ROADMAP.md](docs/ROADMAP.md) | Public roadmap |
-| [docs/DEVELOPMENT_ROADMAP.md](docs/DEVELOPMENT_ROADMAP.md) | Internal engineering notebook |
-| [docs/AI_RULES.md](docs/AI_RULES.md) | AI pair-programming rules |
-| [docs/TECH_STACK.md](docs/TECH_STACK.md) | Stack and tooling reference |
-| [docs/NICOTINE_PLUS.md](docs/NICOTINE_PLUS.md) | Nicotine+ provider setup (HTTP vs socket) |
-| [docs/architecture/](docs/architecture/) | Detailed MusicVault-era design docs (being aligned) |
+| [docs/USER_GUIDE.md](docs/USER_GUIDE.md) | Setup, credentials, troubleshooting |
+| [docs/PROWLARR.md](docs/PROWLARR.md) | Prowlarr + qBittorrent + SABnzbd |
+| [docs/NICOTINE_PLUS.md](docs/NICOTINE_PLUS.md) | Nicotine+ HTTP / socket |
+| [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | Layers and pipelines |
+| [CHANGELOG.md](CHANGELOG.md) | Released versions |
+| [CONTRIBUTING.md](CONTRIBUTING.md) | Dev setup |
+
+---
+
+## Development
+
+| | |
+|---|---|
+| **Version** | 1.1.0 |
+| **Stack** | Python 3.12+, PySide6, SQLite / SQLAlchemy 2, Alembic |
+| **Tests** | `python -m pytest -q` |
+| **Lint** | ruff, black, mypy (strict), import-linter |
+
+```powershell
+python -m pip install -e ".[dev]"
+python -m pytest -q
+```
 
 ---
 
