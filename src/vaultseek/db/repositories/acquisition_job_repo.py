@@ -8,7 +8,7 @@ from datetime import datetime
 from typing import Any
 from uuid import UUID
 
-from sqlalchemy import Engine, Row, select
+from sqlalchemy import Engine, Row, func, select
 
 from vaultseek.db.repositories.base import batch_upsert
 from vaultseek.db.tables import acquisition_jobs as acquisition_jobs_table
@@ -50,6 +50,7 @@ class AcquisitionJobRepository:
         library_id: UUID | None = None,
         *,
         state: AcquisitionJobState | None = None,
+        limit: int | None = None,
     ) -> list[AcquisitionJob]:
         statement = select(acquisition_jobs_table).order_by(
             acquisition_jobs_table.c.priority,
@@ -61,10 +62,36 @@ class AcquisitionJobRepository:
             )
         if state is not None:
             statement = statement.where(acquisition_jobs_table.c.state == state.value)
+        if limit is not None:
+            statement = statement.limit(max(0, int(limit)))
 
         with self._engine.connect() as conn:
             rows = conn.execute(statement).all()
         return [_from_row(row) for row in rows]
+
+    def count_by_state(self, library_id: UUID) -> dict[str, int]:
+        """Return ``{state_value: count}`` for one library without loading rows."""
+        statement = (
+            select(acquisition_jobs_table.c.state, func.count())
+            .where(acquisition_jobs_table.c.library_id == uuid_to_blob(library_id))
+            .group_by(acquisition_jobs_table.c.state)
+        )
+        with self._engine.connect() as conn:
+            rows = conn.execute(statement).all()
+        return {str(state): int(count) for state, count in rows}
+
+    def count_completed_since(self, library_id: UUID, since: datetime) -> int:
+        """How many jobs reached COMPLETED at or after ``since``."""
+        statement = (
+            select(func.count())
+            .select_from(acquisition_jobs_table)
+            .where(acquisition_jobs_table.c.library_id == uuid_to_blob(library_id))
+            .where(acquisition_jobs_table.c.state == AcquisitionJobState.COMPLETED.value)
+            .where(acquisition_jobs_table.c.updated_at >= since.isoformat())
+        )
+        with self._engine.connect() as conn:
+            return int(conn.execute(statement).scalar_one())
+
 
 
 def _to_row(job: AcquisitionJob) -> dict[str, object]:

@@ -79,3 +79,7 @@ packaging/output/
 packaging/_setup_staging/
 samples/
 scripts/__pycache__/
+
+# Agent / build diagnostic leftovers (never commit)
+_*.txt
+packaging/_*

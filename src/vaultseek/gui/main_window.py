@@ -33,19 +33,19 @@ from vaultseek.gui.theme import apply_theme
 from vaultseek.gui.views.acquisition_page import AcquisitionPage
 from vaultseek.gui.views.activity_page import ActivityPage
 from vaultseek.gui.views.albums_page import AlbumsPage
-from vaultseek.gui.views.artwork_page import ArtworkPage
 from vaultseek.gui.views.artists_page import ArtistsPage
+from vaultseek.gui.views.artwork_page import ArtworkPage
 from vaultseek.gui.views.dashboard_page import DashboardPage
 from vaultseek.gui.views.duplicates_page import DuplicatesPage
 from vaultseek.gui.views.find_music_page import FindMusicPage
 from vaultseek.gui.views.jobs_page import JobsPage
 from vaultseek.gui.views.library_page import LibraryPage
 from vaultseek.gui.views.logs_page import LogsPage
+from vaultseek.gui.views.plugins_page import PluginsPage
 from vaultseek.gui.views.reports_page import ReportsPage
 from vaultseek.gui.views.review_page import ReviewPage
 from vaultseek.gui.views.settings_page import SettingsPage
 from vaultseek.gui.views.setup_wizard import SetupWizard
-from vaultseek.gui.views.stub_page import StubPage
 from vaultseek.gui.widgets.desktop import open_path
 from vaultseek.gui.widgets.jump_palette import JumpPalette, jump_destinations_from_hubs
 from vaultseek.models.entities.job import JobType
@@ -76,18 +76,18 @@ _NAV_HUBS: tuple[tuple[str, tuple[tuple[str, str], ...]], ...] = (
             ("Wishlist", "acquisition"),
         ),
     ),
+    (
+        "System",
         (
-            "System",
-            (
-                ("Jobs", "jobs"),
-                ("Activity", "activity"),
-                ("Reports", "reports"),
-                ("Logs", "logs"),
-                ("Settings", "settings"),
-                ("Plugins", "plugins"),
-            ),
+            ("Jobs", "jobs"),
+            ("Activity", "activity"),
+            ("Reports", "reports"),
+            ("Logs", "logs"),
+            ("Settings", "settings"),
+            ("Plugins", "plugins"),
         ),
-    )
+    ),
+)
 
 
 class MainWindow(QMainWindow):
@@ -163,6 +163,7 @@ class MainWindow(QMainWindow):
         self._settings_page.preferences_saved.connect(self._on_theme_changed)
         self._settings_page.scan_requested.connect(lambda: self._go_to("jobs"))
         self._logs_page = LogsPage(container)
+        self._plugins_page = PluginsPage(container)
 
         page_builders: dict[str, QWidget] = {
             "dashboard": self._dashboard_page,
@@ -179,14 +180,7 @@ class MainWindow(QMainWindow):
             "reports": self._reports_page,
             "logs": self._logs_page,
             "settings": self._settings_page,
-            "plugins": StubPage(
-                "Plugins",
-                "Plugin manager UI is next on the polish list. Built-in media servers "
-                "are already selectable in Settings: Navidrome, Jellyfin, Emby, Plex, "
-                "Subsonic, Ampache, Koel, Funkwhale, and Lyrion. Metadata/artwork "
-                "providers (tags, MusicBrainz, AcoustID, Cover Art Archive, Discogs) run from "
-                "the processing pipeline.",
-            ),
+            "plugins": self._plugins_page,
         }
 
         for hub_label, children in _NAV_HUBS:
@@ -230,15 +224,11 @@ class MainWindow(QMainWindow):
         file_menu = self.menuBar().addMenu("&File")
         scan = QAction("Scan &Incoming", self)
         scan.setShortcut(QKeySequence("Ctrl+Shift+S"))
-        scan.setToolTip(
-            "Scan Incoming and only process new or changed files (size/mtime)."
-        )
+        scan.setToolTip("Scan Incoming and only process new or changed files (size/mtime).")
         scan.triggered.connect(lambda: self._scan_incoming(force=False))
         file_menu.addAction(scan)
         force_scan = QAction("Force &Rescan Incoming", self)
-        force_scan.setToolTip(
-            "Re-queue every audio file in Incoming, even if already scanned."
-        )
+        force_scan.setToolTip("Re-queue every audio file in Incoming, even if already scanned.")
         force_scan.triggered.connect(lambda: self._scan_incoming(force=True))
         file_menu.addAction(force_scan)
         file_menu.addSeparator()
@@ -544,6 +534,8 @@ class MainWindow(QMainWindow):
             self._logs_page.refresh()
         elif key == "settings":
             self._settings_page.refresh()
+        elif key == "plugins":
+            self._plugins_page.refresh()
 
     def _on_library_changed(self, _index: int) -> None:
         self._set_library(self._library_combo.currentData())
@@ -564,6 +556,7 @@ class MainWindow(QMainWindow):
             self._acquisition_page,
             self._reports_page,
             self._settings_page,
+            self._plugins_page,
         ):
             page.set_library(library_id)
         self._update_review_badge()

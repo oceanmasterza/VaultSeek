@@ -17,7 +17,12 @@ from dataclasses import dataclass, field
 
 from sqlalchemy import Engine
 
-from vaultseek.core.config import AppConfig, ArtworkConfig, MetadataConfig
+from vaultseek.core.config import (
+    AppConfig,
+    ArtworkConfig,
+    MetadataConfig,
+    RecommendationConfig,
+)
 from vaultseek.core.event_bus import EventBus
 from vaultseek.core.paths import AppPaths
 from vaultseek.db.engine import create_sqlite_engine
@@ -42,45 +47,53 @@ from vaultseek.models.interfaces.acquisition import AcquisitionProvider
 from vaultseek.models.interfaces.artwork import ArtworkProvider
 from vaultseek.models.interfaces.media_server import MediaServerPlugin
 from vaultseek.models.interfaces.metadata import MetadataProvider
+from vaultseek.models.interfaces.recommender import Recommender
 from vaultseek.models.services.duplicate_matcher import DuplicateMatcher
 from vaultseek.models.services.organize_engine import OrganizeEngine
 from vaultseek.models.services.quality_scorer import DEFAULT_WEIGHTS, QualityScorer
-from vaultseek.plugins.builtin.acoustid import AcoustIdProvider, AcoustIdProviderPool, build_acoustid_endpoints
-from vaultseek.plugins.builtin.shazamio import ShazamioProviderPool, build_shazam_routes
+from vaultseek.plugins.builtin.acoustid import (
+    AcoustIdProvider,
+    AcoustIdProviderPool,
+    build_acoustid_endpoints,
+)
 from vaultseek.plugins.builtin.acquisition_stub import StubAcquisitionProvider
 from vaultseek.plugins.builtin.ampache import AmpachePlugin
 from vaultseek.plugins.builtin.chromaprint.provider import ChromaprintFingerprintProvider
 from vaultseek.plugins.builtin.cover_art_archive import CoverArtArchiveProvider
 from vaultseek.plugins.builtin.discogs import DiscogsArtworkProvider, DiscogsProvider
 from vaultseek.plugins.builtin.embedded_art import EmbeddedArtProvider
-from vaultseek.plugins.builtin.embedded_art import EmbeddedArtProvider
 from vaultseek.plugins.builtin.emby import EmbyPlugin
 from vaultseek.plugins.builtin.filename_parser import FilenameParserProvider
 from vaultseek.plugins.builtin.funkwhale import FunkwhalePlugin
 from vaultseek.plugins.builtin.jellyfin import JellyfinPlugin
 from vaultseek.plugins.builtin.koel import KoelPlugin
+from vaultseek.plugins.builtin.lastfm import LastfmSimilarRecommender
 from vaultseek.plugins.builtin.local_tags import LocalTagsProvider
 from vaultseek.plugins.builtin.lyrion import LyrionPlugin
 from vaultseek.plugins.builtin.musicbrainz import MusicBrainzProvider
 from vaultseek.plugins.builtin.navidrome import NavidromePlugin
 from vaultseek.plugins.builtin.nicotine_plus import NicotinePlusProvider
 from vaultseek.plugins.builtin.plex import PlexPlugin
+from vaultseek.plugins.builtin.prowlarr_qbit import ProwlarrProvider
+from vaultseek.plugins.builtin.shazamio import ShazamioProviderPool, build_shazam_routes
+from vaultseek.plugins.builtin.spotify import SpotifyPlaylistRecommender
 from vaultseek.plugins.builtin.subsonic import SubsonicPlugin
 from vaultseek.plugins.manager import PluginManager
+from vaultseek.services.acquisition_automation_service import AcquisitionAutomationService
 from vaultseek.services.acquisition_bootstrap import connect_acquisition_providers
 from vaultseek.services.acquisition_engine import AcquisitionEngine
-from vaultseek.services.acquisition_automation_service import AcquisitionAutomationService
 from vaultseek.services.acquisition_runner import AcquisitionRunner
 from vaultseek.services.acquisition_workflow import AcquisitionWorkflow
 from vaultseek.services.download_manager import DownloadManager
-from vaultseek.services.import_pipeline import ImportPipeline
 from vaultseek.services.folder_trust import FolderTrustService
+from vaultseek.services.import_pipeline import ImportPipeline
 from vaultseek.services.job_dispatcher import JobDispatcher
 from vaultseek.services.job_queue_service import JobQueueService
 from vaultseek.services.metadata_arbitrator import MetadataArbitrator
 from vaultseek.services.missing_media_analyzer import MissingMediaAnalyzer
 from vaultseek.services.operation_orchestrator import OperationOrchestrator
 from vaultseek.services.provider_manager import ProviderManager
+from vaultseek.services.recommendation_service import RecommendationService
 from vaultseek.services.report_service import ReportService
 from vaultseek.services.review_queue_service import ReviewQueueService
 from vaultseek.services.rules_engine import RulesEngine
@@ -141,6 +154,7 @@ class Container:
     acquisition_workflow: AcquisitionWorkflow
     acquisition_runner: AcquisitionRunner
     acquisition_automation_service: AcquisitionAutomationService
+    recommendation_service: RecommendationService
     missing_media_analyzer: MissingMediaAnalyzer | None
     metadata_arbitrator: MetadataArbitrator
     scanner_worker: ScannerWorker
@@ -304,6 +318,13 @@ class Container:
             acquisition_config=config.acquisition,
             provider_manager=provider_manager,
             review_queue=review_queue,
+        )
+        recommendation_service = RecommendationService(
+            acquisition_engine=acquisition_engine,
+            artist_repo=artist_repo,
+            album_repo=album_repo,
+            recommenders=_build_recommenders(config.recommendations),
+            max_new_per_run=config.recommendations.max_new_per_run,
         )
         metadata_arbitrator = MetadataArbitrator(
             plugin_manager.get_metadata_providers(),
@@ -470,6 +491,7 @@ class Container:
             acquisition_workflow=acquisition_workflow,
             acquisition_runner=acquisition_runner,
             acquisition_automation_service=acquisition_automation_service,
+            recommendation_service=recommendation_service,
             missing_media_analyzer=missing_media_analyzer,
             metadata_arbitrator=metadata_arbitrator,
             scanner_worker=scanner_worker,
@@ -574,6 +596,32 @@ def _build_media_server_plugins() -> list[MediaServerPlugin]:
 
 
 def _build_acquisition_providers() -> list[AcquisitionProvider]:
-    """Construct acquisition providers (stub + Nicotine+ skeleton)."""
-    return [StubAcquisitionProvider(), NicotinePlusProvider()]
+    """Construct acquisition providers (stub + Nicotine+ + Prowlarr)."""
+    return [
+        StubAcquisitionProvider(),
+        NicotinePlusProvider(),
+        ProwlarrProvider(),
+    ]
 
+
+def _build_recommenders(recommendations: RecommendationConfig) -> list[Recommender]:
+    """Construct enabled discovery recommenders (opt-in; feed the Wanted shelf)."""
+    enabled = set(recommendations.enabled_recommenders)
+    recommenders: list[Recommender] = []
+    if "lastfm_similar" in enabled:
+        recommenders.append(
+            LastfmSimilarRecommender(
+                api_key=recommendations.lastfm.api_key,
+                similar_artist_limit=recommendations.lastfm.similar_artist_limit,
+                top_albums_per_artist=recommendations.lastfm.top_albums_per_artist,
+            )
+        )
+    if "spotify_playlists" in enabled:
+        recommenders.append(
+            SpotifyPlaylistRecommender(
+                client_id=recommendations.spotify.client_id,
+                client_secret=recommendations.spotify.client_secret,
+                playlist_urls=recommendations.spotify.playlist_urls,
+            )
+        )
+    return recommenders

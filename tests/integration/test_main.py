@@ -36,8 +36,19 @@ def test_main_returns_one_and_prints_error_when_bootstrap_fails(
         raise ConfigError("simulated bootstrap failure")
 
     import vaultseek.app as app_module
+    import vaultseek.__main__ as main_module
+    from vaultseek.core.single_instance import SingleInstanceLock
+
+    class _AlwaysAcquire(SingleInstanceLock):
+        def __enter__(self):  # type: ignore[no-untyped-def]
+            self.acquired = True
+            return self
+
+        def __exit__(self, *_args: object) -> None:
+            return None
 
     monkeypatch.setattr(app_module, "bootstrap", _raise_config_error)
+    monkeypatch.setattr(main_module, "SingleInstanceLock", _AlwaysAcquire)
 
     exit_code = main()
 

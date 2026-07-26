@@ -1,5 +1,5 @@
 {
-  "schema_version": 19,
+  "schema_version": 21,
   "log_level": "INFO",
   "theme": "dark",
   "setup_completed": false,
@@ -51,6 +51,7 @@
       "stub"
     ],
     "provider_order": [
+      "prowlarr",
       "nicotine_plus",
       "stub"
     ],
@@ -74,6 +75,45 @@
       "password": "",
       "search_min_interval_seconds": 5.0,
       "search_max_per_minute": 8
+    },
+    "prowlarr": {
+      "enabled": false,
+      "base_url": "http://127.0.0.1:9696",
+      "api_key": "",
+      "categories": [
+        3000
+      ],
+      "min_seeders": 1
+    },
+    "qbittorrent": {
+      "enabled": false,
+      "base_url": "http://127.0.0.1:8081",
+      "username": "admin",
+      "password": "",
+      "category": "vaultseek",
+      "save_path": ""
+    },
+    "sabnzbd": {
+      "enabled": false,
+      "base_url": "http://127.0.0.1:8080",
+      "api_key": "",
+      "category": "vaultseek"
+    }
+  },
+  "recommendations": {
+    "enabled_recommenders": [],
+    "max_new_per_run": 25,
+    "lastfm": {
+      "enabled": false,
+      "api_key": "",
+      "similar_artist_limit": 5,
+      "top_albums_per_artist": 2
+    },
+    "spotify": {
+      "enabled": false,
+      "client_id": "",
+      "client_secret": "",
+      "playlist_urls": []
     }
   }
 }
