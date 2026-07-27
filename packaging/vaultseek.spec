@@ -26,6 +26,7 @@ hiddenimports = [
     "vaultseek.__main__",
     "vaultseek.gui.app",
     "vaultseek.gui.main_window",
+    "vaultseek.gui.user_help",
     "logging.config",
     "alembic",
     "alembic.runtime.migration",
@@ -43,6 +44,12 @@ binaries.append((str(_fpcalc), "."))
 # Alembic needs the migrations tree on disk (not only inside the PYZ).
 _migrations = SRC / "vaultseek" / "db" / "migrations"
 datas.append((str(_migrations), "vaultseek/db/migrations"))
+
+# Bundled user guide (Help menu, F1, Start Menu shortcut in installer).
+_help_html = ROOT / "docs" / "HELP.html"
+if not _help_html.is_file():
+    raise SystemExit(f"Missing {_help_html}.")
+datas.append((str(_help_html), "help"))
 
 pyside_datas, pyside_binaries, pyside_hidden = collect_all("PySide6")
 datas += pyside_datas

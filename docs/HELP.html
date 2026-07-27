@@ -1,0 +1,496 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>VaultSeek Help</title>
+  <style>
+    :root {
+      --bg: #1e1e1e;
+      --panel: #2d2d2d;
+      --text: #e8e8e8;
+      --muted: #b0b0b0;
+      --link: #6cb6ff;
+      --border: #444;
+      --accent: #0e639c;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font: 15px/1.55 Segoe UI, system-ui, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+    }
+    header {
+      background: var(--panel);
+      border-bottom: 1px solid var(--border);
+      padding: 1.25rem 1.5rem;
+    }
+    header h1 { margin: 0 0 0.25rem; font-size: 1.6rem; }
+    header p { margin: 0; color: var(--muted); }
+    .wrap {
+      display: grid;
+      grid-template-columns: 260px 1fr;
+      gap: 0;
+      min-height: calc(100vh - 90px);
+    }
+    nav {
+      background: #252526;
+      border-right: 1px solid var(--border);
+      padding: 1rem;
+      position: sticky;
+      top: 0;
+      align-self: start;
+      max-height: 100vh;
+      overflow: auto;
+    }
+    nav h2 {
+      font-size: 0.75rem;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--muted);
+      margin: 1rem 0 0.4rem;
+    }
+    nav h2:first-child { margin-top: 0; }
+    nav a {
+      display: block;
+      color: var(--link);
+      text-decoration: none;
+      padding: 0.2rem 0;
+      font-size: 0.92rem;
+    }
+    nav a:hover { text-decoration: underline; }
+    main {
+      padding: 1.5rem 2rem 3rem;
+      max-width: 920px;
+    }
+    main h2 {
+      margin-top: 2rem;
+      padding-top: 0.5rem;
+      border-top: 1px solid var(--border);
+      scroll-margin-top: 1rem;
+    }
+    main h2:first-of-type { margin-top: 0; border-top: none; }
+    main h3 { margin-top: 1.25rem; color: #f0f0f0; }
+    p, li { max-width: 72ch; }
+    code, kbd {
+      background: #333;
+      padding: 0.1em 0.35em;
+      border-radius: 3px;
+      font-size: 0.92em;
+    }
+    table {
+      border-collapse: collapse;
+      width: 100%;
+      margin: 0.75rem 0 1rem;
+      font-size: 0.92rem;
+    }
+    th, td {
+      border: 1px solid var(--border);
+      padding: 0.45rem 0.6rem;
+      text-align: left;
+      vertical-align: top;
+    }
+    th { background: var(--panel); }
+    .note {
+      background: #2a3440;
+      border-left: 4px solid var(--accent);
+      padding: 0.75rem 1rem;
+      margin: 1rem 0;
+    }
+    .warn {
+      background: #3a3020;
+      border-left: 4px solid #d7ba7d;
+      padding: 0.75rem 1rem;
+      margin: 1rem 0;
+    }
+    @media (max-width: 800px) {
+      .wrap { grid-template-columns: 1fr; }
+      nav { position: static; max-height: none; border-right: none; border-bottom: 1px solid var(--border); }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>VaultSeek Help</h1>
+    <p>Version 1.1.0 — music library management and acquisition for Windows</p>
+  </header>
+  <div class="wrap">
+  <nav>
+    <h2>Start</h2>
+    <a href="#overview">Overview</a>
+    <a href="#first-run">First run</a>
+    <a href="#navigation">Navigation</a>
+    <a href="#zones">Library zones</a>
+    <h2>Pages</h2>
+    <a href="#dashboard">Dashboard</a>
+    <a href="#library">Library (Files)</a>
+    <a href="#artists-albums">Artists &amp; Albums</a>
+    <a href="#find-music">Find music</a>
+    <a href="#wishlist">Wishlist</a>
+    <a href="#review">Review queue</a>
+    <a href="#jobs-activity">Jobs &amp; Activity</a>
+    <a href="#settings">Settings</a>
+    <a href="#plugins">Plugins</a>
+    <h2>Acquisition</h2>
+    <a href="#acquisition-flow">How acquisition works</a>
+    <a href="#nicotine">Nicotine+</a>
+    <a href="#prowlarr">Prowlarr + qBit + SAB</a>
+    <a href="#lastfm-spotify">Last.fm &amp; Spotify</a>
+    <h2>Reference</h2>
+    <a href="#shortcuts">Keyboard shortcuts</a>
+    <a href="#data-folders">Data &amp; logs</a>
+    <a href="#troubleshooting">Troubleshooting</a>
+  </nav>
+  <main>
+
+    <h2 id="overview">Overview</h2>
+    <p>
+      VaultSeek is a Windows desktop application that helps you <strong>organize</strong>,
+      <strong>identify</strong>, and <strong>complete</strong> a personal music library.
+      It watches an <em>Incoming</em> folder, fingerprints and tags audio, moves approved
+      files into <em>Library</em>, syncs artwork, and can search external sources for
+      missing tracks or better quality versions.
+    </p>
+    <p>Typical workflow:</p>
+    <ol>
+      <li>Drop new files into <strong>Incoming</strong> (or download via acquisition).</li>
+      <li>VaultSeek scans, fingerprints, and identifies metadata.</li>
+      <li>Uncertain items appear in <strong>Review</strong>; the rest auto-approve or wait per your threshold.</li>
+      <li>Approved files are <strong>organized</strong> into Library (artist/album folders).</li>
+      <li>Use <strong>Find music</strong> to detect gaps, then <strong>Wishlist</strong> to search and download.</li>
+    </ol>
+
+    <h2 id="first-run">First run</h2>
+    <p>
+      On first launch, the <strong>Setup wizard</strong> (<em>Help → Setup wizard</em>) walks you through:
+    </p>
+    <ul>
+      <li>Library name and four zone folders (Incoming, Staging, Library, Archive)</li>
+      <li>Optional Nicotine+ connection settings</li>
+      <li>Optional Discogs and AcoustID tokens</li>
+      <li>Quality preferences for acquisition</li>
+    </ul>
+    <p>
+      You can reopen the wizard anytime from the menu. After setup, use
+      <strong>File → Scan Incoming</strong> or <strong>Settings → Scan incoming now</strong>
+      to process files already in Incoming.
+    </p>
+
+    <h2 id="navigation">Navigation</h2>
+    <p>The left sidebar groups pages into four hubs:</p>
+    <table>
+      <tr><th>Hub</th><th>Pages</th></tr>
+      <tr><td><strong>Home</strong></td><td>Dashboard — overview, pipeline, attention items</td></tr>
+      <tr><td><strong>Library</strong></td><td>Files, Artists, Albums, Artwork, Duplicates</td></tr>
+      <tr><td><strong>Find &amp; get</strong></td><td>Find music, Review, Wishlist</td></tr>
+      <tr><td><strong>System</strong></td><td>Jobs, Activity, Reports, Logs, Settings, Plugins</td></tr>
+    </table>
+    <p>
+      Use the <strong>Library</strong> dropdown at the top to switch libraries.
+      Press <kbd>Ctrl+K</kbd> for <em>Jump to…</em> and open any page quickly.
+    </p>
+
+    <h2 id="zones">Library zones</h2>
+    <p>Each library uses four folders on disk (configured in <strong>Settings → Library</strong>):</p>
+    <table>
+      <tr><th>Zone</th><th>Purpose</th></tr>
+      <tr><td><strong>Incoming</strong></td><td>Drop zone for new audio. Watched when enabled. Files stay here through identify/review until approved.</td></tr>
+      <tr><td><strong>Staging</strong></td><td>Optional legacy hold folder. Most workflows use Incoming → Library directly.</td></tr>
+      <tr><td><strong>Library</strong></td><td>Canonical organized collection (artist/album layout after organize).</td></tr>
+      <tr><td><strong>Archive</strong></td><td>Duplicates and rejected files.</td></tr>
+    </table>
+    <p>
+      <strong>Watch incoming folder</strong> — when checked, new files in Incoming trigger a scan automatically.
+      <strong>Auto-approve threshold</strong> (0–1) — metadata confidence at or above this value skips Review.
+    </p>
+
+    <h2 id="dashboard">Dashboard</h2>
+    <p>
+      Shows library health: track counts by zone, acquisition pipeline stages, recent failures,
+      and a <em>Getting started</em> checklist for new installs. Click attention items to jump
+      to Review, Wishlist, or Logs as appropriate.
+    </p>
+
+    <h2 id="library">Library (Files)</h2>
+    <p>
+      Browse every track in the active library with zone, confidence, and quality indicators.
+      Color coding reflects your quality preset (green = meets target, orange = below).
+    </p>
+    <ul>
+      <li><strong>Right-click</strong> — Reveal in Explorer, Find missing songs, Find quality upgrades, Open Find music</li>
+      <li><strong>Column headers</strong> — Click to sort; drag column edges to resize</li>
+    </ul>
+
+    <h2 id="artists-albums">Artists &amp; Albums</h2>
+    <h3>Artists</h3>
+    <p>List artists with album and track counts. Select an artist to see their tracks.</p>
+    <h3>Albums</h3>
+    <p>
+      Browse albums with health status (complete / missing tracks / quality issues).
+      Selecting an album shows cover art and a track list compared to MusicBrainz when available.
+    </p>
+    <p><strong>Album right-click actions:</strong></p>
+    <ul>
+      <li><em>Find missing songs (this album)</em> — fast scan for gaps on one album only</li>
+      <li><em>Find missing songs (whole library)</em> — full library gap scan</li>
+      <li><em>Queue this album for download</em> — add a whole-album Wishlist job</li>
+    </ul>
+    <p>
+      The <strong>Wanted</strong> panel lists parked albums (from Discogs or manual picks)
+      before you promote them to active download jobs.
+    </p>
+
+    <h2 id="find-music">Find music</h2>
+    <p>Two tabs:</p>
+    <h3>Library gaps</h3>
+    <ul>
+      <li><strong>Find missing songs</strong> — compares your library to MusicBrainz tracklists and missing files on disk; creates Wishlist jobs per missing track</li>
+      <li><strong>Find quality upgrades</strong> — finds tracks below your quality preset; creates upgrade jobs</li>
+    </ul>
+    <p>Results appear on the status line (no popup). Open <strong>Wishlist</strong> to acquire.</p>
+    <h3>Discogs browse</h3>
+    <p>
+      Search Discogs for releases, preview tracklists, and add selections to Wanted or Wishlist.
+      Requires a Discogs token in Settings (optional but recommended).
+    </p>
+
+    <h2 id="wishlist">Wishlist (Acquisition page)</h2>
+    <p>
+      Central place for <strong>acquisition jobs</strong> — each job represents something
+      you want to find and download (missing track, album, or quality upgrade).
+    </p>
+    <table>
+      <tr><th>Action</th><th>What it does</th></tr>
+      <tr><td>Auto-acquire selected</td><td>Search providers, score results, download if above threshold</td></tr>
+      <tr><td>Scan for missing</td><td>Run a full-library missing-track scan from here</td></tr>
+      <tr><td>Show wanted</td><td>Include parked Wanted-shelf jobs in the table</td></tr>
+    </table>
+    <p>
+      Job states progress through: Created → Queued → Searching → Scoring → Downloading →
+      Verifying → Importing → Completed (or No results / Waiting for user).
+    </p>
+
+    <h2 id="review">Review queue</h2>
+    <p>
+      Human approval for uncertain metadata, duplicates, or failed acquisitions.
+      <kbd>Ctrl+Enter</kbd> approve, <kbd>Ctrl+Shift+R</kbd> reject.
+      Approved items continue through organize; rejected items may move to Archive.
+    </p>
+
+    <h2 id="jobs-activity">Jobs &amp; Activity</h2>
+    <h3>Jobs</h3>
+    <p>Background pipeline tasks: scan, hash, fingerprint, identify, organize, artwork, media-server sync. Filter by library and status.</p>
+    <h3>Activity</h3>
+    <p>Recent acquisition and import events — useful when debugging search or download issues.</p>
+    <h3>Reports &amp; Logs</h3>
+    <p>
+      <strong>Reports</strong> — generated library summaries on disk.
+      <strong>Logs</strong> — live view of <code>vaultseek.log</code> and <code>debug.log</code>.
+      Open log folder via <em>File → Open Log Folder</em>.
+    </p>
+
+    <h2 id="settings">Settings (detailed)</h2>
+
+    <h3>Library</h3>
+    <p>Save, create, or edit libraries. Use <strong>New library</strong> for additional collections.</p>
+
+    <h3>Reset processing</h3>
+    <ul>
+      <li><strong>Clear job &amp; review queues</strong> — removes pending jobs/review items; catalog tracks remain</li>
+      <li><strong>Clear catalog records</strong> — removes DB track rows (files on disk are not deleted)</li>
+    </ul>
+
+    <h3>Acquisition</h3>
+    <table>
+      <tr><th>Setting</th><th>Description</th></tr>
+      <tr><td>Auto-acquire threshold</td><td>Minimum match score (0–1) to download automatically without manual pick</td></tr>
+      <tr><td>Auto-queue jobs</td><td>When enabled, gap-scan jobs are queued immediately for background search</td></tr>
+      <tr><td>Quality preset</td><td>Named profiles (Completist, Collector, etc.) for traffic-light display and upgrades</td></tr>
+      <tr><td>Prefer lossless</td><td>Prefer FLAC/ALAC when searching</td></tr>
+      <tr><td>Preferred codec</td><td>Optional exact codec (e.g. FLAC, MP3)</td></tr>
+      <tr><td>Min bitrate</td><td>Floor for lossy files (kbps); 0 disables</td></tr>
+      <tr><td>Download whole album on upgrade</td><td>When upgrading via Soulseek, enqueue sibling tracks from the same peer folder</td></tr>
+      <tr><td>Wishlist search every</td><td>Hours between background wishlist search passes; 0 = as often as rate limits allow</td></tr>
+    </table>
+
+    <h3>Nicotine+ (Soulseek)</h3>
+    <p>Configured here; enable the provider and set transport:</p>
+    <ul>
+      <li><strong>HTTP</strong> — talks to the <em>api-nicotine-plus</em> plugin (recommended). Default API port <code>12339</code>.</li>
+      <li><strong>Socket</strong> — NDJSON companion proxy on port <code>22024</code> (advanced).</li>
+    </ul>
+    <p>
+      Use <strong>Test Nicotine+ connection</strong> before saving.
+      Set conservative search rate limits to avoid Soulseek flood bans (~30 minutes).
+    </p>
+
+    <h3>Application</h3>
+    <ul>
+      <li><strong>Log level</strong> — DEBUG for troubleshooting</li>
+      <li><strong>Theme</strong> — dark or light</li>
+      <li><strong>Discogs token</strong> — metadata and covers from Discogs</li>
+      <li><strong>AcoustID</strong> — up to 3 API keys + optional HTTP proxies for fingerprint throughput</li>
+      <li><strong>Fingerprinting</strong> — fingerprint every file, or sample N songs per album folder (faster)</li>
+    </ul>
+
+    <h3>Media servers</h3>
+    <p>
+      Configure Navidrome, Jellyfin, Plex, Emby, Subsonic, Ampache, Koel, Funkwhale, or Lyrion.
+      VaultSeek can trigger library scans after imports when configured.
+    </p>
+
+    <h3>Organize rules</h3>
+    <p>Custom path templates and rules for how files are named and placed in Library (see Rules section at bottom of Settings).</p>
+
+    <h2 id="plugins">Plugins (detailed)</h2>
+    <p class="note">
+      All plugins are <strong>opt-in</strong> and disabled by default. Save settings after changes;
+      download providers reconnect immediately.
+    </p>
+
+    <h3>Similar music (Last.fm)</h3>
+    <p>
+      Suggests albums by artists similar to those in your library.
+      Free API key from <a href="https://www.last.fm/api/account/create">last.fm/api</a>.
+      Suggestions appear on the Wishlist as parked entries — they do not download automatically.
+    </p>
+
+    <h3>Spotify playlist sync</h3>
+    <p>
+      Mirrors albums from public Spotify playlists into your Wishlist.
+      Create an app at <a href="https://developer.spotify.com/dashboard">developer.spotify.com/dashboard</a>,
+      enable <strong>Web API</strong>, and paste the <strong>Client ID</strong> and
+      <strong>Client secret</strong> here.
+    </p>
+    <div class="warn">
+      VaultSeek uses Spotify’s <strong>Client Credentials</strong> flow (app token, not user login).
+      Only <strong>public</strong> playlists are supported. Spotify’s developer rules may require
+      <strong>Spotify Premium</strong> on the account that owns the developer app for Web API access.
+      A dummy redirect URI (e.g. <code>http://127.0.0.1:8888/callback</code>) is often required
+      when creating the app even though VaultSeek does not use OAuth redirects.
+    </div>
+
+    <h3>Prowlarr + qBittorrent + SABnzbd</h3>
+    <p>Indexer search with downloads routed by result type:</p>
+    <table>
+      <tr><th>Result type</th><th>Download client</th></tr>
+      <tr><td>Torrent / magnet</td><td>qBittorrent (if enabled)</td></tr>
+      <tr><td>Usenet / NZB</td><td>SABnzbd (if enabled)</td></tr>
+    </table>
+    <p>Enable Prowlarr plus <strong>at least one</strong> download client. Use the Test buttons to verify connectivity.</p>
+
+    <h2 id="acquisition-flow">How acquisition works</h2>
+    <ol>
+      <li><strong>Search</strong> — providers (Nicotine+, Prowlarr, …) query external sources</li>
+      <li><strong>Score</strong> — results ranked by artist/album/title/format match</li>
+      <li><strong>Download</strong> — best hit sent to qBittorrent, SABnzbd, or Nicotine+</li>
+      <li><strong>Verify</strong> — files checked before import</li>
+      <li><strong>Import</strong> — audio copied into Incoming, then normal scan/organize pipeline</li>
+    </ol>
+    <p>
+      For missing-track jobs, VaultSeek searches for the <strong>whole album</strong> first;
+      if no acceptable album pack is found, it falls back to per-track search at the same quality settings.
+    </p>
+
+    <h2 id="nicotine">Connecting Nicotine+</h2>
+    <ol>
+      <li>Install and run <a href="https://nicotine-plus.org/">Nicotine+</a> on the same PC.</li>
+      <li>Log into Soulseek inside Nicotine+ and stay connected.</li>
+      <li>Install <strong>api-nicotine-plus</strong> (HTTP API plugin) if using HTTP transport.</li>
+      <li>In VaultSeek <strong>Settings → Acquisition</strong>: enable Nicotine+, set transport to HTTP, port <code>12339</code>, optional API token.</li>
+      <li>Click <strong>Test Nicotine+ connection</strong>, then <strong>Save preferences</strong>.</li>
+    </ol>
+
+    <h2 id="prowlarr">Connecting Prowlarr, qBittorrent, and SABnzbd</h2>
+
+    <h3>Ports (important)</h3>
+    <table>
+      <tr><th>App</th><th>Default URL</th></tr>
+      <tr><td>Prowlarr</td><td><code>http://127.0.0.1:9696</code></td></tr>
+      <tr><td>SABnzbd</td><td><code>http://127.0.0.1:8080</code></td></tr>
+      <tr><td>qBittorrent</td><td><code>http://127.0.0.1:8081</code> (avoid sharing 8080 with SABnzbd)</td></tr>
+    </table>
+
+    <h3>Prowlarr</h3>
+    <ol>
+      <li>Add audio indexers in Prowlarr (Torznab / Newznab).</li>
+      <li>Copy API key from Prowlarr → Settings → General.</li>
+      <li>In VaultSeek <strong>Plugins</strong>: enable Prowlarr, paste URL + key, set minimum seeders for torrents.</li>
+    </ol>
+
+    <h3>qBittorrent</h3>
+    <ol>
+      <li>Enable Web UI in qBittorrent (Tools → Options → Web UI).</li>
+      <li>Set port to <strong>8081</strong> if SABnzbd uses 8080.</li>
+      <li>In Plugins: enable qBittorrent, enter URL, username, password, optional category <code>vaultseek</code>.</li>
+    </ol>
+
+    <h3>SABnzbd</h3>
+    <ol>
+      <li>Configure your Usenet server in SABnzbd.</li>
+      <li>Copy API key from SABnzbd → Config → General.</li>
+      <li>In Plugins: enable SABnzbd, paste URL + key, optional category.</li>
+    </ol>
+
+    <div class="note">
+      Saving <strong>Settings</strong> no longer clears Plugins download credentials.
+      If searches fail after changing Settings, open Plugins and confirm Prowlarr/qBit/SAB are still enabled, then Save.
+    </div>
+
+    <h2 id="lastfm-spotify">Last.fm &amp; Spotify tips</h2>
+    <ul>
+      <li>Run <strong>Find recommendations now</strong> on the Plugins page after saving credentials.</li>
+      <li>New suggestions are de-duplicated against albums you already own.</li>
+      <li>Promote Wishlist items when you are ready to download — recommenders never download by themselves.</li>
+    </ul>
+
+    <h2 id="shortcuts">Keyboard shortcuts</h2>
+    <table>
+      <tr><th>Shortcut</th><th>Action</th></tr>
+      <tr><td><kbd>F1</kbd></td><td>Open this help</td></tr>
+      <tr><td><kbd>Ctrl+Shift+S</kbd></td><td>Scan Incoming</td></tr>
+      <tr><td><kbd>Ctrl+D</kbd></td><td>Dashboard</td></tr>
+      <tr><td><kbd>Ctrl+L</kbd></td><td>Library files</td></tr>
+      <tr><td><kbd>Ctrl+F</kbd></td><td>Find music</td></tr>
+      <tr><td><kbd>Ctrl+R</kbd></td><td>Review</td></tr>
+      <tr><td><kbd>Ctrl+J</kbd></td><td>Jobs</td></tr>
+      <tr><td><kbd>Ctrl+,</kbd></td><td>Settings</td></tr>
+      <tr><td><kbd>Ctrl+K</kbd></td><td>Jump to…</td></tr>
+      <tr><td><kbd>F5</kbd></td><td>Refresh current page</td></tr>
+      <tr><td><kbd>Ctrl+Enter</kbd></td><td>Approve (Review page)</td></tr>
+    </table>
+
+    <h2 id="data-folders">Data &amp; logs</h2>
+    <p>VaultSeek stores configuration and the database under:</p>
+    <p><code>%APPDATA%\VaultSeek\</code></p>
+    <ul>
+      <li><code>config.json</code> — settings (includes API keys; never share this file)</li>
+      <li><code>vaultseek.db</code> — SQLite catalog</li>
+      <li><code>logs\vaultseek.log</code> — main log</li>
+      <li><code>logs\debug.log</code> — verbose debug log</li>
+      <li><code>crashes\</code> — crash dumps if any</li>
+    </ul>
+    <p>Only one VaultSeek instance should run at a time (database lock).</p>
+
+    <h2 id="troubleshooting">Troubleshooting</h2>
+    <table>
+      <tr><th>Problem</th><th>Things to check</th></tr>
+      <tr><td>No search results</td><td>Provider connected? Test buttons in Settings/Plugins. Nicotine+ logged into Soulseek?</td></tr>
+      <tr><td>Prowlarr works but no downloads</td><td>qBittorrent or SABnzbd enabled in Plugins? Correct ports? Save Plugins after editing.</td></tr>
+      <tr><td>qBittorrent login failed</td><td>Port clash with SABnzbd — use <code>http://127.0.0.1:8081</code> for qBit</td></tr>
+      <tr><td>SABnzbd probe fails</td><td>API key in SABnzbd Config → General; SABnzbd running</td></tr>
+      <tr><td>Spotify token error</td><td>Client ID/secret correct? Web API enabled on developer app? Premium requirement?</td></tr>
+      <tr><td>UI freeze during scan</td><td>Large library scans run in background; use album-scoped “Find missing” for one album</td></tr>
+      <tr><td>Second window exits</td><td>Another VaultSeek instance is already running</td></tr>
+      <tr><td>Jobs stuck</td><td>Check Activity and Logs; verify providers online; check Review for parked failures</td></tr>
+    </table>
+    <p>
+      More documentation:
+      <a href="https://github.com/oceanmasterza/VaultSeek">github.com/oceanmasterza/VaultSeek</a>
+    </p>
+
+  </main>
+  </div>
+</body>
+</html>

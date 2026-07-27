@@ -527,7 +527,7 @@ def _migrate_v19_to_v20(raw: dict[str, Any]) -> dict[str, Any]:
     acq.setdefault("prowlarr", asdict(ProwlarrConfig()))
     acq.setdefault("qbittorrent", asdict(QbittorrentConfig()))
     order = list(acq.get("provider_order") or [])
-    if "prowlarr_qbit" not in order:
+    if "prowlarr_qbit" not in order and "prowlarr" not in order:
         order.insert(0, "prowlarr_qbit")
     acq["provider_order"] = order
     migrated["acquisition"] = acq
@@ -541,6 +541,7 @@ def _migrate_v20_to_v21(raw: dict[str, Any]) -> dict[str, Any]:
     acq = dict(migrated.get("acquisition") or asdict(AcquisitionConfig()))
     acq.setdefault("sabnzbd", asdict(SabnzbdConfig()))
     order = ["prowlarr" if p == "prowlarr_qbit" else p for p in (acq.get("provider_order") or [])]
+    order = list(dict.fromkeys(order))
     if "prowlarr" not in order:
         order.insert(0, "prowlarr")
     acq["provider_order"] = order

@@ -147,7 +147,7 @@ def test_dashboard_acquisition_summary(tmp_path: Path) -> None:
 
         snap = build_dashboard_snapshot(container, library_id)
         assert snap.acquisition.total == 2
-        assert snap.acquisition.active == 2
+        assert snap.acquisition.active == 1  # NO_RESULTS is terminal; only waiting_for_user counts
         assert snap.acquisition.waiting_for_user == 1
         assert snap.acquisition.failed == 1
         assert "awaiting your pick" in snap.insight or "Acquisition" in snap.insight

@@ -53,6 +53,7 @@ Source: "..\dist\VaultSeek\*"; DestDir: "{app}"; Flags: ignoreversion recursesub
 
 [Icons]
 Name: "{group}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"
+Name: "{group}\VaultSeek Help"; Filename: "{sys}\rundll32.exe"; Parameters: "url.dll,FileProtocolHandler ""{app}\help\HELP.html"""
 Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; Tasks: desktopicon
 
 [Run]

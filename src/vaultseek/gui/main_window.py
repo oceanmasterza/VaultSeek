@@ -30,6 +30,7 @@ from vaultseek import __version__
 from vaultseek.core.container import Container
 from vaultseek.gui.bridge.qt_event_bridge import QtEventBridge
 from vaultseek.gui.theme import apply_theme
+from vaultseek.gui.user_help import HelpDialog
 from vaultseek.gui.views.acquisition_page import AcquisitionPage
 from vaultseek.gui.views.activity_page import ActivityPage
 from vaultseek.gui.views.albums_page import AlbumsPage
@@ -284,6 +285,12 @@ class MainWindow(QMainWindow):
         view_menu.addAction(refresh)
 
         help_menu = self.menuBar().addMenu("&Help")
+        user_help = QAction("VaultSeek &Help", self)
+        user_help.setShortcut(QKeySequence.StandardKey.HelpContents)
+        user_help.setToolTip("Open the VaultSeek user guide (F1).")
+        user_help.triggered.connect(self._show_user_help)
+        help_menu.addAction(user_help)
+        help_menu.addSeparator()
         setup = QAction("Setup &wizard…", self)
         setup.setToolTip("Walk through folders, Nicotine+, and optional tokens.")
         setup.triggered.connect(lambda: self._show_setup_wizard(force=True))
@@ -423,6 +430,9 @@ class MainWindow(QMainWindow):
             QMessageBox.warning(self, "VaultSeek", "No library selected.")
             return
         open_path(library.incoming_path)
+
+    def _show_user_help(self) -> None:
+        HelpDialog(parent=self).exec()
 
     def _about(self) -> None:
         QMessageBox.about(
