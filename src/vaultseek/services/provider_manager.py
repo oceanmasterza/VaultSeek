@@ -14,16 +14,27 @@ from vaultseek.models.interfaces.acquisition import (
     SearchRequest,
     SearchResult,
 )
+from vaultseek.plugins.builtin.nicotine_plus.search_rate_gate import SearchThrottled
 
 
 class ProviderManager:
     """Registers, configures, and dispatches to acquisition providers."""
 
-    def __init__(self, providers: Sequence[AcquisitionProvider] = ()) -> None:
+    def __init__(
+        self,
+        providers: Sequence[AcquisitionProvider] = (),
+        *,
+        provider_order: Sequence[str] | None = None,
+    ) -> None:
         self._providers: dict[str, AcquisitionProvider] = {
             provider.provider_id: provider for provider in providers
         }
         self._connected: set[str] = set()
+        self._provider_order: tuple[str, ...] = tuple(provider_order or ())
+
+    def set_provider_order(self, order: Sequence[str]) -> None:
+        """Prefer this order when searching (e.g. config.provider_order)."""
+        self._provider_order = tuple(order)
 
     def list_providers(self) -> list[AcquisitionProvider]:
         return list(self._providers.values())
@@ -58,6 +69,8 @@ class ProviderManager:
     def disconnect(self, provider_id: str | None = None) -> None:
         ids = [provider_id] if provider_id else list(self._connected)
         for pid in ids:
+            if pid is None:
+                continue
             provider = self._providers.get(pid)
             if provider is not None:
                 provider.disconnect()
@@ -71,11 +84,21 @@ class ProviderManager:
     ) -> list[SearchResult]:
         results: list[SearchResult] = []
         connection_errors: list[ConnectionError] = []
+        throttled: SearchThrottled | None = None
         for provider in self._iter_active(provider_ids):
             if not provider.capabilities.search:
                 continue
             try:
                 batch = provider.search(request)
+            except SearchThrottled as exc:
+                # Nicotine flood gate must not block Prowlarr / other providers.
+                throttled = exc
+                logger.info(
+                    "Provider {} deferred ({:.1f}s) — continuing with other providers",
+                    provider.provider_id,
+                    exc.retry_after_seconds,
+                )
+                continue
             except ConnectionError as exc:
                 connection_errors.append(exc)
                 logger.warning(
@@ -90,7 +113,11 @@ class ProviderManager:
                 len(batch),
             )
             results.extend(batch)
-        if not results and connection_errors:
+        if results:
+            return results
+        if throttled is not None and not connection_errors:
+            raise throttled
+        if connection_errors:
             raise connection_errors[0]
         return results
 
@@ -118,7 +145,20 @@ class ProviderManager:
         self, provider_ids: Sequence[str] | None
     ) -> list[AcquisitionProvider]:
         if provider_ids is None:
-            ids = list(self._connected)
+            preferred = [
+                pid if pid != "prowlarr_qbit" else "prowlarr"
+                for pid in self._provider_order
+            ]
+            ordered = [pid for pid in preferred if pid in self._connected]
+            # Append any connected providers missing from the configured order.
+            ordered.extend(
+                pid for pid in sorted(self._connected) if pid not in ordered
+            )
+            ids = ordered
         else:
-            ids = [pid for pid in provider_ids if pid in self._connected]
+            ids = [
+                ("prowlarr" if pid == "prowlarr_qbit" else pid)
+                for pid in provider_ids
+                if (pid if pid != "prowlarr_qbit" else "prowlarr") in self._connected
+            ]
         return [self._providers[pid] for pid in ids if pid in self._providers]

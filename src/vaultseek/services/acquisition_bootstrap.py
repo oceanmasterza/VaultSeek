@@ -150,6 +150,15 @@ def connect_acquisition_providers(
     }
     enabled = resolve_enabled_acquisition_providers(config)
 
+    manager.set_provider_order(
+        ["prowlarr" if p == "prowlarr_qbit" else p for p in config.provider_order]
+    )
+
+    # Drop providers that are no longer enabled so stale sessions cannot search.
+    for connected_id in list(manager.connected_provider_ids()):
+        if connected_id not in enabled:
+            manager.disconnect(connected_id)
+
     for provider_id in config.provider_order:
         if provider_id == "prowlarr_qbit":
             provider_id = "prowlarr"

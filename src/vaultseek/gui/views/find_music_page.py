@@ -165,11 +165,7 @@ class _GapsTab(QWidget):
             self._btn_missing.setEnabled(True)
             self._btn_upgrades.setEnabled(True)
             n = int(count) if isinstance(count, int) else 0
-            QMessageBox.information(
-                self,
-                "Find missing songs",
-                f"Created {n} acquisition job(s). Open Wishlist to download.",
-            )
+            self._status.setText(f"Created {n} missing-song job(s). Open Wishlist to download.")
             self.refresh()
             if n:
                 self.navigate_requested.emit("acquisition")
@@ -198,11 +194,7 @@ class _GapsTab(QWidget):
             self._btn_missing.setEnabled(True)
             self._btn_upgrades.setEnabled(True)
             n = int(count) if isinstance(count, int) else 0
-            QMessageBox.information(
-                self,
-                "Find quality upgrades",
-                f"Created {n} upgrade job(s). Open Wishlist to download.",
-            )
+            self._status.setText(f"Created {n} upgrade job(s). Open Wishlist to download.")
             self.refresh()
             if n:
                 self.navigate_requested.emit("acquisition")

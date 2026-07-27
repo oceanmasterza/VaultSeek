@@ -7,6 +7,11 @@ from uuid import UUID
 from PySide6.QtWidgets import QLabel, QTableWidget, QTableWidgetItem, QVBoxLayout, QWidget
 
 from vaultseek.core.container import Container
+from vaultseek.gui.widgets.table_utils import (
+    begin_table_update,
+    configure_data_table,
+    end_table_update,
+)
 
 
 class DuplicatesPage(QWidget):
@@ -33,7 +38,7 @@ class DuplicatesPage(QWidget):
         self._table.setHorizontalHeaderLabels(["Status", "Members", "Best track", "Created"])
         self._table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
         self._table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
-        self._table.horizontalHeader().setStretchLastSection(True)
+        configure_data_table(self._table)
         layout.addWidget(self._table)
 
     def set_library(self, library_id: UUID | None) -> None:

@@ -17,6 +17,11 @@ from PySide6.QtWidgets import (
 )
 
 from vaultseek.core.container import Container
+from vaultseek.gui.widgets.table_utils import (
+    begin_table_update,
+    configure_data_table,
+    end_table_update,
+)
 from vaultseek.gui.debounce import connect_debounced
 from vaultseek.gui.widgets.browse import fill_track_table
 from vaultseek.gui.widgets.desktop import reveal_in_explorer
@@ -60,7 +65,7 @@ class ArtistsPage(QWidget):
         self._table.setHorizontalHeaderLabels(["Artist", "Albums", "Tracks", "MBID"])
         self._table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
         self._table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
-        self._table.horizontalHeader().setStretchLastSection(True)
+        configure_data_table(self._table)
         self._table.itemSelectionChanged.connect(self._on_artist_selected)
         self._table.doubleClicked.connect(self._open_albums)
         splitter.addWidget(self._table)
@@ -75,7 +80,7 @@ class ArtistsPage(QWidget):
         self._tracks.setHorizontalHeaderLabels(["Title", "Zone", "File", "Confidence"])
         self._tracks.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
         self._tracks.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
-        self._tracks.horizontalHeader().setStretchLastSection(True)
+        configure_data_table(self._tracks)
         self._tracks.doubleClicked.connect(self._reveal_track)
         tracks_layout.addWidget(self._tracks)
         splitter.addWidget(tracks_box)

@@ -15,6 +15,11 @@ from PySide6.QtWidgets import (
 )
 
 from vaultseek.core.container import Container
+from vaultseek.gui.widgets.table_utils import (
+    begin_table_update,
+    configure_data_table,
+    end_table_update,
+)
 from vaultseek.gui.datetime_format import format_local_datetime
 from vaultseek.models.entities.job import JobStatus
 
@@ -40,7 +45,7 @@ class JobsPage(QWidget):
         self._table.setHorizontalHeaderLabels(["Type", "Status", "Attempts", "Details", "Created"])
         self._table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
         self._table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
-        self._table.horizontalHeader().setStretchLastSection(True)
+        configure_data_table(self._table)
         layout.addWidget(self._table)
 
         buttons = QHBoxLayout()

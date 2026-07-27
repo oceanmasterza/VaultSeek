@@ -17,6 +17,11 @@ from PySide6.QtWidgets import (
 )
 
 from vaultseek.core.container import Container
+from vaultseek.gui.widgets.table_utils import (
+    begin_table_update,
+    configure_data_table,
+    end_table_update,
+)
 from vaultseek.gui.datetime_format import format_local_datetime
 from vaultseek.gui.widgets.empty_state import EmptyState
 from vaultseek.services.activity_feed import (
@@ -96,7 +101,7 @@ class ActivityPage(QWidget):
         )
         self._table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
         self._table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
-        self._table.horizontalHeader().setStretchLastSection(True)
+        configure_data_table(self._table)
         self._table.doubleClicked.connect(self._open_selected)
         layout.addWidget(self._table, stretch=1)
 

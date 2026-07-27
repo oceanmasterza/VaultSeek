@@ -80,6 +80,51 @@ class MissingMediaAnalyzer:
             [gap for gap in mb_gaps if gap.kind is MediaGapKind.MISSING_TRACK]
             + file_gaps
         )
+        return self._create_jobs_from_gaps(
+            acquisition_engine,
+            library_id,
+            track_gaps,
+            auto_queue=auto_queue,
+            preferred_codec=preferred_codec,
+        )
+
+    def create_jobs_for_album(
+        self,
+        acquisition_engine: AcquisitionEngine,
+        library_id: UUID,
+        album_id: UUID,
+        *,
+        auto_queue: bool = False,
+        preferred_codec: str | None = None,
+    ) -> list[AcquisitionJob]:
+        """Create missing-track jobs for a single album (fast context-menu path)."""
+        mb_gaps = self.analyze_album(library_id, album_id)
+        file_gaps = [
+            gap
+            for gap in self.analyze_missing_library_files(library_id, log=False)
+            if gap.album_id == album_id
+        ]
+        track_gaps = _dedupe_track_gaps(
+            [gap for gap in mb_gaps if gap.kind is MediaGapKind.MISSING_TRACK]
+            + file_gaps
+        )
+        return self._create_jobs_from_gaps(
+            acquisition_engine,
+            library_id,
+            track_gaps,
+            auto_queue=auto_queue,
+            preferred_codec=preferred_codec,
+        )
+
+    def _create_jobs_from_gaps(
+        self,
+        acquisition_engine: AcquisitionEngine,
+        library_id: UUID,
+        track_gaps: list[MediaGap],
+        *,
+        auto_queue: bool,
+        preferred_codec: str | None,
+    ) -> list[AcquisitionJob]:
         if not track_gaps:
             logger.info("Missing-media scan: no missing tracks found")
             return []
@@ -126,7 +171,8 @@ class MissingMediaAnalyzer:
             return []
 
         album_parts = [
-            f"{count} from {title}" for title, count in sorted(by_album.items(), key=lambda item: (-item[1], item[0]))
+            f"{count} from {title}"
+            for title, count in sorted(by_album.items(), key=lambda item: (-item[1], item[0]))
         ]
         summary = ", ".join(album_parts[:5])
         if len(album_parts) > 5:

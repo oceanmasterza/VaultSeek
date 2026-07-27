@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from uuid import UUID
 
-from PySide6.QtCore import Signal
+from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QCheckBox,
@@ -21,6 +21,11 @@ from PySide6.QtWidgets import (
 
 from vaultseek.core.container import Container
 from vaultseek.gui.async_task import run_in_background
+from vaultseek.gui.widgets.table_utils import (
+    begin_table_update,
+    configure_data_table,
+    end_table_update,
+)
 from vaultseek.gui.datetime_format import format_local_datetime
 from vaultseek.gui.widgets.empty_state import EmptyState
 from vaultseek.models.entities.acquisition_job import AcquisitionJobState
@@ -80,7 +85,7 @@ class AcquisitionPage(QWidget):
         self._table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
         self._table.setSelectionMode(QAbstractItemView.SelectionMode.ExtendedSelection)
         self._table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
-        self._table.horizontalHeader().setStretchLastSection(True)
+        configure_data_table(self._table)
         layout.addWidget(self._table)
 
         row1 = QHBoxLayout()
@@ -131,14 +136,21 @@ class AcquisitionPage(QWidget):
 
     def refresh(self) -> None:
         selected_rows = {index.row() for index in self._table.selectedIndexes()}
-        previous_ids = {
-            self._job_ids[row] for row in selected_rows if 0 <= row < len(self._job_ids)
-        }
+        previous_ids: set[UUID] = set()
+        for row in selected_rows:
+            item = self._table.item(row, 0)
+            raw = item.data(Qt.ItemDataRole.UserRole) if item else None
+            if raw:
+                previous_ids.add(UUID(str(raw)))
+            elif 0 <= row < len(self._job_ids):
+                previous_ids.add(self._job_ids[row])
 
         threshold = self._container.config.acquisition.auto_acquire_threshold
         if self._library_id is None:
+            begin_table_update(self._table)
             self._table.setRowCount(0)
             self._job_ids = []
+            end_table_update(self._table)
             self._summary.setText("No library selected.")
             self._empty.setVisible(True)
             self._table.setVisible(False)
@@ -182,6 +194,7 @@ class AcquisitionPage(QWidget):
             return
         self._last_refresh_fingerprint = fingerprint
 
+        begin_table_update(self._table)
         self._table.setRowCount(0)
         self._job_ids = []
 
@@ -189,6 +202,7 @@ class AcquisitionPage(QWidget):
         self._empty.setVisible(empty)
         self._table.setVisible(not empty)
         if empty:
+            end_table_update(self._table)
             return
 
         rows: list[tuple[UUID, str, str, str, str, str, str, str, str]] = []
@@ -235,6 +249,7 @@ class AcquisitionPage(QWidget):
             self._job_ids.append(job_id)
             item_artist = QTableWidgetItem(artist)
             item_artist.setToolTip(last_note)
+            item_artist.setData(Qt.ItemDataRole.UserRole, str(job_id))
             self._table.setItem(row_index, 0, item_artist)
             self._table.setItem(row_index, 1, QTableWidgetItem(album))
             self._table.setItem(row_index, 2, QTableWidgetItem(title))
@@ -248,13 +263,17 @@ class AcquisitionPage(QWidget):
             note_item.setToolTip(last_note)
             self._table.setItem(row_index, 7, note_item)
 
+        end_table_update(self._table)
+
         restored = False
-        for row_index, job_id in enumerate(self._job_ids):
-            if job_id in previous_ids:
+        for row_index in range(self._table.rowCount()):
+            item = self._table.item(row_index, 0)
+            raw = item.data(Qt.ItemDataRole.UserRole) if item else None
+            if raw and UUID(str(raw)) in previous_ids:
                 self._table.selectRow(row_index)
                 restored = True
                 break
-        if not restored and self._job_ids:
+        if not restored and self._table.rowCount():
             self._table.selectRow(0)
             self._table.setCurrentCell(0, 0)
 
@@ -264,7 +283,14 @@ class AcquisitionPage(QWidget):
 
     def _selected_ids(self) -> list[UUID]:
         rows = {index.row() for index in self._table.selectedIndexes()}
-        ids = [self._job_ids[row] for row in sorted(rows) if 0 <= row < len(self._job_ids)]
+        ids: list[UUID] = []
+        for row in sorted(rows):
+            item = self._table.item(row, 0)
+            raw = item.data(Qt.ItemDataRole.UserRole) if item else None
+            if raw:
+                ids.append(UUID(str(raw)))
+            elif 0 <= row < len(self._job_ids):
+                ids.append(self._job_ids[row])
         if ids:
             return ids
         if self._job_ids:
@@ -356,22 +382,17 @@ class AcquisitionPage(QWidget):
             extra = ""
             if created_count and not connected:
                 extra = (
-                    "\n\nWarning: no acquisition providers are connected — "
-                    "searches will fail until Nicotine+ is online. "
-                    "Check Dashboard → Attention needed after auto-acquire runs."
+                    " Warning: no acquisition providers are connected — "
+                    "searches will fail until Nicotine+/Prowlarr is online."
                 )
             elif created_count and queued:
-                extra = "\n\nJobs were queued; background automation will search shortly."
+                extra = " Jobs were queued; background automation will search shortly."
             elif created_count:
                 extra = (
-                    "\n\nJobs are created but not queued "
+                    " Jobs are created but not queued "
                     "(enable auto_queue_jobs in Settings, or use Auto-acquire selected)."
                 )
-            QMessageBox.information(
-                self,
-                "Acquisition",
-                f"Created {created_count} missing-track job(s).{extra}",
-            )
+            self._summary.setText(f"Created {created_count} missing-track job(s).{extra}")
             self.refresh()
 
         run_in_background(
@@ -578,7 +599,7 @@ class _ResultPickerDialog(QDialog):
         )
         self._table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
         self._table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
-        self._table.horizontalHeader().setStretchLastSection(True)
+        configure_data_table(self._table)
         layout.addWidget(self._table)
 
         btn_row = QHBoxLayout()

@@ -787,7 +787,7 @@ class SettingsPage(QWidget):
     def _save_preferences(self) -> None:
         from dataclasses import replace as dc_replace
 
-        from vaultseek.core.config import AcquisitionConfig, AcoustIdEndpointConfig, NicotinePlusConfig
+        from vaultseek.core.config import AcoustIdEndpointConfig, NicotinePlusConfig
 
         endpoint_rows: list[AcoustIdEndpointConfig] = []
         for index, (label_edit, key_edit, proxy_edit) in enumerate(self._acoustid_rows, start=1):
@@ -845,7 +845,10 @@ class SettingsPage(QWidget):
             enabled_providers=tuple(meta_enabled),
             provider_order=tuple(meta_order),
         )
-        acquisition = AcquisitionConfig(
+        # Preserve Prowlarr / qBittorrent / SABnzbd from Plugins — rebuilding
+        # AcquisitionConfig() here used to wipe those nested fields to defaults.
+        acquisition = dc_replace(
+            self._container.config.acquisition,
             enabled_providers=tuple(dict.fromkeys(enabled)),
             provider_order=self._container.config.acquisition.provider_order,
             search_timeout_seconds=self._container.config.acquisition.search_timeout_seconds,

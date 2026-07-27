@@ -23,6 +23,11 @@ from PySide6.QtWidgets import (
 
 from vaultseek.core.container import Container
 from vaultseek.gui.async_task import run_in_background
+from vaultseek.gui.widgets.table_utils import (
+    begin_table_update,
+    configure_data_table,
+    end_table_update,
+)
 from vaultseek.models.entities.acquisition_job import AcquisitionJobType
 from vaultseek.plugins.builtin.discogs.provider import DiscogsProvider
 from vaultseek.services.wanted import park_album_job
@@ -85,7 +90,7 @@ class DiscogsPage(QWidget):
         self._artists.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
         self._artists.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
         self._artists.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
-        self._artists.horizontalHeader().setStretchLastSection(True)
+        configure_data_table(self._artists)
         self._artists.setMaximumHeight(140)
         self._artists.itemSelectionChanged.connect(self._on_artist_picked)
         layout.addWidget(self._artists)
@@ -113,7 +118,7 @@ class DiscogsPage(QWidget):
         self._table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
         self._table.setSelectionMode(QAbstractItemView.SelectionMode.ExtendedSelection)
         self._table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
-        self._table.horizontalHeader().setStretchLastSection(True)
+        configure_data_table(self._table)
         self._table.itemSelectionChanged.connect(self._on_release_selected)
         left_layout.addWidget(self._table)
         split.addWidget(left)
@@ -132,7 +137,7 @@ class DiscogsPage(QWidget):
         self._tracks.setHorizontalHeaderLabels(["#", "Title", "Duration", "Artists / credits"])
         self._tracks.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
         self._tracks.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
-        self._tracks.horizontalHeader().setStretchLastSection(True)
+        configure_data_table(self._tracks)
         right_layout.addWidget(self._tracks)
         split.addWidget(right)
         split.setStretchFactor(0, 3)

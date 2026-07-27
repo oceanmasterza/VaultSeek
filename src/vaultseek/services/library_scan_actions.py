@@ -12,7 +12,15 @@ from vaultseek.services.missing_media_analyzer import MissingMediaAnalyzer
 from vaultseek.services.quality_upgrade_analyzer import QualityUpgradeAnalyzer
 
 
-def run_missing_scan(container: Container, library_id: UUID) -> int:
+def _preferred_codec(container: Container) -> str | None:
+    prefs = container.config.acquisition
+    preferred = (prefs.preferred_codec or "").strip() or None
+    if prefs.prefer_lossless and not preferred:
+        preferred = "FLAC"
+    return preferred
+
+
+def _missing_analyzer(container: Container) -> MissingMediaAnalyzer:
     musicbrainz = next(
         (
             provider
@@ -21,23 +29,39 @@ def run_missing_scan(container: Container, library_id: UUID) -> int:
         ),
         MusicBrainzProvider(),
     )
-    analyzer = MissingMediaAnalyzer(
+    return MissingMediaAnalyzer(
         container.album_repo,
         container.track_repo,
         musicbrainz,
         artist_repo=container.artist_repo,
     )
+
+
+def run_missing_scan(container: Container, library_id: UUID) -> int:
     prefs = container.config.acquisition
-    preferred = (prefs.preferred_codec or "").strip() or None
-    if prefs.prefer_lossless and not preferred:
-        preferred = "FLAC"
-    jobs = analyzer.create_jobs_for_library(
+    jobs = _missing_analyzer(container).create_jobs_for_library(
         container.acquisition_engine,
         library_id,
         auto_queue=prefs.auto_queue_jobs,
-        preferred_codec=preferred,
+        preferred_codec=_preferred_codec(container),
     )
     logger.info("GUI missing scan created {} job(s)", len(jobs))
+    return len(jobs)
+
+
+def run_missing_scan_for_album(
+    container: Container, library_id: UUID, album_id: UUID
+) -> int:
+    """Scoped missing-track scan for one album (context-menu path)."""
+    prefs = container.config.acquisition
+    jobs = _missing_analyzer(container).create_jobs_for_album(
+        container.acquisition_engine,
+        library_id,
+        album_id,
+        auto_queue=prefs.auto_queue_jobs,
+        preferred_codec=_preferred_codec(container),
+    )
+    logger.info("GUI album missing scan created {} job(s)", len(jobs))
     return len(jobs)
 
 

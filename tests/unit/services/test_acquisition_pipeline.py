@@ -98,6 +98,53 @@ def test_search_dispatcher_marks_no_results_when_empty(
     assert loaded.state is AcquisitionJobState.NO_RESULTS
 
 
+def test_search_dispatcher_prefers_album_then_falls_back_to_track(
+    engine: Engine, library_id: UUID
+) -> None:
+    class _ScopedProvider(StubAcquisitionProvider):
+        provider_id = "scoped"
+        display_name = "Scoped"
+
+        def __init__(self) -> None:
+            self.queries: list[tuple[str | None, str | None, str | None]] = []
+
+        def search(self, request: SearchRequest) -> list[SearchResult]:
+            self.queries.append((request.artist, request.album, request.title))
+            if request.title is None:
+                return []
+            return [
+                SearchResult(
+                    provider_id=self.provider_id,
+                    result_id="track",
+                    display_name="track hit",
+                    artist=request.artist,
+                    album=request.album,
+                    title=request.title,
+                )
+            ]
+
+    provider = _ScopedProvider()
+    manager = ProviderManager([provider])
+    manager.connect(AcquisitionProviderConfig(provider_id="scoped", enabled=True))
+    acq = AcquisitionEngine(manager, AcquisitionJobRepository(engine))
+    job = acq.create_job(
+        library_id=library_id,
+        job_type=AcquisitionJobType.MISSING_TRACK,
+        artist="Artist",
+        album="Album",
+        title="Song",
+    )
+    dispatcher = SearchDispatcher(manager, acq)
+
+    results = dispatcher.dispatch(job.id)
+
+    assert len(results) == 1
+    assert provider.queries == [
+        ("Artist", "Album", None),
+        ("Artist", "Album", "Song"),
+    ]
+
+
 def test_scoring_engine_ranks_preferred_format_highest() -> None:
     from datetime import UTC, datetime
     from vaultseek.db.uuid_utils import generate_uuid7

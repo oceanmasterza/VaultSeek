@@ -26,6 +26,11 @@ from PySide6.QtWidgets import (
 
 from vaultseek.core.container import Container
 from vaultseek.gui.async_task import run_in_background
+from vaultseek.gui.widgets.table_utils import (
+    begin_table_update,
+    configure_data_table,
+    end_table_update,
+)
 from vaultseek.gui.debounce import connect_debounced
 from vaultseek.gui.widgets.browse import (
     HealthColorDelegate,
@@ -128,7 +133,7 @@ class LibraryPage(QWidget):
         self._table.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self._table.customContextMenuRequested.connect(self._context_menu)
         self._table.doubleClicked.connect(self._reveal_selected)
-        self._table.horizontalHeader().setStretchLastSection(True)
+        configure_data_table(self._table)
         self._table.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
         HealthColorDelegate().install_on(self._table)
         right_layout.addWidget(self._table, stretch=1)
@@ -303,11 +308,7 @@ class LibraryPage(QWidget):
 
         def done(count: object) -> None:
             n = int(count) if isinstance(count, int) else 0
-            QMessageBox.information(
-                self,
-                "Find missing songs",
-                f"Created {n} acquisition job(s). Check Find music / Wishlist.",
-            )
+            self._counts.setText(f"Created {n} missing-song job(s).")
             self.refresh()
             if n:
                 self.navigate_requested.emit("acquisition")
@@ -330,11 +331,7 @@ class LibraryPage(QWidget):
 
         def done(count: object) -> None:
             n = int(count) if isinstance(count, int) else 0
-            QMessageBox.information(
-                self,
-                "Find quality upgrades",
-                f"Created {n} upgrade job(s). Check Find music / Wishlist.",
-            )
+            self._counts.setText(f"Created {n} upgrade job(s).")
             self.refresh()
             if n:
                 self.navigate_requested.emit("acquisition")

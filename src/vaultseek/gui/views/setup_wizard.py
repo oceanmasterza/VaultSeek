@@ -30,7 +30,6 @@ from PySide6.QtWidgets import (
 )
 
 from vaultseek.core.config import (
-    AcquisitionConfig,
     NicotinePlusConfig,
     save_config,
 )
@@ -160,7 +159,8 @@ class SetupWizard(QWizard):
         if not enabled:
             enabled = ["stub"]
 
-        acquisition = AcquisitionConfig(
+        acquisition = replace(
+            self._container.config.acquisition,
             enabled_providers=tuple(dict.fromkeys(enabled)),
             provider_order=self._container.config.acquisition.provider_order,
             search_timeout_seconds=self._container.config.acquisition.search_timeout_seconds,

@@ -10,12 +10,12 @@ from PySide6.QtWidgets import QApplication
 
 _DARK_QSS = """
 QWidget {
-    background-color: #1e1e1e;
+    background-color: #2d2d2d;
     color: #e0e0e0;
     font-size: 13px;
 }
 QMainWindow, QDialog {
-    background-color: #1e1e1e;
+    background-color: #2d2d2d;
 }
 QListWidget {
     background-color: #252526;
@@ -107,8 +107,26 @@ QHeaderView::section {
     background-color: #2d2d2d;
     color: #cccccc;
     border: none;
+    border-right: 1px solid #5a5a5a;
     border-bottom: 1px solid #3c3c3c;
     padding: 6px;
+}
+QHeaderView::section:hover {
+    background-color: #353535;
+    border-right: 1px solid #7a7a7a;
+}
+QHeaderView::section:last {
+    border-right: none;
+}
+/* Hide the unused corner / row-number gutter so it does not read as a
+   separate coloured block next to the first column. */
+QTableCornerButton::section {
+    background-color: #2d2d2d;
+    border: none;
+}
+QHeaderView::section:vertical {
+    background-color: #2d2d2d;
+    border: none;
 }
 QPushButton {
     background-color: #0e639c;
@@ -155,7 +173,7 @@ QTabBar::tab {
     border-bottom: none;
 }
 QTabBar::tab:selected {
-    background-color: #1e1e1e;
+    background-color: #2d2d2d;
 }
 QLabel[heading="true"] {
     font-size: 18px;
@@ -225,7 +243,7 @@ QProgressBar::chunk {
     border-radius: 2px;
 }
 QScrollBar:vertical {
-    background: #1e1e1e;
+    background: #2d2d2d;
     width: 10px;
 }
 QScrollBar::handle:vertical {

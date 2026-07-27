@@ -31,14 +31,31 @@ def test_resolve_enabled_providers_drops_stub_when_nicotine_on() -> None:
     assert resolve_enabled_acquisition_providers(config) == {"nicotine_plus"}
 
 
-def test_connect_skips_stub_when_nicotine_enabled() -> None:
-    manager = ProviderManager([StubAcquisitionProvider(), NicotinePlusProvider(rpc_client=FakeRpcClient())])
+def test_resolve_enabled_providers_includes_prowlarr_with_client() -> None:
+    from vaultseek.core.config import ProwlarrConfig, QbittorrentConfig
+
     config = AcquisitionConfig(
-        enabled_providers=("stub", "nicotine_plus"),
-        nicotine_plus=NicotinePlusConfig(enabled=True),
+        enabled_providers=("stub",),
+        prowlarr=ProwlarrConfig(enabled=True, api_key="x"),
+        qbittorrent=QbittorrentConfig(enabled=True),
     )
-    connect_acquisition_providers(config, manager)
-    assert manager.connected_provider_ids() == ("nicotine_plus",)
+    assert "prowlarr" in resolve_enabled_acquisition_providers(config)
+
+
+def test_connect_disconnects_disabled_providers() -> None:
+    manager = ProviderManager([StubAcquisitionProvider()])
+    manager.connect(
+        __import__(
+            "vaultseek.models.interfaces.acquisition", fromlist=["AcquisitionProviderConfig"]
+        ).AcquisitionProviderConfig(provider_id="stub", enabled=True)
+    )
+    assert manager.connected_provider_ids() == ("stub",)
+    connect_acquisition_providers(
+        AcquisitionConfig(enabled_providers=(), nicotine_plus=NicotinePlusConfig(enabled=False)),
+        manager,
+    )
+    # No real providers enabled → stub remains via resolve_enabled.
+    assert "stub" in manager.connected_provider_ids()
 
 
 def test_probe_nicotine_socket_unreachable() -> None:

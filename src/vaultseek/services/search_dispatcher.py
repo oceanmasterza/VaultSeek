@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from uuid import UUID
 
 from loguru import logger
@@ -64,14 +65,6 @@ class SearchDispatcher:
 
         job = self._prepare_for_search(job_id, job)
 
-        request = SearchRequest(
-            artist=job.artist,
-            album=job.album,
-            title=job.title,
-            year=job.year,
-            preferred_format=job.preferred_codec,
-            extra={"mb_release_id": job.mb_release_id or ""},
-        )
         provider_ids = job.preferred_providers or None
 
         if not self._providers.has_connected_search_providers(provider_ids=provider_ids):
@@ -90,7 +83,7 @@ class SearchDispatcher:
 
         logger.info("Searching providers for {}", job_label(job))
         try:
-            results = self._providers.search(request, provider_ids=provider_ids)
+            results = self._search_with_album_preference(job, provider_ids)
         except SearchThrottled as exc:
             logger.info(
                 "Search for {} deferred ({:.1f}s) to avoid Soulseek flood ban",
@@ -174,6 +167,51 @@ class SearchDispatcher:
             },
         )
         return results
+
+    def _search_with_album_preference(
+        self,
+        job: AcquisitionJob,
+        provider_ids: Sequence[str] | None,
+    ) -> list[SearchResult]:
+        """Prefer whole-album hits, then fall back to track-level search.
+
+        Missing-track jobs keep the same quality prefs (preferred_format) for
+        both passes so album packs and track hits stay in the same quality tier.
+        """
+        base = SearchRequest(
+            artist=job.artist,
+            album=job.album,
+            title=job.title,
+            year=job.year,
+            preferred_format=job.preferred_codec,
+            extra={"mb_release_id": job.mb_release_id or ""},
+        )
+        # Album-only first when we have both album and track identity.
+        if job.album and job.title:
+            album_request = SearchRequest(
+                artist=job.artist,
+                album=job.album,
+                title=None,
+                year=job.year,
+                preferred_format=job.preferred_codec,
+                extra={
+                    **base.extra,
+                    "search_scope": "album",
+                },
+            )
+            album_hits = self._providers.search(album_request, provider_ids=provider_ids)
+            if album_hits:
+                logger.info(
+                    "Album-first search found {} hit(s) for {} — skipping track query",
+                    len(album_hits),
+                    job_label(job),
+                )
+                return album_hits
+            logger.debug(
+                "Album-first search empty for {} — falling back to track query",
+                job_label(job),
+            )
+        return self._providers.search(base, provider_ids=provider_ids)
 
     def _prepare_for_search(self, job_id: UUID, job: AcquisitionJob) -> AcquisitionJob:
         """Move the job into SEARCHING from any state that may re-enter search.

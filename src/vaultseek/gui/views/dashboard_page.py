@@ -23,6 +23,11 @@ from PySide6.QtWidgets import (
 
 from vaultseek.core.config import save_config
 from vaultseek.core.container import Container
+from vaultseek.gui.widgets.table_utils import (
+    begin_table_update,
+    configure_data_table,
+    end_table_update,
+)
 from vaultseek.core.logging import get_live_log_buffer
 from vaultseek.gui.widgets.pipeline_flow import PipelineFlowWidget
 from vaultseek.models.entities.track import LibraryZone
@@ -407,7 +412,7 @@ class DashboardPage(QWidget):
         self._failed_table.setHorizontalHeaderLabels(["Type", "Error", "Attempts"])
         self._failed_table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
         self._failed_table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
-        self._failed_table.horizontalHeader().setStretchLastSection(True)
+        configure_data_table(self._failed_table)
         self._failed_table.setMaximumHeight(180)
         failed_layout.addWidget(self._failed_table)
         live.addWidget(failed_box, stretch=1)

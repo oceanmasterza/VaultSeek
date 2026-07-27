@@ -25,6 +25,11 @@ from PySide6.QtWidgets import (
 
 from vaultseek.core.container import Container
 from vaultseek.gui.async_task import run_in_background
+from vaultseek.gui.widgets.table_utils import (
+    begin_table_update,
+    configure_data_table,
+    end_table_update,
+)
 from vaultseek.gui.debounce import connect_debounced
 from vaultseek.gui.widgets.browse import (
     HealthColorDelegate,
@@ -39,7 +44,11 @@ from vaultseek.services.album_track_display import (
     album_status_for_display,
     build_album_track_rows,
 )
-from vaultseek.services.library_scan_actions import run_missing_scan, run_quality_upgrade_scan
+from vaultseek.services.library_scan_actions import (
+    run_missing_scan,
+    run_missing_scan_for_album,
+    run_quality_upgrade_scan,
+)
 from vaultseek.services.wanted import list_wanted, promote_wanted, remove_wanted
 
 
@@ -122,7 +131,7 @@ class AlbumsPage(QWidget):
         )
         self._table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
         self._table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
-        self._table.horizontalHeader().setStretchLastSection(True)
+        configure_data_table(self._table)
         self._table.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self._table.customContextMenuRequested.connect(self._album_context_menu)
         self._table.itemSelectionChanged.connect(self._on_album_selected)
@@ -139,7 +148,7 @@ class AlbumsPage(QWidget):
         self._tracks.setHorizontalHeaderLabels(["Title", "Zone", "File", "Confidence"])
         self._tracks.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
         self._tracks.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
-        self._tracks.horizontalHeader().setStretchLastSection(True)
+        configure_data_table(self._tracks)
         self._tracks.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self._tracks.customContextMenuRequested.connect(self._track_context_menu)
         self._tracks.doubleClicked.connect(self._reveal_track)
@@ -197,7 +206,7 @@ class AlbumsPage(QWidget):
         self._wanted_table.setHorizontalHeaderLabels(["Artist", "Album", "Year", "Source"])
         self._wanted_table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
         self._wanted_table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
-        self._wanted_table.horizontalHeader().setStretchLastSection(True)
+        configure_data_table(self._wanted_table)
         self._wanted_table.setMaximumHeight(160)
         wanted_layout.addWidget(self._wanted_table)
         wanted_actions = QHBoxLayout()
@@ -242,6 +251,8 @@ class AlbumsPage(QWidget):
         self.refresh()
 
     def refresh(self) -> None:
+        begin_table_update(self._table)
+        begin_table_update(self._tracks)
         self._table.setRowCount(0)
         self._album_ids = []
         self._tracks.setRowCount(0)
@@ -253,6 +264,8 @@ class AlbumsPage(QWidget):
             self._empty.setVisible(True)
             self._main_split.setVisible(False)
             self._wanted_box.setVisible(False)
+            end_table_update(self._table)
+            end_table_update(self._tracks)
             return
         self._wanted_box.setVisible(True)
         self._reload_wanted()
@@ -268,6 +281,8 @@ class AlbumsPage(QWidget):
         self._main_split.setVisible(not empty)
         if empty:
             self._status.setText("0 album(s)")
+            end_table_update(self._table)
+            end_table_update(self._tracks)
             return
         self._table.setRowCount(len(rows))
         prefs = self._container.config.acquisition
@@ -287,10 +302,15 @@ class AlbumsPage(QWidget):
             track_label = str(row.track_count)
             if status.expected_count is not None:
                 track_label = f"{status.present_count}/{status.expected_count}"
+            year_item = QTableWidgetItem()
+            year_item.setData(Qt.ItemDataRole.DisplayRole, str(row.year) if row.year else "—")
+            year_item.setData(Qt.ItemDataRole.EditRole, int(row.year or 0))
+            title_item = QTableWidgetItem(row.title)
+            title_item.setData(Qt.ItemDataRole.UserRole, str(row.album_id))
             cells = [
-                QTableWidgetItem(row.title),
+                title_item,
                 QTableWidgetItem(row.artist_name or "—"),
-                QTableWidgetItem(str(row.year) if row.year else "—"),
+                year_item,
                 QTableWidgetItem(track_label),
                 QTableWidgetItem(status.health.value.replace("_", " ")),
                 QTableWidgetItem("Yes" if row.has_cover else "Missing"),
@@ -299,11 +319,15 @@ class AlbumsPage(QWidget):
                 apply_album_health_style(item, status.health)
                 self._table.setItem(i, col, item)
         self._status.setText(f"{len(rows)} album(s) · {len(self._wanted_ids)} wanted")
+        end_table_update(self._table)
+        end_table_update(self._tracks)
 
     def _reload_wanted(self) -> None:
+        begin_table_update(self._wanted_table)
         self._wanted_ids = []
         self._wanted_table.setRowCount(0)
         if self._library_id is None:
+            end_table_update(self._wanted_table)
             return
         artist_name = None
         if self._filter_artist_id is not None:
@@ -320,16 +344,28 @@ class AlbumsPage(QWidget):
         for index, job in enumerate(jobs):
             self._wanted_ids.append(job.id)
             source = str(job.extra.get("source") or "wanted")
-            self._wanted_table.setItem(index, 0, QTableWidgetItem(job.artist or ""))
+            artist_item = QTableWidgetItem(job.artist or "")
+            artist_item.setData(Qt.ItemDataRole.UserRole, str(job.id))
+            year_item = QTableWidgetItem()
+            year_item.setData(Qt.ItemDataRole.DisplayRole, str(job.year) if job.year else "")
+            year_item.setData(Qt.ItemDataRole.EditRole, int(job.year or 0))
+            self._wanted_table.setItem(index, 0, artist_item)
             self._wanted_table.setItem(index, 1, QTableWidgetItem(job.album or ""))
-            self._wanted_table.setItem(
-                index, 2, QTableWidgetItem(str(job.year) if job.year else "")
-            )
+            self._wanted_table.setItem(index, 2, year_item)
             self._wanted_table.setItem(index, 3, QTableWidgetItem(source))
+        end_table_update(self._wanted_table)
 
     def _selected_wanted_ids(self) -> list[UUID]:
         rows = {index.row() for index in self._wanted_table.selectedIndexes()}
-        return [self._wanted_ids[row] for row in sorted(rows) if 0 <= row < len(self._wanted_ids)]
+        ids: list[UUID] = []
+        for row in sorted(rows):
+            item = self._wanted_table.item(row, 0)
+            raw = item.data(Qt.ItemDataRole.UserRole) if item else None
+            if raw:
+                ids.append(UUID(str(raw)))
+            elif 0 <= row < len(self._wanted_ids):
+                ids.append(self._wanted_ids[row])
+        return ids
 
     def _promote_wanted_selected(self) -> None:
         ids = self._selected_wanted_ids()
@@ -368,6 +404,10 @@ class AlbumsPage(QWidget):
         if len(rows) != 1:
             return None
         row = next(iter(rows))
+        item = self._table.item(row, 0)
+        raw = item.data(Qt.ItemDataRole.UserRole) if item else None
+        if raw:
+            return UUID(str(raw))
         if 0 <= row < len(self._album_ids):
             return self._album_ids[row]
         return None
@@ -393,12 +433,15 @@ class AlbumsPage(QWidget):
             + (f", {missing} missing" if missing else "")
             + ")"
         )
+        begin_table_update(self._tracks)
         self._tracks.setRowCount(len(display_rows))
         self._track_paths = []
         for index, row in enumerate(display_rows):
             self._track_paths.append(row.file_path or "")
+            path_item = QTableWidgetItem(row.title)
+            path_item.setData(Qt.ItemDataRole.UserRole, row.file_path or "")
             cells = [
-                QTableWidgetItem(row.title),
+                path_item,
                 QTableWidgetItem(row.zone),
                 QTableWidgetItem(row.file_label),
                 QTableWidgetItem(row.confidence),
@@ -406,25 +449,29 @@ class AlbumsPage(QWidget):
             for col, item in enumerate(cells):
                 apply_track_health_style(item, row.health)
                 self._tracks.setItem(index, col, item)
+        end_table_update(self._tracks)
         self._show_cover(album_id, title)
 
-    def _scan_missing(self) -> None:
+    def _scan_missing(self, *, album_id: UUID | None = None) -> None:
         if self._library_id is None:
             QMessageBox.information(self, "Albums", "Select a library first.")
             return
         library_id = self._library_id
-        self._status.setText("Scanning for missing songs (background)…")
+        target_album = album_id
+        if target_album is not None:
+            self._status.setText("Finding missing songs for this album (background)…")
+        else:
+            self._status.setText("Scanning for missing songs (background)…")
 
         def work() -> int:
+            if target_album is not None:
+                return run_missing_scan_for_album(self._container, library_id, target_album)
             return run_missing_scan(self._container, library_id)
 
         def done(count: object) -> None:
             n = int(count) if isinstance(count, int) else 0
-            QMessageBox.information(
-                self,
-                "Find missing songs",
-                f"Created {n} acquisition job(s). Check Find music / Wishlist.",
-            )
+            scope = "this album" if target_album is not None else "library"
+            self._status.setText(f"Created {n} missing-song job(s) for {scope}.")
             self.refresh()
             if n:
                 self.navigate_requested.emit("acquisition")
@@ -447,11 +494,7 @@ class AlbumsPage(QWidget):
 
         def done(count: object) -> None:
             n = int(count) if isinstance(count, int) else 0
-            QMessageBox.information(
-                self,
-                "Find quality upgrades",
-                f"Created {n} upgrade job(s). Check Find music / Wishlist.",
-            )
+            self._status.setText(f"Created {n} upgrade job(s).")
             self.refresh()
             if n:
                 self.navigate_requested.emit("acquisition")
@@ -465,12 +508,15 @@ class AlbumsPage(QWidget):
     def _album_context_menu(self, pos: object) -> None:
         album_id = self._selected_album_id()
         menu = QMenu(self)
-        act_find = menu.addAction("Find missing songs (library)")
+        act_find = menu.addAction("Find missing songs (this album)")
+        act_find_lib = menu.addAction("Find missing songs (whole library)")
         act_upgrades = menu.addAction("Find quality upgrades (library)")
         act_queue = menu.addAction("Queue this album for download")
         act_find_page = menu.addAction("Open Find music…")
         chosen = menu.exec(self._table.mapToGlobal(pos))  # type: ignore[arg-type]
-        if chosen is act_find:
+        if chosen is act_find and album_id is not None:
+            self._scan_missing(album_id=album_id)
+        elif chosen is act_find_lib:
             self._scan_missing()
         elif chosen is act_upgrades:
             self._scan_upgrades()
@@ -480,15 +526,19 @@ class AlbumsPage(QWidget):
             self.navigate_requested.emit("find")
 
     def _track_context_menu(self, pos: object) -> None:
+        album_id = self._selected_album_id()
         menu = QMenu(self)
         act_reveal = menu.addAction("Reveal in Explorer")
-        act_find = menu.addAction("Find missing songs (library)")
+        act_find = menu.addAction("Find missing songs (this album)")
+        act_find_lib = menu.addAction("Find missing songs (whole library)")
         act_upgrades = menu.addAction("Find quality upgrades (library)")
         act_find_page = menu.addAction("Open Find music…")
         chosen = menu.exec(self._tracks.mapToGlobal(pos))  # type: ignore[arg-type]
         if chosen is act_reveal:
             self._reveal_track()
-        elif chosen is act_find:
+        elif chosen is act_find and album_id is not None:
+            self._scan_missing(album_id=album_id)
+        elif chosen is act_find_lib:
             self._scan_missing()
         elif chosen is act_upgrades:
             self._scan_upgrades()
@@ -517,11 +567,7 @@ class AlbumsPage(QWidget):
         )
         if self._container.config.acquisition.auto_queue_jobs:
             self._container.acquisition_engine.queue(job.id)
-        QMessageBox.information(
-            self,
-            "Albums",
-            f"Queued “{album.title}” for download. Open Wishlist to acquire.",
-        )
+        self._status.setText(f"Queued “{album.title}” for download.")
         self.navigate_requested.emit("acquisition")
 
     def _show_cover(self, album_id: UUID, title: str) -> None:
@@ -582,7 +628,11 @@ class AlbumsPage(QWidget):
         if len(rows) != 1:
             return
         row = next(iter(rows))
-        if 0 <= row < len(self._track_paths):
+        item = self._tracks.item(row, 0)
+        path = ""
+        if item is not None:
+            path = str(item.data(Qt.ItemDataRole.UserRole) or "")
+        if not path and 0 <= row < len(self._track_paths):
             path = self._track_paths[row]
-            if path:
-                reveal_in_explorer(path)
+        if path:
+            reveal_in_explorer(path)

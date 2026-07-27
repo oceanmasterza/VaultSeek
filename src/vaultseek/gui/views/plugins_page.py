@@ -136,7 +136,9 @@ class PluginsPage(QWidget):
         form.addRow("Playlists", self._spotify_playlists)
         help_label = QLabel(
             "Create an app at https://developer.spotify.com/dashboard for the client "
-            "ID/secret. Only public playlists are supported (no login needed). "
+            "ID/secret (Client Credentials / Web API). Only public playlists are supported "
+            "(no OAuth redirect / user login flow is used). Depending on Spotify's current "
+            "developer rules, Web API access may require Spotify Premium for the app owner. "
             "Albums referenced by playlist tracks are added to your Wishlist."
         )
         help_label.setWordWrap(True)
@@ -367,8 +369,7 @@ class PluginsPage(QWidget):
         QMessageBox.information(
             self,
             "Plugins",
-            "Plugin settings saved. Restart VaultSeek so torrent downloads and "
-            "search fully take effect.",
+            "Plugin settings saved. Prowlarr / download clients were reconnected.",
         )
 
     def _run_recommendations(self) -> None:
