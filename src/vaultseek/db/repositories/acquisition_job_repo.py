@@ -93,7 +93,6 @@ class AcquisitionJobRepository:
             return int(conn.execute(statement).scalar_one())
 
 
-
 def _to_row(job: AcquisitionJob) -> dict[str, object]:
     return {
         "id": uuid_to_blob(job.id),

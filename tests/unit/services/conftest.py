@@ -23,8 +23,8 @@ from vaultseek.db.repositories.job_repo import JobRepository
 from vaultseek.db.repositories.review_repo import ReviewRepository
 from vaultseek.db.repositories.rule_repo import RuleRepository
 from vaultseek.db.repositories.track_repo import TrackRepository
-from vaultseek.db.tables import libraries, metadata, tracks
 from vaultseek.db.tables import artists as artists_table
+from vaultseek.db.tables import libraries, metadata, tracks
 from vaultseek.db.uuid_utils import generate_uuid7, uuid_to_blob
 from vaultseek.db.writer import DatabaseWriter
 from vaultseek.services.job_queue_service import JobQueueService

@@ -60,9 +60,7 @@ def album_status_for_display(
     """Status using on-disk presence + official/expected track counts."""
     missing_files = sum(1 for track in present if present_track_is_missing_file(track))
     present_ok = [track for track in present if not present_track_is_missing_file(track)]
-    quality_gaps = sum(
-        1 for track in present_ok if not track_meets_quality_prefs(track, prefs)
-    )
+    quality_gaps = sum(1 for track in present_ok if not track_meets_quality_prefs(track, prefs))
 
     expected = expected_count
     if official_tracklist is not None:
@@ -114,20 +112,22 @@ def build_album_track_rows(
 
     if tracklist is not None and tracklist.tracks:
         for official in tracklist.tracks:
-            track = None
+            matched: Track | None = None
             if official.number is not None:
-                track = by_number.get(int(official.number))
-            if track is None and official.title:
-                track = by_title.get(official.title.casefold().strip())
-            if track is not None:
-                used.add(track.id)
-            rows.append(
-                _row_from_track_or_missing(official.title, official.number, track, prefs)
-            )
+                matched = by_number.get(int(official.number))
+            if matched is None and official.title:
+                matched = by_title.get(official.title.casefold().strip())
+            if matched is not None:
+                used.add(matched.id)
+            rows.append(_row_from_track_or_missing(official.title, official.number, matched, prefs))
         # Orphan library tracks not on the official list
         for track in present:
             if track.id not in used:
-                rows.append(_row_from_track_or_missing(track.title or "(untitled)", track.track_number, track, prefs))
+                rows.append(
+                    _row_from_track_or_missing(
+                        track.title or "(untitled)", track.track_number, track, prefs
+                    )
+                )
         return rows
 
     expected = int(album.track_count) if album is not None and album.track_count > 0 else None
@@ -153,9 +153,7 @@ def build_album_track_rows(
                 )
         else:
             for index in range(1, expected - len(present) + 1):
-                rows.append(
-                    _row_from_track_or_missing(f"Missing track {index}", None, None, prefs)
-                )
+                rows.append(_row_from_track_or_missing(f"Missing track {index}", None, None, prefs))
     return rows
 
 
@@ -189,11 +187,7 @@ def _row_from_track_or_missing(
             file_path=None,
             track=None if track is None or present_track_is_missing_file(track) else track,
         )
-    conf = (
-        f"{track.overall_confidence:.0%}"
-        if track.overall_confidence is not None
-        else "—"
-    )
+    conf = f"{track.overall_confidence:.0%}" if track.overall_confidence is not None else "—"
     return AlbumTrackDisplayRow(
         title=track.title or title or "(untitled)",
         track_number=track.track_number if track.track_number is not None else track_number,

@@ -140,9 +140,9 @@ def test_verification_rejects_content_hash_duplicate(
         )
     )
 
-    result = VerificationEngine(
-        acq, duplicate_repo=DuplicateRepository(engine)
-    ).verify(job_id, [audio])
+    result = VerificationEngine(acq, duplicate_repo=DuplicateRepository(engine)).verify(
+        job_id, [audio]
+    )
 
     assert result.ok
     assert "already_owned" in result.checks_passed
@@ -279,9 +279,7 @@ def test_import_refuses_failed_verification(
         ImportPipeline(acq).run_after_verification(verification)
 
 
-def test_import_requires_importing_state(
-    engine: Engine, library_id: UUID, tmp_path: Path
-) -> None:
+def test_import_requires_importing_state(engine: Engine, library_id: UUID, tmp_path: Path) -> None:
     acq = _acq(engine)
     job_id = _to_downloading(acq, library_id)
     audio = tmp_path / "track.flac"

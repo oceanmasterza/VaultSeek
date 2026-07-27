@@ -13,7 +13,7 @@ from vaultseek.db.repositories.album_repo import AlbumRepository
 from vaultseek.db.repositories.artist_repo import ArtistRepository
 from vaultseek.db.repositories.track_repo import TrackRepository
 from vaultseek.models.entities.acquisition_job import AcquisitionJob, AcquisitionJobType
-from vaultseek.models.entities.track import LibraryZone, Track
+from vaultseek.models.entities.track import LibraryZone
 from vaultseek.models.services.quality_scorer import DEFAULT_WEIGHTS, QualityScorer
 from vaultseek.services.acquisition_engine import AcquisitionEngine
 from vaultseek.services.library_quality import track_meets_quality_prefs

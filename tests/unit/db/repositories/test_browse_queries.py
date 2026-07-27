@@ -44,9 +44,7 @@ def _track(
     )
 
 
-def test_artist_list_for_library_counts_tracks_and_albums(
-    engine: Engine, library_id: UUID
-) -> None:
+def test_artist_list_for_library_counts_tracks_and_albums(engine: Engine, library_id: UUID) -> None:
     artists = ArtistRepository(engine)
     tracks = TrackRepository(engine)
     artist = Artist(
@@ -71,9 +69,30 @@ def test_artist_list_for_library_counts_tracks_and_albums(
                     updated_at=_NOW.isoformat(),
                 )
             )
-    tracks.upsert(_track(library_id, path="C:/library/Radiohead/OK/01.flac", artist_id=artist.id, album_id=album_a))
-    tracks.upsert(_track(library_id, path="C:/library/Radiohead/OK/02.flac", artist_id=artist.id, album_id=album_a))
-    tracks.upsert(_track(library_id, path="C:/library/Radiohead/KidA/01.flac", artist_id=artist.id, album_id=album_b))
+    tracks.upsert(
+        _track(
+            library_id,
+            path="C:/library/Radiohead/OK/01.flac",
+            artist_id=artist.id,
+            album_id=album_a,
+        )
+    )
+    tracks.upsert(
+        _track(
+            library_id,
+            path="C:/library/Radiohead/OK/02.flac",
+            artist_id=artist.id,
+            album_id=album_a,
+        )
+    )
+    tracks.upsert(
+        _track(
+            library_id,
+            path="C:/library/Radiohead/KidA/01.flac",
+            artist_id=artist.id,
+            album_id=album_b,
+        )
+    )
 
     rows = artists.list_for_library(library_id)
     assert len(rows) == 1

@@ -539,34 +539,35 @@ class AcquisitionRunner:
 
             # Files already on disk: finish even when the in-memory handle was
             # lost (app restart) or Nicotine transfer matching lags.
-            if folder_paths and (
-                status is None or status.state in ("queued", "downloading", "completed")
-            ):
-                if (
+            if (
+                folder_paths
+                and (status is None or status.state in ("queued", "downloading", "completed"))
+                and (
                     status is None
                     or status.state == "completed"
                     or _folder_has_ready_audio(folder_paths)
-                ):
-                    paths = list(status.local_paths) if status and status.local_paths else []
-                    merged = {str(p): p for p in paths}
-                    for path in folder_paths:
-                        merged[str(path)] = path
-                    paths = list(merged.values())
-                    logger.info(
-                        "Download complete for {} — {} file(s){}",
-                        label,
-                        len(paths),
-                        " (recovered from folder)" if status is None else "",
-                    )
-                    self._download_progress_logged.pop(job.id, None)
-                    self._workflow.finish_download(
-                        job.id,
-                        paths,
-                        auto_import=auto_import,
-                    )
-                    self._after_download_finished(job.id, auto_import=auto_import)
-                    updated += 1
-                    continue
+                )
+            ):
+                paths = list(status.local_paths) if status and status.local_paths else []
+                merged = {str(p): p for p in paths}
+                for path in folder_paths:
+                    merged[str(path)] = path
+                paths = list(merged.values())
+                logger.info(
+                    "Download complete for {} — {} file(s){}",
+                    label,
+                    len(paths),
+                    " (recovered from folder)" if status is None else "",
+                )
+                self._download_progress_logged.pop(job.id, None)
+                self._workflow.finish_download(
+                    job.id,
+                    paths,
+                    auto_import=auto_import,
+                )
+                self._after_download_finished(job.id, auto_import=auto_import)
+                updated += 1
+                continue
 
             if status is None:
                 continue
@@ -577,22 +578,26 @@ class AcquisitionRunner:
                     self._download_progress_logged[job.id] = milestone
                     logger.info("Download {}% for {}", milestone, label)
             if status.state == "completed":
-                paths = list(status.local_paths) if status.local_paths else None
+                completed_paths: list[Path] | None = (
+                    list(status.local_paths) if status.local_paths else None
+                )
                 if folder_paths:
-                    merged = {str(p): p for p in (paths or [])}
+                    merged = {str(p): p for p in (completed_paths or [])}
                     for path in folder_paths:
                         merged[str(path)] = path
-                    paths = list(merged.values())
-                if paths:
-                    logger.info("Download complete for {} — {} file(s)", label, len(paths))
-                self._download_progress_logged.pop(job.id, None)
-                self._workflow.finish_download(
-                    job.id,
-                    paths,
-                    auto_import=auto_import,
-                )
-                self._after_download_finished(job.id, auto_import=auto_import)
-                updated += 1
+                    completed_paths = list(merged.values())
+                if completed_paths:
+                    logger.info(
+                        "Download complete for {} — {} file(s)", label, len(completed_paths)
+                    )
+                    self._download_progress_logged.pop(job.id, None)
+                    self._workflow.finish_download(
+                        job.id,
+                        completed_paths,
+                        auto_import=auto_import,
+                    )
+                    self._after_download_finished(job.id, auto_import=auto_import)
+                    updated += 1
             elif status.state in ("failed", "cancelled"):
                 # Prefer folder recovery over a stale/sibling failure signal.
                 if folder_paths and _folder_has_ready_audio(folder_paths):

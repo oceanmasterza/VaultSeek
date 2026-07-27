@@ -152,7 +152,9 @@ def test_dashboard_acquisition_summary(tmp_path: Path) -> None:
         assert snap.acquisition.failed == 1
         assert "awaiting your pick" in snap.insight or "Acquisition" in snap.insight
         acquire = next(stage for stage in snap.stages if stage.key == "acquire")
-        assert acquire.backlog == 1  # waiting_for_user only (failed NO_RESULTS not in backlog formula)
+        assert (
+            acquire.backlog == 1
+        )  # waiting_for_user only (failed NO_RESULTS not in backlog formula)
         assert acquire.running == 0
         assert acquire.is_active is True
     finally:

@@ -17,12 +17,10 @@ from PySide6.QtWidgets import (
 )
 
 from vaultseek.core.container import Container
-from vaultseek.gui.widgets.table_utils import (
-    begin_table_update,
-    configure_data_table,
-    end_table_update,
-)
 from vaultseek.core.exceptions import ReviewError
+from vaultseek.gui.widgets.table_utils import (
+    configure_data_table,
+)
 
 
 class ReviewPage(QWidget):
@@ -68,9 +66,12 @@ class ReviewPage(QWidget):
         buttons.addStretch(1)
         layout.addLayout(buttons)
 
-        QShortcut(QKeySequence("Ctrl+Return"), self, activated=self._approve_selected)
-        QShortcut(QKeySequence("Ctrl+Enter"), self, activated=self._approve_selected)
-        QShortcut(QKeySequence("Ctrl+Shift+R"), self, activated=self._reject_selected)
+        _approve_a = QShortcut(QKeySequence("Ctrl+Return"), self)
+        _approve_a.activated.connect(self._approve_selected)
+        _approve_b = QShortcut(QKeySequence("Ctrl+Enter"), self)
+        _approve_b.activated.connect(self._approve_selected)
+        _reject = QShortcut(QKeySequence("Ctrl+Shift+R"), self)
+        _reject.activated.connect(self._reject_selected)
 
     def set_library(self, library_id: UUID | None) -> None:
         self._library_id = library_id

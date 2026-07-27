@@ -133,9 +133,7 @@ def test_fetch_by_artist_and_album_searches_musicbrainz_then_caa() -> None:
         content_type="image/jpeg",
     )
 
-    result = CoverArtArchiveProvider().fetch(
-        ArtworkQuery(artist="Radiohead", album="OK Computer")
-    )
+    result = CoverArtArchiveProvider().fetch(ArtworkQuery(artist="Radiohead", album="OK Computer"))
 
     assert result is not None
     assert result.confidence == 0.75

@@ -112,9 +112,7 @@ class DiscogsArtworkProvider:
         self._throttle()
         headers = {"Authorization": f"Discogs token={self._token}"}
         try:
-            response = self._session.get(
-                url, params=params, headers=headers, timeout=self._timeout
-            )
+            response = self._session.get(url, params=params, headers=headers, timeout=self._timeout)
             response.raise_for_status()
             payload = response.json()
         except (requests.RequestException, ValueError):

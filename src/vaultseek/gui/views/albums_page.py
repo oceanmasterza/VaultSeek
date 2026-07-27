@@ -5,8 +5,8 @@ from __future__ import annotations
 from pathlib import Path
 from uuid import UUID
 
-from PySide6.QtCore import Qt, Signal
-from PySide6.QtGui import QPixmap
+from PySide6.QtCore import QPoint, Qt, Signal
+from PySide6.QtGui import QPixmap, QResizeEvent
 from PySide6.QtWidgets import (
     QFrame,
     QHBoxLayout,
@@ -25,11 +25,6 @@ from PySide6.QtWidgets import (
 
 from vaultseek.core.container import Container
 from vaultseek.gui.async_task import run_in_background
-from vaultseek.gui.widgets.table_utils import (
-    begin_table_update,
-    configure_data_table,
-    end_table_update,
-)
 from vaultseek.gui.debounce import connect_debounced
 from vaultseek.gui.widgets.browse import (
     HealthColorDelegate,
@@ -38,6 +33,11 @@ from vaultseek.gui.widgets.browse import (
 )
 from vaultseek.gui.widgets.desktop import reveal_in_explorer
 from vaultseek.gui.widgets.empty_state import EmptyState
+from vaultseek.gui.widgets.table_utils import (
+    begin_table_update,
+    configure_data_table,
+    end_table_update,
+)
 from vaultseek.models.entities.acquisition_job import AcquisitionJobType
 from vaultseek.plugins.builtin.musicbrainz.provider import MusicBrainzProvider
 from vaultseek.services.album_track_display import (
@@ -294,7 +294,7 @@ class AlbumsPage(QWidget):
             album = self._container.album_repo.get(row.album_id)
             status = album_status_for_display(
                 row.album_id,
-                tracks,
+                list(tracks),
                 prefs=prefs,
                 expected_count=row.expected_track_count
                 or (album.track_count if album and album.track_count else None),
@@ -423,7 +423,7 @@ class AlbumsPage(QWidget):
         prefs = self._container.config.acquisition
         display_rows = build_album_track_rows(
             album=album,
-            present=tracks,
+            present=list(tracks),
             prefs=prefs,
             musicbrainz=self._musicbrainz(),
         )
@@ -505,7 +505,7 @@ class AlbumsPage(QWidget):
             on_failed=lambda msg: QMessageBox.warning(self, "Albums", msg),
         )
 
-    def _album_context_menu(self, pos: object) -> None:
+    def _album_context_menu(self, pos: QPoint) -> None:
         album_id = self._selected_album_id()
         menu = QMenu(self)
         act_find = menu.addAction("Find missing songs (this album)")
@@ -513,7 +513,7 @@ class AlbumsPage(QWidget):
         act_upgrades = menu.addAction("Find quality upgrades (library)")
         act_queue = menu.addAction("Queue this album for download")
         act_find_page = menu.addAction("Open Find music…")
-        chosen = menu.exec(self._table.mapToGlobal(pos))  # type: ignore[arg-type]
+        chosen = menu.exec(self._table.mapToGlobal(pos))
         if chosen is act_find and album_id is not None:
             self._scan_missing(album_id=album_id)
         elif chosen is act_find_lib:
@@ -525,7 +525,7 @@ class AlbumsPage(QWidget):
         elif chosen is act_find_page:
             self.navigate_requested.emit("find")
 
-    def _track_context_menu(self, pos: object) -> None:
+    def _track_context_menu(self, pos: QPoint) -> None:
         album_id = self._selected_album_id()
         menu = QMenu(self)
         act_reveal = menu.addAction("Reveal in Explorer")
@@ -533,7 +533,7 @@ class AlbumsPage(QWidget):
         act_find_lib = menu.addAction("Find missing songs (whole library)")
         act_upgrades = menu.addAction("Find quality upgrades (library)")
         act_find_page = menu.addAction("Open Find music…")
-        chosen = menu.exec(self._tracks.mapToGlobal(pos))  # type: ignore[arg-type]
+        chosen = menu.exec(self._tracks.mapToGlobal(pos))
         if chosen is act_reveal:
             self._reveal_track()
         elif chosen is act_find and album_id is not None:
@@ -610,8 +610,8 @@ class AlbumsPage(QWidget):
         self._cover_image.setPixmap(scaled)
         self._full_cover = pixmap
 
-    def resizeEvent(self, event: object) -> None:  # noqa: N802 - Qt
-        super().resizeEvent(event)  # type: ignore[misc]
+    def resizeEvent(self, event: QResizeEvent) -> None:  # noqa: N802 - Qt
+        super().resizeEvent(event)
         if self._full_cover is not None and not self._full_cover.isNull():
             self._set_scaled_cover(self._full_cover)
 

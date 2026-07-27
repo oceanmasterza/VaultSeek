@@ -46,9 +46,7 @@ def resolve_enabled_acquisition_providers(config: AcquisitionConfig) -> set[str]
         enabled.add("nicotine_plus")
         enabled.discard("stub")
     # Prowlarr needs search + at least one download client.
-    if config.prowlarr.enabled and (
-        config.qbittorrent.enabled or config.sabnzbd.enabled
-    ):
+    if config.prowlarr.enabled and (config.qbittorrent.enabled or config.sabnzbd.enabled):
         enabled.add("prowlarr")
         enabled.discard("stub")
     if not enabled:

@@ -116,9 +116,7 @@ def collect_pipeline_jobs(container: Container, library_id: UUID) -> list[Job]:
     seen: set[UUID] = set()
     jobs: list[Job] = []
     for status, limit in _PIPELINE_STATUS_LIMITS:
-        for job in container.job_repo.list_by_status(
-            status, library_id=library_id, limit=limit
-        ):
+        for job in container.job_repo.list_by_status(status, library_id=library_id, limit=limit):
             if job.id in seen:
                 continue
             seen.add(job.id)

@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from collections import Counter
 from dataclasses import dataclass
-from enum import Enum
+from enum import StrEnum
 from pathlib import Path
 from uuid import UUID
 
@@ -18,13 +18,12 @@ from vaultseek.models.entities.acquisition_job import (
     AcquisitionJobState,
     AcquisitionJobType,
 )
-from vaultseek.models.entities.track import Track
 from vaultseek.plugins.builtin.musicbrainz.provider import MusicBrainzProvider, ReleaseTracklist
 from vaultseek.services.acquisition_engine import AcquisitionEngine
 from vaultseek.services.missing_media_cache import record_scan
 
 
-class MediaGapKind(str, Enum):
+class MediaGapKind(StrEnum):
     """Kind of missing media detected against MusicBrainz."""
 
     MISSING_TRACK = "missing_track"
@@ -77,8 +76,7 @@ class MissingMediaAnalyzer:
         mb_gaps = self.analyze_library(library_id)
         file_gaps = self.analyze_missing_library_files(library_id, log=False)
         track_gaps = _dedupe_track_gaps(
-            [gap for gap in mb_gaps if gap.kind is MediaGapKind.MISSING_TRACK]
-            + file_gaps
+            [gap for gap in mb_gaps if gap.kind is MediaGapKind.MISSING_TRACK] + file_gaps
         )
         return self._create_jobs_from_gaps(
             acquisition_engine,
@@ -105,8 +103,7 @@ class MissingMediaAnalyzer:
             if gap.album_id == album_id
         ]
         track_gaps = _dedupe_track_gaps(
-            [gap for gap in mb_gaps if gap.kind is MediaGapKind.MISSING_TRACK]
-            + file_gaps
+            [gap for gap in mb_gaps if gap.kind is MediaGapKind.MISSING_TRACK] + file_gaps
         )
         return self._create_jobs_from_gaps(
             acquisition_engine,
@@ -294,9 +291,7 @@ class MissingMediaAnalyzer:
         offset = 0
         while True:
             # zone=None → all zones (Incoming ghosts + Library missing files).
-            batch = self._tracks.get_by_library(
-                library_id, None, offset=offset, limit=500
-            )
+            batch = self._tracks.get_by_library(library_id, None, offset=offset, limit=500)
             if not batch:
                 break
             for track in batch:
@@ -404,9 +399,7 @@ def _gaps_for_album(
     return gaps
 
 
-_TERMINAL_JOB_STATES = frozenset(
-    {AcquisitionJobState.COMPLETED, AcquisitionJobState.CANCELLED}
-)
+_TERMINAL_JOB_STATES = frozenset({AcquisitionJobState.COMPLETED, AcquisitionJobState.CANCELLED})
 
 
 def _job_track_key(job: AcquisitionJob) -> tuple[str, str, str]:

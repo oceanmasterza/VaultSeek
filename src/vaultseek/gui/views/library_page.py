@@ -5,7 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 from uuid import UUID
 
-from PySide6.QtCore import Qt, Signal
+from PySide6.QtCore import QPoint, Qt, Signal
 from PySide6.QtGui import QAction, QKeySequence
 from PySide6.QtWidgets import (
     QComboBox,
@@ -20,17 +20,13 @@ from PySide6.QtWidgets import (
     QTableWidget,
     QTableWidgetItem,
     QTreeWidget,
+    QTreeWidgetItem,
     QVBoxLayout,
     QWidget,
 )
 
 from vaultseek.core.container import Container
 from vaultseek.gui.async_task import run_in_background
-from vaultseek.gui.widgets.table_utils import (
-    begin_table_update,
-    configure_data_table,
-    end_table_update,
-)
 from vaultseek.gui.debounce import connect_debounced
 from vaultseek.gui.widgets.browse import (
     HealthColorDelegate,
@@ -39,6 +35,9 @@ from vaultseek.gui.widgets.browse import (
 )
 from vaultseek.gui.widgets.desktop import copy_text_to_clipboard, open_path, reveal_in_explorer
 from vaultseek.gui.widgets.empty_state import EmptyState
+from vaultseek.gui.widgets.table_utils import (
+    configure_data_table,
+)
 from vaultseek.models.entities.job import JobType
 from vaultseek.models.entities.track import LibraryZone, Track
 from vaultseek.services.album_track_display import effective_track_health
@@ -178,10 +177,12 @@ class LibraryPage(QWidget):
         self._folder_zone = self._zone.currentData()
         self._reload_tracks()
 
-    def _on_tree_selection(self, current: object, _previous: object) -> None:
+    def _on_tree_selection(
+        self, current: QTreeWidgetItem | None, _previous: QTreeWidgetItem | None
+    ) -> None:
         if current is None:
             return
-        data = current.data(0, Qt.ItemDataRole.UserRole)  # type: ignore[union-attr]
+        data = current.data(0, Qt.ItemDataRole.UserRole)
         if not isinstance(data, dict):
             return
         kind = data.get("kind")
@@ -351,7 +352,7 @@ class LibraryPage(QWidget):
             return self._file_paths[row]
         return None
 
-    def _context_menu(self, pos: object) -> None:
+    def _context_menu(self, pos: QPoint) -> None:
         menu = QMenu(self)
         path = self._selected_path()
         act_reveal = menu.addAction("Reveal in Explorer")
@@ -365,7 +366,7 @@ class LibraryPage(QWidget):
             act_reveal.setEnabled(False)
             act_copy.setEnabled(False)
             act_open.setEnabled(False)
-        chosen = menu.exec(self._table.viewport().mapToGlobal(pos))  # type: ignore[arg-type]
+        chosen = menu.exec(self._table.viewport().mapToGlobal(pos))
         if chosen is act_reveal and path:
             reveal_in_explorer(path)
         elif chosen is act_copy and path:

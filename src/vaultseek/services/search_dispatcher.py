@@ -9,7 +9,7 @@ from loguru import logger
 
 from vaultseek.models.entities.acquisition_job import AcquisitionJob, AcquisitionJobState
 from vaultseek.models.interfaces.acquisition import SearchRequest, SearchResult
-from vaultseek.plugins.builtin.nicotine_plus.search_rate_gate import SearchThrottled
+from vaultseek.plugins.builtin.nicotine_plus.search_rate_gate import SearchThrottleError
 from vaultseek.services.acquisition_engine import AcquisitionEngine
 from vaultseek.services.acquisition_labels import job_label
 from vaultseek.services.acquisition_outcomes import (
@@ -84,7 +84,7 @@ class SearchDispatcher:
         logger.info("Searching providers for {}", job_label(job))
         try:
             results = self._search_with_album_preference(job, provider_ids)
-        except SearchThrottled as exc:
+        except SearchThrottleError as exc:
             logger.info(
                 "Search for {} deferred ({:.1f}s) to avoid Soulseek flood ban",
                 job_label(job),

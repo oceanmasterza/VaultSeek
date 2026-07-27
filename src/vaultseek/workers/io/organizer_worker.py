@@ -306,9 +306,7 @@ class OrganizerWorker:
         skip = skip_paths or set()
         for counter in range(128):
             candidate = (
-                base
-                if counter == 0
-                else base.with_name(f"{base.stem} ({counter}){base.suffix}")
+                base if counter == 0 else base.with_name(f"{base.stem} ({counter}){base.suffix}")
             )
             path_key = str(candidate)
             if path_key in skip:
@@ -360,5 +358,3 @@ def _safe_move(source: Path, destination: Path) -> Path:
             raise
     assert last_exc is not None
     raise last_exc
-
-

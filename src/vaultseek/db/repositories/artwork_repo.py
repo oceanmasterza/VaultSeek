@@ -20,8 +20,8 @@ from vaultseek.db.tables import album_artwork, albums, artists, track_artwork
 from vaultseek.db.tables import artwork as artwork_table
 from vaultseek.db.tables import tracks as tracks_table
 from vaultseek.db.uuid_utils import blob_to_uuid, uuid_to_blob
+from vaultseek.models.dto.browse_dto import ArtworkBrowseRow
 from vaultseek.models.entities.artwork import Artwork, ArtworkRole
-from vaultseek.services.dto.browse_dto import ArtworkBrowseRow
 
 
 class ArtworkRepository:
@@ -42,9 +42,7 @@ class ArtworkRepository:
             return existing.id
         try:
             with self._engine.begin() as conn:
-                batch_upsert(
-                    conn, artwork_table, [_to_row(artwork)], conflict_columns=["id"]
-                )
+                batch_upsert(conn, artwork_table, [_to_row(artwork)], conflict_columns=["id"])
         except IntegrityError:
             raced = self.get_by_content_hash(artwork.content_hash_sha256)
             if raced is not None:
@@ -173,9 +171,7 @@ class ArtworkRepository:
         )
         if query:
             like = f"%{query}%"
-            statement = statement.where(
-                or_(albums.c.title.ilike(like), artists.c.name.ilike(like))
-            )
+            statement = statement.where(or_(albums.c.title.ilike(like), artists.c.name.ilike(like)))
         with self._engine.connect() as conn:
             rows = conn.execute(statement).all()
 
@@ -185,10 +181,7 @@ class ArtworkRepository:
             height = int(row.height) if row.height is not None else None
             has_cover = width is not None
             if has_cover and width is not None and height is not None:
-                if width < min_width or height < min_height:
-                    status = "low_res"
-                else:
-                    status = "ok"
+                status = "low_res" if width < min_width or height < min_height else "ok"
             else:
                 status = "missing"
             if missing_only and status == "ok":

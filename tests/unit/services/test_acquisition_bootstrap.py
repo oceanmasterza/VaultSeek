@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 from vaultseek.core.config import AcquisitionConfig, NicotinePlusConfig
+from vaultseek.plugins.builtin.acquisition_stub import StubAcquisitionProvider
+from vaultseek.plugins.builtin.nicotine_plus import NicotinePlusProvider
 from vaultseek.plugins.builtin.nicotine_plus.rpc import FakeRpcClient
 from vaultseek.services.acquisition_bootstrap import (
     connect_acquisition_providers,
@@ -10,15 +12,11 @@ from vaultseek.services.acquisition_bootstrap import (
     probe_nicotine_plus_connection,
     resolve_enabled_acquisition_providers,
 )
-from vaultseek.plugins.builtin.acquisition_stub import StubAcquisitionProvider
-from vaultseek.plugins.builtin.nicotine_plus import NicotinePlusProvider
 from vaultseek.services.provider_manager import ProviderManager
 
 
 def test_normalize_nicotine_settings_switches_http_when_ports_match() -> None:
-    fixed = normalize_nicotine_settings(
-        {"transport": "socket", "port": 12339, "api_port": 12339}
-    )
+    fixed = normalize_nicotine_settings({"transport": "socket", "port": 12339, "api_port": 12339})
     assert fixed["transport"] == "http"
     assert fixed["port"] == 22024
 
@@ -91,7 +89,6 @@ def test_probe_nicotine_fake_rpc_success() -> None:
     }
     # Exercise provider path via direct connect (probe uses fresh provider).
     from vaultseek.models.interfaces.acquisition import AcquisitionProviderConfig
-    from vaultseek.plugins.builtin.nicotine_plus import NicotinePlusProvider
 
     provider = NicotinePlusProvider(rpc_client=FakeRpcClient())
     assert provider.connect(

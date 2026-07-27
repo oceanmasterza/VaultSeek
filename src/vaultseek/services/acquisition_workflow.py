@@ -67,7 +67,10 @@ class AcquisitionWorkflow:
             )
             return verification, None
 
-        if job.state is not AcquisitionJobState.VERIFYING and job.state is not AcquisitionJobState.IMPORTING:
+        if (
+            job.state is not AcquisitionJobState.VERIFYING
+            and job.state is not AcquisitionJobState.IMPORTING
+        ):
             if not verification.ok:
                 logger.warning(
                     "Verification failed for {}: {}",

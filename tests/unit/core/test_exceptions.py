@@ -8,9 +8,9 @@ from vaultseek.core.exceptions import (
     ConfigError,
     ConfigMigrationError,
     ConfigVersionError,
-    VaultSeekError,
     PluginError,
     PluginLoadError,
+    VaultSeekError,
 )
 
 

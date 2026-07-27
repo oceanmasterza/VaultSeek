@@ -545,7 +545,9 @@ def _migrate_v20_to_v21(raw: dict[str, Any]) -> dict[str, Any]:
     if "prowlarr" not in order:
         order.insert(0, "prowlarr")
     acq["provider_order"] = order
-    enabled = ["prowlarr" if p == "prowlarr_qbit" else p for p in (acq.get("enabled_providers") or [])]
+    enabled = [
+        "prowlarr" if p == "prowlarr_qbit" else p for p in (acq.get("enabled_providers") or [])
+    ]
     acq["enabled_providers"] = enabled or ["stub"]
     # Prefer 8081 for qBit when still on the SAB-clashing default 8080.
     qbit = dict(acq.get("qbittorrent") or asdict(QbittorrentConfig()))

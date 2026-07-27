@@ -197,12 +197,7 @@ class CoverArtArchiveProvider:
 
 def _escape_lucene(value: str) -> str:
     """Escape Lucene special characters inside a quoted MB search term."""
-    return (
-        value.replace("\\", "\\\\")
-        .replace('"', '\\"')
-        .replace("(", "\\(")
-        .replace(")", "\\)")
-    )
+    return value.replace("\\", "\\\\").replace('"', '\\"').replace("(", "\\(").replace(")", "\\)")
 
 
 def _normalize(value: str) -> str:

@@ -238,9 +238,7 @@ def test_migrating_a_v6_config_bumps_single_metadata_worker_thread(tmp_path: Pat
 def test_fingerprint_sampling_settings_round_trip(tmp_path: Path) -> None:
     config_path = tmp_path / "config.json"
     save_config(
-        AppConfig(
-            metadata=MetadataConfig(fingerprint_mode="sample", fingerprint_sample_min=5)
-        ),
+        AppConfig(metadata=MetadataConfig(fingerprint_mode="sample", fingerprint_sample_min=5)),
         config_path,
     )
 

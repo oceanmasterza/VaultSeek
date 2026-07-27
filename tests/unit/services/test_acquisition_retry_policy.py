@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-from datetime import UTC
-from pathlib import Path
 from uuid import UUID
 
 from sqlalchemy import Engine
@@ -56,9 +54,7 @@ def test_increment_retry_count_increments_only_counter(engine: Engine, library_i
     assert any("retry_count++" in entry for entry in updated.history)
 
 
-def test_schedule_retry_increments_and_moves_atomically(
-    engine: Engine, library_id: UUID
-) -> None:
+def test_schedule_retry_increments_and_moves_atomically(engine: Engine, library_id: UUID) -> None:
     acq = _acq(engine)
     job_id = _to_downloading(acq, library_id)
     acq.advance(job_id, AcquisitionJobState.DOWNLOAD_FAILED, note="fail")
@@ -67,4 +63,3 @@ def test_schedule_retry_increments_and_moves_atomically(
     assert updated.retry_count == 1
     assert updated.state is AcquisitionJobState.RETRY_SCHEDULED
     assert any("retry_scheduled" in entry for entry in updated.history)
-

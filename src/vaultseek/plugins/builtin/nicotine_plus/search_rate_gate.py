@@ -21,14 +21,12 @@ import time
 from collections import deque
 
 
-class SearchThrottled(Exception):
+class SearchThrottleError(Exception):
     """Raised when a Soulseek search must wait to avoid flood bans."""
 
     def __init__(self, retry_after_seconds: float) -> None:
         self.retry_after_seconds = max(0.0, float(retry_after_seconds))
-        super().__init__(
-            f"Soulseek search rate-limited; retry in {self.retry_after_seconds:.1f}s"
-        )
+        super().__init__(f"Soulseek search rate-limited; retry in {self.retry_after_seconds:.1f}s")
 
 
 class SearchRateGate:

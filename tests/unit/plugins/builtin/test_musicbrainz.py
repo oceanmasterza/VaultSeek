@@ -43,8 +43,7 @@ def test_lookup_by_id_parses_recording() -> None:
     assert by_field["mb_release_group_id"] == "rg-1"
     assert result.lookup_method == "id"
     assert (
-        min(f.confidence for f in result.fields if f.field in {"artist", "album", "title"})
-        >= 0.90
+        min(f.confidence for f in result.fields if f.field in {"artist", "album", "title"}) >= 0.90
     )
 
 

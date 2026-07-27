@@ -278,8 +278,7 @@ def test_execute_auto_keeps_best_for_confident_same_album_duplicates(
     archive_jobs = [
         job
         for job in job_repo.list_by_status(JobStatus.PENDING, library_id=library_id)
-        if job.job_type is JobType.ORGANIZE_FILE
-        and job.payload.get("target_zone") == "archive"
+        if job.job_type is JobType.ORGANIZE_FILE and job.payload.get("target_zone") == "archive"
     ]
     assert len(archive_jobs) == 1
     assert archive_jobs[0].payload["track_id"] == str(track_id)

@@ -229,7 +229,7 @@ class ProwlarrProvider:
         return self._download_qbit(result, raw, link)
 
     @staticmethod
-    def _looks_nzb(raw: dict) -> bool:
+    def _looks_nzb(raw: dict[str, object]) -> bool:
         protocol = str(raw.get("protocol") or "").casefold()
         url = str(raw.get("download_url") or raw.get("link") or "").casefold()
         return protocol == "usenet" or ".nzb" in url
@@ -244,16 +244,16 @@ class ProwlarrProvider:
             result_id=result.result_id,
         )
 
-    def _download_qbit(self, result: SearchResult, raw: dict, link: str) -> DownloadHandle:
+    def _download_qbit(
+        self, result: SearchResult, raw: dict[str, object], link: str
+    ) -> DownloadHandle:
         if self._qbit is None:
             raise ConnectionError("qBittorrent is not connected")
         known_hash = str(raw.get("info_hash") or "").lower() or infohash_from_magnet(
             str(raw.get("magnet_url") or link)
         )
         before = self._qbit.list_hashes(category=self._qbit_category)
-        self._qbit.add_torrent(
-            link, category=self._qbit_category, save_path=self._qbit_save_path
-        )
+        self._qbit.add_torrent(link, category=self._qbit_category, save_path=self._qbit_save_path)
         resolved = self._resolve_hash(known_hash, before)
         download_id = resolved or known_hash or result.result_id
         return DownloadHandle(

@@ -84,7 +84,7 @@ class MusicBrainzProvider:
     def lookup_by_id(self, external_id: str, id_type: str) -> ProviderResult | None:
         if id_type != "recording" or not external_id:
             return None
-        params: dict[str, str] = {"fmt": "json", "inc": "artists+releases+release-groups"}
+        params: dict[str, str | int] = {"fmt": "json", "inc": "artists+releases+release-groups"}
         payload = self._get_json(f"{_MB_RECORDING_URL}{quote(external_id)}", params)
         if payload is None:
             return None
@@ -228,13 +228,9 @@ def _recording_to_result(
     if not any(f.field == "mb_release_group_id" for f in fields):
         groups = recording.get("release-groups") or []
         if groups and groups[0].get("id"):
-            fields.append(
-                ProviderFieldResult("mb_release_group_id", str(groups[0]["id"]), 0.90)
-            )
+            fields.append(ProviderFieldResult("mb_release_group_id", str(groups[0]["id"]), 0.90))
             if not any(f.field == "album" for f in fields) and groups[0].get("title"):
-                fields.append(
-                    ProviderFieldResult("album", str(groups[0]["title"]), album_c)
-                )
+                fields.append(ProviderFieldResult("album", str(groups[0]["title"]), album_c))
 
     if not fields:
         return None

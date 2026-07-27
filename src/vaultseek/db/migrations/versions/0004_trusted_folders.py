@@ -24,7 +24,9 @@ def upgrade() -> None:
     """Upgrade schema."""
     op.create_table(
         "trusted_folders",
-        sa.Column("library_id", sa.LargeBinary(16), sa.ForeignKey("libraries.id"), primary_key=True),
+        sa.Column(
+            "library_id", sa.LargeBinary(16), sa.ForeignKey("libraries.id"), primary_key=True
+        ),
         sa.Column("folder_path", sa.Text, primary_key=True),
         sa.Column("release_mbid", sa.Text, nullable=False),
         sa.Column("official_track_count", sa.Integer, nullable=False),

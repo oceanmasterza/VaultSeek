@@ -8,15 +8,23 @@ duplicate regardless of tags.
 
 from __future__ import annotations
 
-from vaultseek.db.repositories.album_repo import AlbumRepository
+from typing import Protocol
+from uuid import UUID
+
 from vaultseek.models.entities.album import Album
 from vaultseek.models.entities.track import Track
+
+
+class AlbumLookup(Protocol):
+    """Minimal album fetch API (implemented by :class:`AlbumRepository`)."""
+
+    def get(self, album_id: UUID) -> Album | None: ...
 
 
 def same_album_context(
     left: Track,
     right: Track,
-    albums: AlbumRepository | None,
+    albums: AlbumLookup | None,
 ) -> bool:
     """True when both tracks belong to the same album release context.
 

@@ -65,9 +65,7 @@ def _runner(
     acq = AcquisitionEngine(manager, AcquisitionJobRepository(engine))
     search = SearchDispatcher(manager, acq, empty_search_exhaust_after=8)
     downloads = DownloadManager(manager, acq)
-    workflow = AcquisitionWorkflow(
-        acq, downloads, VerificationEngine(acq), ImportPipeline(acq)
-    )
+    workflow = AcquisitionWorkflow(acq, downloads, VerificationEngine(acq), ImportPipeline(acq))
     runner = AcquisitionRunner(
         acq,
         search,
@@ -118,9 +116,7 @@ def test_provider_offline_does_not_park_review(engine: Engine, library_id: UUID)
     assert reviews.get_pending(library_id) == []
 
 
-def test_exhausted_empty_search_parks_unavailable_review(
-    engine: Engine, library_id: UUID
-) -> None:
+def test_exhausted_empty_search_parks_unavailable_review(engine: Engine, library_id: UUID) -> None:
     runner, acq, reviews = _runner(engine)
     job = acq.create_job(
         library_id=library_id,
@@ -149,9 +145,7 @@ def test_exhausted_empty_search_parks_unavailable_review(
     )
 
 
-def test_acquisition_attention_dedupes_exhausted_job(
-    engine: Engine, library_id: UUID
-) -> None:
+def test_acquisition_attention_dedupes_exhausted_job(engine: Engine, library_id: UUID) -> None:
     reviews = _review_queue(engine)
     acq = AcquisitionEngine(ProviderManager(), AcquisitionJobRepository(engine))
     job = acq.create_job(
@@ -210,9 +204,7 @@ def test_download_failed_does_not_park_review(
     assert reviews.get_pending(library_id) == []
 
 
-def test_waiting_for_user_does_not_park_review(
-    engine: Engine, library_id: UUID
-) -> None:
+def test_waiting_for_user_does_not_park_review(engine: Engine, library_id: UUID) -> None:
     class _OneHitProvider(StubAcquisitionProvider):
         provider_id = "onehit"
         display_name = "OneHit"
@@ -236,9 +228,7 @@ def test_waiting_for_user_does_not_park_review(
     acq = AcquisitionEngine(manager, AcquisitionJobRepository(engine))
     search = SearchDispatcher(manager, acq)
     downloads = DownloadManager(manager, acq)
-    workflow = AcquisitionWorkflow(
-        acq, downloads, VerificationEngine(acq), ImportPipeline(acq)
-    )
+    workflow = AcquisitionWorkflow(acq, downloads, VerificationEngine(acq), ImportPipeline(acq))
     runner = AcquisitionRunner(
         acq,
         search,
@@ -261,7 +251,5 @@ def test_waiting_for_user_does_not_park_review(
     assert outcome.state is AcquisitionJobState.WAITING_FOR_USER
     loaded = acq.get(job.id)
     assert loaded is not None
-    assert loaded.extra.get("outcome_code") == (
-        AcquisitionOutcomeCode.FOUND_BELOW_THRESHOLD.value
-    )
+    assert loaded.extra.get("outcome_code") == (AcquisitionOutcomeCode.FOUND_BELOW_THRESHOLD.value)
     assert reviews.get_pending(library_id) == []

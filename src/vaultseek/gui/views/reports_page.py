@@ -91,9 +91,7 @@ class ReportsPage(QWidget):
         refresh.clicked.connect(self.refresh)
         open_reports = QPushButton("Open reports folder")
         open_reports.setProperty("secondary", True)
-        open_reports.clicked.connect(
-            lambda: open_path(self._container.paths.reports_dir)
-        )
+        open_reports.clicked.connect(lambda: open_path(self._container.paths.reports_dir))
         gen = QPushButton("Generate library summary file")
         gen.setToolTip("Write a library summary JSON under the reports folder.")
         gen.clicked.connect(self._generate_summary)
@@ -117,11 +115,7 @@ class ReportsPage(QWidget):
             return
 
         jobs = self._container.acquisition_engine.list_jobs(library_id=self._library_id)
-        jobs = [
-            job
-            for job in jobs
-            if _aware(job.created_at) >= _SESSION_STARTED_AT
-        ]
+        jobs = [job for job in jobs if _aware(job.created_at) >= _SESSION_STARTED_AT]
         if not jobs:
             self._summary.setText(
                 "No acquisition activity yet this session "
@@ -136,8 +130,7 @@ class ReportsPage(QWidget):
         track_jobs = [
             j
             for j in jobs
-            if j.job_type
-            in (AcquisitionJobType.MISSING_TRACK, AcquisitionJobType.QUALITY_UPGRADE)
+            if j.job_type in (AcquisitionJobType.MISSING_TRACK, AcquisitionJobType.QUALITY_UPGRADE)
         ]
         album_state = Counter(_state_bucket(j.state) for j in album_jobs)
         track_state = Counter(_state_bucket(j.state) for j in track_jobs)
@@ -193,6 +186,8 @@ class ReportsPage(QWidget):
         ):
             while host.count():
                 item = host.takeAt(0)
+                if item is None:
+                    continue
                 widget = item.widget()
                 if widget is not None:
                     widget.deleteLater()

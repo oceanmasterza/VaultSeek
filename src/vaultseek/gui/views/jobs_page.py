@@ -15,12 +15,10 @@ from PySide6.QtWidgets import (
 )
 
 from vaultseek.core.container import Container
-from vaultseek.gui.widgets.table_utils import (
-    begin_table_update,
-    configure_data_table,
-    end_table_update,
-)
 from vaultseek.gui.datetime_format import format_local_datetime
+from vaultseek.gui.widgets.table_utils import (
+    configure_data_table,
+)
 from vaultseek.models.entities.job import JobStatus
 
 

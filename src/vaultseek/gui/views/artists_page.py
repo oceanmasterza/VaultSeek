@@ -17,14 +17,12 @@ from PySide6.QtWidgets import (
 )
 
 from vaultseek.core.container import Container
-from vaultseek.gui.widgets.table_utils import (
-    begin_table_update,
-    configure_data_table,
-    end_table_update,
-)
 from vaultseek.gui.debounce import connect_debounced
 from vaultseek.gui.widgets.browse import fill_track_table
 from vaultseek.gui.widgets.desktop import reveal_in_explorer
+from vaultseek.gui.widgets.table_utils import (
+    configure_data_table,
+)
 
 
 class ArtistsPage(QWidget):

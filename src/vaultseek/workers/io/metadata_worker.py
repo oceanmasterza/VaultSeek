@@ -79,9 +79,7 @@ class MetadataWorker:
             and not self._folder_trust.is_trusted_for_track(track)
             and fingerprint is not None
         )
-        result = self._arbitrator.resolve(
-            track, fingerprint, force_acoustid=force_acoustid
-        )
+        result = self._arbitrator.resolve(track, fingerprint, force_acoustid=force_acoustid)
 
         now = datetime.now(UTC)
         updated = _apply_fields(
@@ -116,9 +114,7 @@ class MetadataWorker:
             )
 
         if self._fingerprint_mode == "sample" and self._folder_trust is not None:
-            self._folder_trust.try_trust_after_identify(
-                updated, result, identity, now=now
-            )
+            self._folder_trust.try_trust_after_identify(updated, result, identity, now=now)
 
         self._job_queue.enqueue(
             JobType.DETECT_DUPLICATES,
@@ -135,7 +131,9 @@ class MetadataWorker:
                 parent_job_id=job.id,
                 now=now,
             )
-        summary = _identify_summary(updated, result.fields, result.overall_confidence, result.needs_review)
+        summary = _identify_summary(
+            updated, result.fields, result.overall_confidence, result.needs_review
+        )
         self._job_queue.mark_completed(
             job.id,
             summary=summary,

@@ -13,11 +13,11 @@ from vaultseek.db.repositories.acquisition_job_repo import AcquisitionJobReposit
 from vaultseek.db.repositories.album_repo import AlbumRepository
 from vaultseek.db.repositories.artist_repo import ArtistRepository
 from vaultseek.db.repositories.track_repo import TrackRepository
+from vaultseek.db.uuid_utils import generate_uuid7
 from vaultseek.models.entities.acquisition_job import AcquisitionJobState, AcquisitionJobType
 from vaultseek.models.entities.album import Album
 from vaultseek.models.entities.track import LibraryZone, Track
 from vaultseek.plugins.builtin.acquisition_stub import StubAcquisitionProvider
-from vaultseek.db.uuid_utils import generate_uuid7
 from vaultseek.plugins.builtin.musicbrainz.provider import OfficialTrack, ReleaseTracklist
 from vaultseek.services.acquisition_engine import AcquisitionEngine
 from vaultseek.services.missing_media_analyzer import MediaGapKind, MissingMediaAnalyzer

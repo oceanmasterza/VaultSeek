@@ -25,6 +25,7 @@ from PySide6.QtWidgets import (
     QPushButton,
     QSpinBox,
     QVBoxLayout,
+    QWidget,
     QWizard,
     QWizardPage,
 )
@@ -34,7 +35,7 @@ from vaultseek.core.config import (
     save_config,
 )
 from vaultseek.core.container import Container
-from vaultseek.db.uuid_utils import generate_uuid7
+from vaultseek.core.uuid_utils import generate_uuid7
 from vaultseek.gui.widgets.path_picker import PathPickerRow
 from vaultseek.models.entities.library import Library
 from vaultseek.services.acquisition_bootstrap import (
@@ -55,7 +56,7 @@ class SetupWizard(QWizard):
 
     finished_setup = Signal(object)  # UUID | None
 
-    def __init__(self, container: Container, parent=None) -> None:
+    def __init__(self, container: Container, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self._container = container
         self.setWindowTitle("VaultSeek setup")

@@ -54,9 +54,7 @@ def test_download_status_fails_gracefully_when_rpc_offline() -> None:
     client = LocalSocketRpcClient(host="127.0.0.1", port=1, timeout_seconds=0.05)
     provider = NicotinePlusProvider(rpc_client=client)
     with patch.object(provider, "_probe_host", return_value=True):
-        provider.connect(
-            AcquisitionProviderConfig(provider_id="nicotine_plus", enabled=True)
-        )
+        provider.connect(AcquisitionProviderConfig(provider_id="nicotine_plus", enabled=True))
     handle = provider.download(
         SearchResult(
             provider_id="nicotine_plus",
@@ -71,9 +69,7 @@ def test_download_status_fails_gracefully_when_rpc_offline() -> None:
 
 def test_disabled_config_does_not_connect() -> None:
     provider = NicotinePlusProvider()
-    ok = provider.connect(
-        AcquisitionProviderConfig(provider_id="nicotine_plus", enabled=False)
-    )
+    ok = provider.connect(AcquisitionProviderConfig(provider_id="nicotine_plus", enabled=False))
     assert ok is False
 
 

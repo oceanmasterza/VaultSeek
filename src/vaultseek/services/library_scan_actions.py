@@ -49,9 +49,7 @@ def run_missing_scan(container: Container, library_id: UUID) -> int:
     return len(jobs)
 
 
-def run_missing_scan_for_album(
-    container: Container, library_id: UUID, album_id: UUID
-) -> int:
+def run_missing_scan_for_album(container: Container, library_id: UUID, album_id: UUID) -> int:
     """Scoped missing-track scan for one album (context-menu path)."""
     prefs = container.config.acquisition
     jobs = _missing_analyzer(container).create_jobs_for_album(

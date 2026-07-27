@@ -209,9 +209,7 @@ def test_provider_search_filters_low_seeders() -> None:
         ),
         ProwlarrResult(title="NoLink", guid="g3", seeders=100, protocol="torrent"),
     ]
-    provider = ProwlarrQbittorrentProvider(
-        prowlarr=_FakeProwlarr(results), qbittorrent=_FakeQbit()
-    )
+    provider = ProwlarrQbittorrentProvider(prowlarr=_FakeProwlarr(results), qbittorrent=_FakeQbit())
     _connect(provider)
 
     hits = provider.search(SearchRequest(artist="A", album="B"))

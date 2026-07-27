@@ -24,9 +24,7 @@ def configure_data_table(table: QTableWidget, *, stretch_last: bool = True) -> N
     header.setSectionResizeMode(QHeaderView.ResizeMode.Interactive)
     if stretch_last and table.columnCount() > 0:
         # Keep last column flexible while earlier columns stay user-resizable.
-        header.setSectionResizeMode(
-            table.columnCount() - 1, QHeaderView.ResizeMode.Stretch
-        )
+        header.setSectionResizeMode(table.columnCount() - 1, QHeaderView.ResizeMode.Stretch)
 
 
 def begin_table_update(table: QTableWidget) -> bool:

@@ -61,9 +61,7 @@ class RuleWorker:
         current = self._rules.apply_matches(track, matches, now=now)
 
         if current.zone is LibraryZone.INCOMING:
-            library = (
-                self._libraries.get(job.library_id) if self._libraries is not None else None
-            )
+            library = self._libraries.get(job.library_id) if self._libraries is not None else None
             if _ready_for_library(current, library, self._duplicates):
                 self._job_queue.enqueue(
                     JobType.ORGANIZE_FILE,
@@ -91,6 +89,4 @@ def _ready_for_library(
     threshold = library.auto_approve_threshold if library is not None else 0.90
     if track.overall_confidence < threshold:
         return False
-    if duplicates.has_open_group(track.id):
-        return False
-    return True
+    return not duplicates.has_open_group(track.id)

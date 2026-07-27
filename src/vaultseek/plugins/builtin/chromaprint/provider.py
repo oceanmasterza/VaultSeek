@@ -28,25 +28,27 @@ def _fingerprint_file_fpcalc_hidden(path: str, maxlength: float) -> tuple[float,
     """Same contract as ``acoustid._fingerprint_file_fpcalc``, without a console."""
     fpcalc = os.environ.get(acoustid.FPCALC_ENVVAR, acoustid.FPCALC_COMMAND)
     command = [fpcalc, "-length", str(maxlength), path]
-    kwargs: dict[str, object] = {
-        "stdout": subprocess.PIPE,
-        "stderr": subprocess.DEVNULL,
-    }
-    if os.name == "nt":
-        kwargs["creationflags"] = _CREATE_NO_WINDOW
     try:
-        proc = subprocess.Popen(command, **kwargs)  # type: ignore[arg-type]
+        if os.name == "nt":
+            proc = subprocess.Popen(
+                command,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.DEVNULL,
+                creationflags=_CREATE_NO_WINDOW,
+            )
+        else:
+            proc = subprocess.Popen(
+                command,
+                stdout=subprocess.PIPE,
+                stderr=subprocess.DEVNULL,
+            )
         output, _ = proc.communicate()
     except OSError as exc:
         if exc.errno == errno.ENOENT:
             raise acoustid.NoBackendError("fpcalc not found") from exc
-        raise acoustid.FingerprintGenerationError(
-            f"fpcalc invocation failed: {exc}"
-        ) from exc
+        raise acoustid.FingerprintGenerationError(f"fpcalc invocation failed: {exc}") from exc
     if proc.returncode:
-        raise acoustid.FingerprintGenerationError(
-            f"fpcalc exited with status {proc.returncode}"
-        )
+        raise acoustid.FingerprintGenerationError(f"fpcalc exited with status {proc.returncode}")
 
     duration: float | None = None
     fingerprint: bytes | None = None
@@ -58,9 +60,7 @@ def _fingerprint_file_fpcalc_hidden(path: str, maxlength: float) -> tuple[float,
             try:
                 duration = float(parts[1])
             except ValueError as exc:
-                raise acoustid.FingerprintGenerationError(
-                    "fpcalc duration not numeric"
-                ) from exc
+                raise acoustid.FingerprintGenerationError("fpcalc duration not numeric") from exc
         elif parts[0] == b"FINGERPRINT":
             fingerprint = parts[1]
 
@@ -72,7 +72,7 @@ def _fingerprint_file_fpcalc_hidden(path: str, maxlength: float) -> tuple[float,
 def _ensure_fpcalc_no_window() -> None:
     if getattr(acoustid, _PATCHED_ATTR, False):
         return
-    acoustid._fingerprint_file_fpcalc = _fingerprint_file_fpcalc_hidden  # type: ignore[attr-defined]
+    acoustid._fingerprint_file_fpcalc = _fingerprint_file_fpcalc_hidden
     setattr(acoustid, _PATCHED_ATTR, True)
 
 

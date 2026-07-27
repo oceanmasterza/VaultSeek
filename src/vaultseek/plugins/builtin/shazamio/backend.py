@@ -14,7 +14,7 @@ from __future__ import annotations
 import asyncio
 import threading
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 from loguru import logger
 
@@ -27,7 +27,9 @@ _CLIENTS: dict[str | None, Any] = {}
 _CLIENTS_LOCK = threading.Lock()
 
 
-def recognize_with_shazamio(file_path: str, *, proxy_url: str | None = None) -> dict[str, Any] | None:
+def recognize_with_shazamio(
+    file_path: str, *, proxy_url: str | None = None
+) -> dict[str, Any] | None:
     """Run one Shazam recognition. Returns the raw Shazam JSON dict or None."""
     global _WARNED_UNAVAILABLE
     path = Path(file_path).expanduser()
@@ -52,7 +54,8 @@ def recognize_with_shazamio(file_path: str, *, proxy_url: str | None = None) -> 
         return None
 
     try:
-        return _run_on_loop(_recognize_async(str(path), proxy_url=proxy_url))
+        result = _run_on_loop(_recognize_async(str(path), proxy_url=proxy_url))
+        return cast(dict[str, Any], result)
     except Exception as exc:  # noqa: BLE001
         logger.debug("Shazamio recognize failed for {}: {}", path.name, exc)
         return None
@@ -63,7 +66,8 @@ async def _recognize_async(file_path: str, *, proxy_url: str | None) -> dict[str
     kwargs: dict[str, Any] = {}
     if proxy_url:
         kwargs["proxy"] = proxy_url
-    return await shazam.recognize(file_path, **kwargs)
+    payload = await shazam.recognize(file_path, **kwargs)
+    return cast(dict[str, Any], payload)
 
 
 def _client_for(proxy_url: str | None) -> Any:

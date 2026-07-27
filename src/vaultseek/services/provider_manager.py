@@ -14,7 +14,7 @@ from vaultseek.models.interfaces.acquisition import (
     SearchRequest,
     SearchResult,
 )
-from vaultseek.plugins.builtin.nicotine_plus.search_rate_gate import SearchThrottled
+from vaultseek.plugins.builtin.nicotine_plus.search_rate_gate import SearchThrottleError
 
 
 class ProviderManager:
@@ -43,9 +43,7 @@ class ProviderManager:
         """Ids of providers that successfully connected."""
         return tuple(sorted(self._connected))
 
-    def has_connected_search_providers(
-        self, *, provider_ids: Sequence[str] | None = None
-    ) -> bool:
+    def has_connected_search_providers(self, *, provider_ids: Sequence[str] | None = None) -> bool:
         """True when at least one real (non-stub) connected provider can search."""
         return any(
             provider.capabilities.search and provider.provider_id != "stub"
@@ -84,13 +82,13 @@ class ProviderManager:
     ) -> list[SearchResult]:
         results: list[SearchResult] = []
         connection_errors: list[ConnectionError] = []
-        throttled: SearchThrottled | None = None
+        throttled: SearchThrottleError | None = None
         for provider in self._iter_active(provider_ids):
             if not provider.capabilities.search:
                 continue
             try:
                 batch = provider.search(request)
-            except SearchThrottled as exc:
+            except SearchThrottleError as exc:
                 # Nicotine flood gate must not block Prowlarr / other providers.
                 throttled = exc
                 logger.info(
@@ -141,19 +139,14 @@ class ProviderManager:
             return None
         return provider.get_status(handle)
 
-    def _iter_active(
-        self, provider_ids: Sequence[str] | None
-    ) -> list[AcquisitionProvider]:
+    def _iter_active(self, provider_ids: Sequence[str] | None) -> list[AcquisitionProvider]:
         if provider_ids is None:
             preferred = [
-                pid if pid != "prowlarr_qbit" else "prowlarr"
-                for pid in self._provider_order
+                pid if pid != "prowlarr_qbit" else "prowlarr" for pid in self._provider_order
             ]
             ordered = [pid for pid in preferred if pid in self._connected]
             # Append any connected providers missing from the configured order.
-            ordered.extend(
-                pid for pid in sorted(self._connected) if pid not in ordered
-            )
+            ordered.extend(pid for pid in sorted(self._connected) if pid not in ordered)
             ids = ordered
         else:
             ids = [

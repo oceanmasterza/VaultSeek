@@ -7,12 +7,12 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from datetime import datetime
-from enum import Enum
+from enum import StrEnum
 from typing import Any
 from uuid import UUID
 
 
-class AcquisitionJobType(str, Enum):
+class AcquisitionJobType(StrEnum):
     """What the job is trying to acquire."""
 
     MISSING_ALBUM = "missing_album"
@@ -20,7 +20,7 @@ class AcquisitionJobType(str, Enum):
     QUALITY_UPGRADE = "quality_upgrade"
 
 
-class AcquisitionJobState(str, Enum):
+class AcquisitionJobState(StrEnum):
     """Deterministic AcquisitionJob state machine."""
 
     CREATED = "created"

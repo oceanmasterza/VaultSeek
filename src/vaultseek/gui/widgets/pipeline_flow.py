@@ -28,6 +28,8 @@ class PipelineFlowWidget(QWidget):
     def set_stages(self, stages: tuple[PipelineStageStat, ...]) -> None:
         while self._row.count():
             item = self._row.takeAt(0)
+            if item is None:
+                continue
             widget = item.widget()
             if widget is not None:
                 widget.deleteLater()
@@ -72,9 +74,7 @@ class PipelineFlowWidget(QWidget):
             else:
                 bar.setMaximum(max(stage.backlog, 1))
                 bar.setValue(0)
-            status = QLabel(
-                "running" if stage.running else ("queued" if stage.backlog else "idle")
-            )
+            status = QLabel("running" if stage.running else ("queued" if stage.backlog else "idle"))
             status.setAlignment(Qt.AlignmentFlag.AlignCenter)
             status.setProperty("muted", True)
             inner.addWidget(title)

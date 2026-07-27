@@ -25,7 +25,9 @@ _NOW = datetime(2026, 7, 22, tzinfo=UTC)
 _RELEASE_MBID = "11111111-2222-3333-4444-555555555555"
 
 
-def _job(*, title: str, state: AcquisitionJobState, library_id: UUID | None = None) -> AcquisitionJob:
+def _job(
+    *, title: str, state: AcquisitionJobState, library_id: UUID | None = None
+) -> AcquisitionJob:
     lib = library_id or generate_uuid7()
     return AcquisitionJob(
         id=generate_uuid7(),

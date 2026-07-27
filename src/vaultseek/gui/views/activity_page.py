@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from uuid import UUID
 
-from PySide6.QtCore import Qt, Signal
+from PySide6.QtCore import Signal
 from PySide6.QtWidgets import (
     QComboBox,
     QHBoxLayout,
@@ -17,13 +17,11 @@ from PySide6.QtWidgets import (
 )
 
 from vaultseek.core.container import Container
-from vaultseek.gui.widgets.table_utils import (
-    begin_table_update,
-    configure_data_table,
-    end_table_update,
-)
 from vaultseek.gui.datetime_format import format_local_datetime
 from vaultseek.gui.widgets.empty_state import EmptyState
+from vaultseek.gui.widgets.table_utils import (
+    configure_data_table,
+)
 from vaultseek.services.activity_feed import (
     ActivityItem,
     ActivitySource,

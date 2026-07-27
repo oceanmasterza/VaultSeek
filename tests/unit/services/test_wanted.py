@@ -20,7 +20,12 @@ from vaultseek.services.wanted import (
 )
 
 
-def _job(*, parked: bool = False, artist: str = "A", state: AcquisitionJobState = AcquisitionJobState.CREATED) -> AcquisitionJob:
+def _job(
+    *,
+    parked: bool = False,
+    artist: str = "A",
+    state: AcquisitionJobState = AcquisitionJobState.CREATED,
+) -> AcquisitionJob:
     now = datetime.now(UTC)
     return AcquisitionJob(
         id=uuid4(),

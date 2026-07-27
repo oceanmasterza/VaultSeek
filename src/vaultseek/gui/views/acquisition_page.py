@@ -21,13 +21,13 @@ from PySide6.QtWidgets import (
 
 from vaultseek.core.container import Container
 from vaultseek.gui.async_task import run_in_background
+from vaultseek.gui.datetime_format import format_local_datetime
+from vaultseek.gui.widgets.empty_state import EmptyState
 from vaultseek.gui.widgets.table_utils import (
     begin_table_update,
     configure_data_table,
     end_table_update,
 )
-from vaultseek.gui.datetime_format import format_local_datetime
-from vaultseek.gui.widgets.empty_state import EmptyState
 from vaultseek.models.entities.acquisition_job import AcquisitionJobState
 from vaultseek.services.wanted import is_parked
 
@@ -137,13 +137,13 @@ class AcquisitionPage(QWidget):
     def refresh(self) -> None:
         selected_rows = {index.row() for index in self._table.selectedIndexes()}
         previous_ids: set[UUID] = set()
-        for row in selected_rows:
-            item = self._table.item(row, 0)
+        for sel_row in selected_rows:
+            item = self._table.item(sel_row, 0)
             raw = item.data(Qt.ItemDataRole.UserRole) if item else None
             if raw:
                 previous_ids.add(UUID(str(raw)))
-            elif 0 <= row < len(self._job_ids):
-                previous_ids.add(self._job_ids[row])
+            elif 0 <= sel_row < len(self._job_ids):
+                previous_ids.add(self._job_ids[sel_row])
 
         threshold = self._container.config.acquisition.auto_acquire_threshold
         if self._library_id is None:
@@ -370,7 +370,16 @@ class AcquisitionPage(QWidget):
             return len(created), connected, auto_queue
 
         def done(result: object) -> None:
-            created_count, connected, queued = result  # type: ignore[misc]
+            if not isinstance(result, tuple) or len(result) != 3:
+                return
+            created_count_obj, connected_obj, queued_obj = result
+            if not isinstance(created_count_obj, int):
+                return
+            created_count: int = created_count_obj
+            connected: tuple[str, ...] = (
+                tuple(connected_obj) if isinstance(connected_obj, tuple) else ()
+            )
+            queued: bool = bool(queued_obj)
             from loguru import logger
 
             if created_count:
@@ -522,7 +531,7 @@ class AcquisitionPage(QWidget):
         dialog = _ResultPickerDialog(self)
         dialog.setWindowTitle("Pick acquisition result")
 
-        item_by_result_id: dict[str, dict] = {}
+        item_by_result_id: dict[str, dict[str, object]] = {}
         for item in search_results_raw:
             if not isinstance(item, dict):
                 continue
@@ -638,7 +647,9 @@ class _ResultPickerDialog(QDialog):
         self._table.setItem(row, 5, QTableWidgetItem(count_text))
         self._table.setRowHeight(row, 22)
         # Store result id on the "Result" cell.
-        self._table.item(row, 1).setData(256, result_id)  # Qt.UserRole
+        result_cell = self._table.item(row, 1)
+        if result_cell is not None:
+            result_cell.setData(256, result_id)  # Qt.UserRole
 
     def row_count(self) -> int:
         return self._table.rowCount()

@@ -23,19 +23,17 @@ from PySide6.QtWidgets import (
 
 from vaultseek.core.config import save_config
 from vaultseek.core.container import Container
-from vaultseek.gui.widgets.table_utils import (
-    begin_table_update,
-    configure_data_table,
-    end_table_update,
-)
 from vaultseek.core.logging import get_live_log_buffer
 from vaultseek.gui.widgets.pipeline_flow import PipelineFlowWidget
+from vaultseek.gui.widgets.table_utils import (
+    configure_data_table,
+)
+from vaultseek.models.entities.job import Job
 from vaultseek.models.entities.track import LibraryZone
 from vaultseek.services.dashboard import DashboardSnapshot, build_dashboard_snapshot
 
 _TEXT_SELECT = (
-    Qt.TextInteractionFlag.TextSelectableByMouse
-    | Qt.TextInteractionFlag.TextSelectableByKeyboard
+    Qt.TextInteractionFlag.TextSelectableByMouse | Qt.TextInteractionFlag.TextSelectableByKeyboard
 )
 
 
@@ -103,12 +101,11 @@ class DashboardPage(QWidget):
         header.addStretch(1)
         self._btn_setup_wizard = QPushButton("Setup wizard")
         self._btn_setup_wizard.setToolTip(
-            "Folders, Nicotine+, and optional tokens. Opens anytime — never forced again after first run."
+            "Folders, Nicotine+, and optional tokens. Opens anytime — never forced "
+            "again after first run."
         )
         self._btn_setup_wizard.setProperty("secondary", True)
-        self._btn_setup_wizard.clicked.connect(
-            lambda: self.navigate_requested.emit("setup_wizard")
-        )
+        self._btn_setup_wizard.clicked.connect(lambda: self.navigate_requested.emit("setup_wizard"))
         header.addWidget(self._btn_setup_wizard)
         refresh = QPushButton("Refresh")
         refresh.setProperty("secondary", True)
@@ -134,9 +131,7 @@ class DashboardPage(QWidget):
         self._btn_gs_scan.clicked.connect(lambda: self.navigate_requested.emit("scan"))
         self._btn_gs_missing = QPushButton("Find music")
         self._btn_gs_missing.setProperty("secondary", True)
-        self._btn_gs_missing.clicked.connect(
-            lambda: self.navigate_requested.emit("find")
-        )
+        self._btn_gs_missing.clicked.connect(lambda: self.navigate_requested.emit("find"))
         self._btn_gs_dismiss = QPushButton("Dismiss tips")
         self._btn_gs_dismiss.setProperty("secondary", True)
         self._btn_gs_dismiss.clicked.connect(self._dismiss_onboarding_tips)
@@ -422,7 +417,7 @@ class DashboardPage(QWidget):
         log_layout = QVBoxLayout(log_box)
         log_layout.addWidget(self._panel_title("Live activity"))
         log_help = _selectable_label(
-            "Recent app log lines (scan, search, acquire). Full history is still in the log folder.",
+            "Recent app log lines (scan, search, acquire). Full history is in the log folder.",
             muted=True,
         )
         log_layout.addWidget(log_help)
@@ -478,9 +473,7 @@ class DashboardPage(QWidget):
         self._container.config = updated
         self._container.acquisition_automation_service.set_acquisition_config(acquisition)
         self._wishlist_hint.setText(
-            "Continuous (rate-limited)"
-            if value <= 0
-            else f"At most every {float(value):g} hour(s)"
+            "Continuous (rate-limited)" if value <= 0 else f"At most every {float(value):g} hour(s)"
         )
 
     def _dismiss_onboarding_tips(self) -> None:
@@ -527,9 +520,7 @@ class DashboardPage(QWidget):
             )
 
         if snap.acquisition.total == 0:
-            steps.append(
-                "4. Find gaps — Find & get → Find music (Library gaps or Discogs browse)."
-            )
+            steps.append("4. Find gaps — Find & get → Find music (Library gaps or Discogs browse).")
         else:
             steps.append(
                 f"4. Wishlist has {snap.acquisition.active} active job(s) — "
@@ -658,9 +649,7 @@ class DashboardPage(QWidget):
         lines: list[str] = []
 
         if not gaps.available:
-            lines.append(
-                "Missing-track detection unavailable (MusicBrainz provider required)."
-            )
+            lines.append("Missing-track detection unavailable (MusicBrainz provider required).")
         elif not gaps.scanned:
             lines.append(
                 "Missing tracks: not scanned yet — run Find music → Find missing songs "
@@ -668,7 +657,8 @@ class DashboardPage(QWidget):
             )
         elif gaps.albums_scanned == 0:
             lines.append(
-                "No albums linked to MusicBrainz yet — identify albums first so gaps can be detected."
+                "No albums linked to MusicBrainz yet — identify albums first so gaps "
+                "can be detected."
             )
         elif gaps.missing_tracks:
             lines.append(
@@ -687,13 +677,15 @@ class DashboardPage(QWidget):
         if acq.total == 0:
             if gaps.scanned and gaps.missing_tracks:
                 lines.append(
-                    "No wishlist jobs yet — open Find music → Find missing songs to queue downloads."
+                    "No wishlist jobs yet — open Find music → Find missing songs to queue "
+                    "downloads."
                 )
             elif gaps.available and gaps.albums_scanned:
                 lines.append("No wishlist jobs — nothing missing to acquire.")
             else:
                 lines.append(
-                    "No wishlist jobs yet. Use Find music → Find missing songs after albums are identified."
+                    "No wishlist jobs yet. Use Find music → Find missing songs after albums "
+                    "are identified."
                 )
         else:
             wishlist_parts = [
@@ -715,15 +707,13 @@ class DashboardPage(QWidget):
 
         self._acquisition_summary.setText("\n".join(lines))
 
-    def _fill_jobs(self, table: QTableWidget, jobs: tuple, *, kind: str) -> None:
+    def _fill_jobs(self, table: QTableWidget, jobs: tuple[Job, ...], *, kind: str) -> None:
         table.setRowCount(len(jobs))
         for row, job in enumerate(jobs):
             table.setItem(row, 0, QTableWidgetItem(job.job_type.value))
             if kind == "running":
                 table.setItem(row, 1, QTableWidgetItem(str(job.attempt_count)))
-                started = (
-                    job.started_at.isoformat(timespec="seconds") if job.started_at else "—"
-                )
+                started = job.started_at.isoformat(timespec="seconds") if job.started_at else "—"
                 table.setItem(row, 2, QTableWidgetItem(started))
             else:
                 err = (job.error_message or "")[:120]

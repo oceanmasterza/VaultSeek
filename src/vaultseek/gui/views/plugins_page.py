@@ -326,9 +326,7 @@ class PluginsPage(QWidget):
             category=self._sab_category.text().strip() or "vaultseek",
         )
         enabled = [
-            p
-            for p in acq.enabled_providers
-            if p not in ("stub", "prowlarr", "prowlarr_qbit")
+            p for p in acq.enabled_providers if p not in ("stub", "prowlarr", "prowlarr_qbit")
         ]
         if prowlarr.enabled and (qbittorrent.enabled or sabnzbd.enabled):
             enabled.append("prowlarr")

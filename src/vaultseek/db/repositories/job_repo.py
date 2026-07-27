@@ -320,9 +320,7 @@ class JobRepository:
             ).scalar_one()
         return int(row) > 0
 
-    def summarize_failures(
-        self, library_id: UUID, *, limit: int = 8
-    ) -> list[tuple[str, str, int]]:
+    def summarize_failures(self, library_id: UUID, *, limit: int = 8) -> list[tuple[str, str, int]]:
         """Top failed-job error patterns for the Dashboard.
 
         Returns ``(job_type, error_summary, count)`` sorted by count desc.

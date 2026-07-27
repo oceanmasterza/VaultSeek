@@ -53,10 +53,13 @@ class JumpPalette(QDialog):
         footer.addStretch(1)
         layout.addLayout(footer)
 
-        QShortcut(QKeySequence(Qt.Key.Key_Escape), self, activated=self.reject)
+        _esc = QShortcut(QKeySequence(Qt.Key.Key_Escape), self)
+        _esc.activated.connect(self.reject)
         # Arrow keys move selection while typing in the filter.
-        QShortcut(QKeySequence(Qt.Key.Key_Down), self._filter, activated=self._move_down)
-        QShortcut(QKeySequence(Qt.Key.Key_Up), self._filter, activated=self._move_up)
+        _down = QShortcut(QKeySequence(Qt.Key.Key_Down), self._filter)
+        _down.activated.connect(self._move_down)
+        _up = QShortcut(QKeySequence(Qt.Key.Key_Up), self._filter)
+        _up.activated.connect(self._move_up)
 
         self._refilter("")
         self._filter.setFocus()

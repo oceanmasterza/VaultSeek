@@ -5,6 +5,8 @@ from __future__ import annotations
 import socket
 from typing import Any
 
+from loguru import logger
+
 from vaultseek.models.interfaces.acquisition import (
     AcquisitionProviderConfig,
     DownloadHandle,
@@ -13,8 +15,6 @@ from vaultseek.models.interfaces.acquisition import (
     SearchRequest,
     SearchResult,
 )
-from loguru import logger
-
 from vaultseek.plugins.builtin.nicotine_plus.http_api_rpc import HttpApiRpcClient
 from vaultseek.plugins.builtin.nicotine_plus.rpc import (
     FakeRpcClient,
@@ -25,15 +25,15 @@ from vaultseek.plugins.builtin.nicotine_plus.rpc import (
 from vaultseek.plugins.builtin.nicotine_plus.search_rate_gate import (
     DEFAULT_SEARCH_RATE_GATE,
     SearchRateGate,
-    SearchThrottled,
+    SearchThrottleError,
 )
 
 
 class NicotinePlusProvider:
     """Provider that probes Nicotine+ availability and delegates to an RPC client.
 
-  Default transport is :class:`LocalSocketRpcClient` (VaultSeek NDJSON).
-  Set ``transport=http`` in config for api-nicotine-plus on port 12339.
+    Default transport is :class:`LocalSocketRpcClient` (VaultSeek NDJSON).
+    Set ``transport=http`` in config for api-nicotine-plus on port 12339.
     """
 
     provider_id = "nicotine_plus"
@@ -107,7 +107,9 @@ class NicotinePlusProvider:
         elif isinstance(self._rpc, LocalSocketRpcClient):
             self._rpc.configure(host, port, timeout_seconds=self._connect_timeout)
         elif isinstance(self._rpc, HttpApiRpcClient):
-            self._rpc.configure(host, api_port, api_token=api_token, timeout_seconds=self._connect_timeout)
+            self._rpc.configure(
+                host, api_port, api_token=api_token, timeout_seconds=self._connect_timeout
+            )
 
         if isinstance(self._rpc, FakeRpcClient):
             self._connected = True
@@ -141,7 +143,7 @@ class NicotinePlusProvider:
                     self._search_gate.max_per_minute,
                     query or "(empty query)",
                 )
-                raise SearchThrottled(delay)
+                raise SearchThrottleError(delay)
         logger.info("Nicotine+ search via {}: {}", transport, query or "(empty query)")
         wait_seconds = float(self._settings.get("search_timeout_seconds") or 30.0)
         try:

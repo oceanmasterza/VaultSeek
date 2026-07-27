@@ -49,9 +49,9 @@ def test_lookup_by_fingerprint_parses_best_result() -> None:
     assert by_field["album"] == "High Album"
     assert by_field["mb_release_group_id"] == "rg-1"
     assert result.lookup_method == "fingerprint"
-    assert min(
-        f.confidence for f in result.fields if f.field in {"artist", "album", "title"}
-    ) >= 0.90
+    assert (
+        min(f.confidence for f in result.fields if f.field in {"artist", "album", "title"}) >= 0.90
+    )
 
 
 def test_lookup_by_fingerprint_without_api_key_returns_none() -> None:

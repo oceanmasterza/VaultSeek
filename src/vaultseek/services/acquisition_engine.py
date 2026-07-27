@@ -80,10 +80,12 @@ class AcquisitionEngine:
     def cancel(self, job_id: UUID) -> AcquisitionJob:
         return self._transition(job_id, AcquisitionJobState.CANCELLED)
 
-    def advance(self, job_id: UUID, target: AcquisitionJobState, *, note: str = "") -> AcquisitionJob:
+    def advance(
+        self, job_id: UUID, target: AcquisitionJobState, *, note: str = ""
+    ) -> AcquisitionJob:
         return self._transition(job_id, target, note=note)
 
-    def update_extra(self, job_id: UUID, updates: dict) -> AcquisitionJob:
+    def update_extra(self, job_id: UUID, updates: dict[str, object]) -> AcquisitionJob:
         """Merge keys into AcquisitionJob.extra (e.g. local_paths after download)."""
         job = self._jobs.get(job_id)
         if job is None:

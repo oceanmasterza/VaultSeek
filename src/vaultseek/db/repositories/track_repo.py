@@ -252,7 +252,9 @@ class TrackRepository:
             select(tracks_table)
             .where(tracks_table.c.library_id == uuid_to_blob(library_id))
             .where(tracks_table.c.artist_id == uuid_to_blob(artist_id))
-            .order_by(tracks_table.c.album_id, tracks_table.c.track_number, tracks_table.c.file_name)
+            .order_by(
+                tracks_table.c.album_id, tracks_table.c.track_number, tracks_table.c.file_name
+            )
             .offset(offset)
             .limit(limit)
         )
@@ -272,7 +274,9 @@ class TrackRepository:
             select(tracks_table)
             .where(tracks_table.c.library_id == uuid_to_blob(library_id))
             .where(tracks_table.c.album_id == uuid_to_blob(album_id))
-            .order_by(tracks_table.c.disc_number, tracks_table.c.track_number, tracks_table.c.file_name)
+            .order_by(
+                tracks_table.c.disc_number, tracks_table.c.track_number, tracks_table.c.file_name
+            )
             .offset(offset)
             .limit(limit)
         )

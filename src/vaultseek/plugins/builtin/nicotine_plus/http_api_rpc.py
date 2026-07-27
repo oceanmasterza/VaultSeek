@@ -5,6 +5,7 @@ See https://github.com/palaueb/api-nicotine-plus (default ``127.0.0.1:12339``).
 
 from __future__ import annotations
 
+import contextlib
 import time
 from pathlib import Path, PurePosixPath
 from typing import Any
@@ -87,10 +88,8 @@ class HttpApiRpcClient:
             data = self._get("/status")
         except (OSError, requests.RequestException, ValueError):
             return False
-        if not data.get("connected"):
-            return False
         # login_status: 2 = logged in (plugin versions vary; treat truthy connected as ok)
-        return True
+        return bool(data.get("connected"))
 
     def search(
         self,
@@ -113,17 +112,13 @@ class HttpApiRpcClient:
         # Probe login before opening a search tab — searching while disconnected
         # burns the wait window and looks like a false "no results".
         if not self.is_soulseek_connected():
-            raise ConnectionError(
-                f"Nicotine+ Soulseek session not connected at {self.base_url}"
-            )
+            raise ConnectionError(f"Nicotine+ Soulseek session not connected at {self.base_url}")
 
         primary = _build_search_query(request)
         if not primary:
             return []
 
-        hits = self._search_query(
-            primary, wait_seconds=wait_seconds, poll_interval=poll_interval
-        )
+        hits = self._search_query(primary, wait_seconds=wait_seconds, poll_interval=poll_interval)
         if hits:
             return hits
 
@@ -198,10 +193,8 @@ class HttpApiRpcClient:
                 break
             time.sleep(min(interval, remaining))
 
-        try:
+        with contextlib.suppress(OSError, requests.RequestException, ValueError):
             self.close_search(token_i)
-        except (OSError, requests.RequestException, ValueError):
-            pass
         return hits
 
     def enqueue_download(self, result_id: str, *, raw: dict[str, Any] | None = None) -> str:
@@ -221,7 +214,9 @@ class HttpApiRpcClient:
                 if folder:
                     body["folder_path"] = str(folder)
                 resp = self._post("/search/download", body)
-                username = str(resp.get("username") or raw.get("username") or raw.get("source_user") or "")
+                username = str(
+                    resp.get("username") or raw.get("username") or raw.get("source_user") or ""
+                )
                 virtual_path = str(
                     resp.get("virtual_path")
                     or raw.get("file_path")
@@ -229,18 +224,16 @@ class HttpApiRpcClient:
                     or ""
                 )
                 # Close the Nicotine search tab once we've queued a download.
-                try:
+                with contextlib.suppress(OSError, requests.RequestException, ValueError):
                     self.close_search(token)
-                except (OSError, requests.RequestException, ValueError):
-                    pass
                 if username and virtual_path:
                     return f"{username}:{virtual_path}"
                 return result_id
             except (ValueError, OSError, requests.RequestException):
                 pass
 
-        username = raw.get("username") or raw.get("source_user")
-        virtual_path = raw.get("file_path") or raw.get("virtual_path")
+        username = str(raw.get("username") or raw.get("source_user") or "")
+        virtual_path = str(raw.get("file_path") or raw.get("virtual_path") or "")
         if username and virtual_path:
             try:
                 body = {
@@ -345,16 +338,12 @@ def _hit_from_http_item(item: dict[str, Any], *, token: int, index: int) -> RpcS
     if isinstance(attrs, dict):
         for key in ("bit_depth", "bitdepth", "bits"):
             if attrs.get(key) is not None:
-                try:
+                with contextlib.suppress(TypeError, ValueError):
                     bit_depth = int(attrs[key])
-                except (TypeError, ValueError):
-                    pass
         for key in ("bitrate", "br", "kbps"):
             if attrs.get(key) is not None:
-                try:
+                with contextlib.suppress(TypeError, ValueError):
                     bitrate = int(attrs[key])
-                except (TypeError, ValueError):
-                    pass
     extension = item.get("extension")
     if not extension and file_path:
         name = PurePosixPath(file_path.replace("\\", "/")).name

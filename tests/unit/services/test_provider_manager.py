@@ -26,7 +26,7 @@ def test_search_continues_when_one_provider_throttled() -> None:
         ProviderCapabilities,
         SearchResult,
     )
-    from vaultseek.plugins.builtin.nicotine_plus.search_rate_gate import SearchThrottled
+    from vaultseek.plugins.builtin.nicotine_plus.search_rate_gate import SearchThrottleError
 
     class _Throttle:
         provider_id = "nicotine_plus"
@@ -40,7 +40,7 @@ def test_search_continues_when_one_provider_throttled() -> None:
             return None
 
         def search(self, request):  # noqa: ANN001
-            raise SearchThrottled(12.0)
+            raise SearchThrottleError(12.0)
 
     class _Ok:
         provider_id = "prowlarr"

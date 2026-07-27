@@ -132,9 +132,7 @@ class DiscogsProvider:
         out: list[ProviderResult] = []
         for hit in payload.get("results") or []:
             if discogs_type == "release":
-                result = _search_hit_to_result(
-                    hit, lookup_method="search", priority=self.priority
-                )
+                result = _search_hit_to_result(hit, lookup_method="search", priority=self.priority)
             else:
                 result = _artist_hit_to_result(hit, priority=self.priority)
             if result is not None:
@@ -183,7 +181,9 @@ class DiscogsProvider:
             if page >= pages:
                 break
             page += 1
-        releases.sort(key=lambda item: (_year_sort_key(item.get("year")), str(item.get("title") or "")))
+        releases.sort(
+            key=lambda item: (_year_sort_key(item.get("year")), str(item.get("title") or ""))
+        )
         return releases
 
     def get_release_tracklist(
@@ -247,9 +247,7 @@ class DiscogsProvider:
         self._throttle()
         headers = {"Authorization": f"Discogs token={self._token}"}
         try:
-            response = self._session.get(
-                url, params=params, headers=headers, timeout=self._timeout
-            )
+            response = self._session.get(url, params=params, headers=headers, timeout=self._timeout)
             response.raise_for_status()
             payload = response.json()
         except (requests.RequestException, ValueError):
@@ -267,15 +265,13 @@ class DiscogsProvider:
 
 def _year_sort_key(value: object) -> int:
     try:
-        year = int(value)  # type: ignore[arg-type]
+        year = int(str(value))
     except (TypeError, ValueError):
         return 9999
     return year if year > 0 else 9999
 
 
-def _pick_search_hit(
-    results: list[dict[str, Any]], *, artist: str, album: str
-) -> dict[str, Any]:
+def _pick_search_hit(results: list[dict[str, Any]], *, artist: str, album: str) -> dict[str, Any]:
     """Prefer exact-ish title/artist matches; else first result."""
     artist_l = artist.casefold()
     album_l = album.casefold()

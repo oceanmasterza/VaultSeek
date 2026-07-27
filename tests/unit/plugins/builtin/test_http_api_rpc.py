@@ -40,17 +40,17 @@ def test_search_polls_until_results_arrive() -> None:
             return responses.pop(0)
         return populated
 
-    with patch.object(client, "is_soulseek_connected", return_value=True):
-        with patch.object(client, "_post", return_value={"token": 42}):
-            with patch.object(client, "_get", side_effect=_get):
-                with patch(
-                    "vaultseek.plugins.builtin.nicotine_plus.http_api_rpc.time.sleep"
-                ):
-                    hits = client.search(
-                        SearchRequest(artist="Artist", title="Track"),
-                        wait_seconds=10.0,
-                        poll_interval=0.5,
-                    )
+    with (  # noqa: SIM117
+        patch.object(client, "is_soulseek_connected", return_value=True),
+        patch.object(client, "_post", return_value={"token": 42}),
+    ):
+        with patch.object(client, "_get", side_effect=_get):
+            with patch("vaultseek.plugins.builtin.nicotine_plus.http_api_rpc.time.sleep"):
+                hits = client.search(
+                    SearchRequest(artist="Artist", title="Track"),
+                    wait_seconds=10.0,
+                    poll_interval=0.5,
+                )
 
     assert len(hits) == 1
     assert hits[0].result_id == "42:0"
@@ -60,17 +60,17 @@ def test_search_polls_until_results_arrive() -> None:
 
 def test_search_returns_empty_after_timeout_with_no_hits() -> None:
     client = HttpApiRpcClient()
-    with patch.object(client, "is_soulseek_connected", return_value=True):
-        with patch.object(client, "_post", return_value={"token": 7}):
-            with patch.object(client, "_get", return_value={"items": []}) as get:
-                with patch(
-                    "vaultseek.plugins.builtin.nicotine_plus.http_api_rpc.time.sleep"
-                ) as sleep:
-                    hits = client.search(
-                        SearchRequest(artist="Nobody"),
-                        wait_seconds=0.0,
-                        poll_interval=0.5,
-                    )
+    with (  # noqa: SIM117
+        patch.object(client, "is_soulseek_connected", return_value=True),
+        patch.object(client, "_post", return_value={"token": 7}),
+    ):
+        with patch.object(client, "_get", return_value={"items": []}) as get:
+            with patch("vaultseek.plugins.builtin.nicotine_plus.http_api_rpc.time.sleep") as sleep:
+                hits = client.search(
+                    SearchRequest(artist="Nobody"),
+                    wait_seconds=0.0,
+                    poll_interval=0.5,
+                )
     assert hits == []
     # One results poll for the primary query (wait_seconds=0 exits immediately).
     # No alternate retry when album/title are absent (same simplified query).

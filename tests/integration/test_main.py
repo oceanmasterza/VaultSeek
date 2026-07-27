@@ -35,8 +35,8 @@ def test_main_returns_one_and_prints_error_when_bootstrap_fails(
     def _raise_config_error(**_kwargs: object) -> None:
         raise ConfigError("simulated bootstrap failure")
 
-    import vaultseek.app as app_module
     import vaultseek.__main__ as main_module
+    import vaultseek.app as app_module
     from vaultseek.core.single_instance import SingleInstanceLock
 
     class _AlwaysAcquire(SingleInstanceLock):

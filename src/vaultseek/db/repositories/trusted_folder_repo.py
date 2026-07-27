@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from datetime import datetime
+from typing import Any
 from uuid import UUID
 
 from sqlalchemy import Engine, Row, select
@@ -61,7 +62,7 @@ def _to_row(entry: TrustedFolder) -> dict[str, object]:
     }
 
 
-def _from_row(row: Row[object]) -> TrustedFolder:
+def _from_row(row: Row[Any]) -> TrustedFolder:
     return TrustedFolder(
         library_id=blob_to_uuid(row.library_id),
         folder_path=row.folder_path,

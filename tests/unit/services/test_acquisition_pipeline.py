@@ -78,9 +78,7 @@ def test_search_dispatcher_advances_job_and_returns_results(
     assert loaded.state is AcquisitionJobState.COLLECTING_RESULTS
 
 
-def test_search_dispatcher_marks_no_results_when_empty(
-    engine: Engine, library_id: UUID
-) -> None:
+def test_search_dispatcher_marks_no_results_when_empty(engine: Engine, library_id: UUID) -> None:
     manager = ProviderManager([StubAcquisitionProvider()])
     manager.connect(AcquisitionProviderConfig(provider_id="stub", enabled=True))
     acq = AcquisitionEngine(manager, AcquisitionJobRepository(engine))
@@ -147,6 +145,7 @@ def test_search_dispatcher_prefers_album_then_falls_back_to_track(
 
 def test_scoring_engine_ranks_preferred_format_highest() -> None:
     from datetime import UTC, datetime
+
     from vaultseek.db.uuid_utils import generate_uuid7
     from vaultseek.models.entities.acquisition_job import AcquisitionJob
 
@@ -191,6 +190,7 @@ def test_scoring_engine_ranks_preferred_format_highest() -> None:
 
 def test_scoring_engine_matches_artist_album_title_in_path() -> None:
     from datetime import UTC, datetime
+
     from vaultseek.db.uuid_utils import generate_uuid7
     from vaultseek.models.entities.acquisition_job import AcquisitionJob
 
@@ -226,9 +226,7 @@ def test_scoring_engine_matches_artist_album_title_in_path() -> None:
     assert scored[0][1] >= 0.45
 
 
-def test_download_manager_starts_from_scoring_state(
-    engine: Engine, library_id: UUID
-) -> None:
+def test_download_manager_starts_from_scoring_state(engine: Engine, library_id: UUID) -> None:
     acq = _engine(engine)
     job = acq.create_job(
         library_id=library_id,

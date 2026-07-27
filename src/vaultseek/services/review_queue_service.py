@@ -320,9 +320,7 @@ class ReviewQueueService:
         if best_track_id is not None:
             self._promote_to_library(best_track_id, item.library_id, now)
 
-    def _promote_to_library(
-        self, track_id: UUID | None, library_id: UUID, now: datetime
-    ) -> None:
+    def _promote_to_library(self, track_id: UUID | None, library_id: UUID, now: datetime) -> None:
         """Move Incoming or Staging → Library when the review backlog is clear.
 
         Originals stay in Incoming until approval (or auto-approve from

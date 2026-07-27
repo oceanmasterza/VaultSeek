@@ -11,6 +11,7 @@ from datetime import UTC, datetime
 from uuid import UUID
 
 from vaultseek.core.container import Container
+from vaultseek.db.repositories.track_repo import TrackReportSummary
 from vaultseek.models.entities.acquisition_job import AcquisitionJobState
 from vaultseek.models.entities.job import Job, JobStatus, JobType
 from vaultseek.models.entities.track import LibraryZone
@@ -104,9 +105,7 @@ class DashboardSnapshot:
     missing_media: MissingMediaDashboardStat = field(default_factory=MissingMediaDashboardStat)
 
 
-def build_dashboard_snapshot(
-    container: Container, library_id: UUID | None
-) -> DashboardSnapshot:
+def build_dashboard_snapshot(container: Container, library_id: UUID | None) -> DashboardSnapshot:
     if library_id is None:
         return DashboardSnapshot(
             has_library=False,
@@ -126,9 +125,7 @@ def build_dashboard_snapshot(
     processing_report = _processing_report(container, library_id, summary)
 
     # Running counts per type for the flow (subset of backlog).
-    running_by_type = container.job_repo.count_by_type(
-        library_id, statuses=(JobStatus.RUNNING,)
-    )
+    running_by_type = container.job_repo.count_by_type(library_id, statuses=(JobStatus.RUNNING,))
     backlog = stats.by_type  # pending + running
     acquisition = _acquisition_stats(container, library_id)
     missing_media = _missing_media_stats(container, library_id)
@@ -175,14 +172,10 @@ def build_dashboard_snapshot(
         )
 
     running_jobs = tuple(
-        container.job_repo.list_by_status(
-            JobStatus.RUNNING, library_id=library_id, limit=20
-        )
+        container.job_repo.list_by_status(JobStatus.RUNNING, library_id=library_id, limit=20)
     )
     failed_jobs = tuple(
-        container.job_repo.list_by_status(
-            JobStatus.FAILED, library_id=library_id, limit=10
-        )
+        container.job_repo.list_by_status(JobStatus.FAILED, library_id=library_id, limit=10)
     )
     top_failures = tuple(container.job_repo.summarize_failures(library_id, limit=8))
 
@@ -213,11 +206,7 @@ def build_dashboard_snapshot(
         open_duplicates=open_dups,
         tracks_by_zone={z.value: int(by_zone.get(z.value, 0)) for z in LibraryZone},
         confidence=confidence,
-        average_confidence=(
-            float(summary["average_confidence"])
-            if summary.get("average_confidence") is not None
-            else None
-        ),
+        average_confidence=summary["average_confidence"],
         stages=tuple(stages),
         job_backlog_by_type=dict(backlog),
         review_by_type=review_by_type,
@@ -271,9 +260,7 @@ def _acquisition_stats(container: Container, library_id: UUID) -> AcquisitionDas
     start_of_today = datetime.now(UTC).replace(hour=0, minute=0, second=0, microsecond=0)
     total = sum(counts.values())
     completed = counts.get(AcquisitionJobState.COMPLETED.value, 0)
-    completed_today = container.acquisition_engine.count_completed_since(
-        library_id, start_of_today
-    )
+    completed_today = container.acquisition_engine.count_completed_since(library_id, start_of_today)
     waiting = counts.get(AcquisitionJobState.WAITING_FOR_USER.value, 0)
     failed = _sum(failed_states)
     in_progress = _sum(in_progress_states)
@@ -327,9 +314,7 @@ def _latest_scan_summary(container: Container, library_id: UUID) -> str:
     )
 
 
-def _processing_report(
-    container: Container, library_id: UUID, summary: dict[str, object]
-) -> str:
+def _processing_report(container: Container, library_id: UUID, summary: TrackReportSummary) -> str:
     """Few-line digest of identify / artwork / organize outcomes since last scan."""
     completed = container.job_repo.list_by_status(
         JobStatus.COMPLETED, library_id=library_id, limit=400
@@ -368,8 +353,10 @@ def _processing_report(
                 art_saved += 1
         elif job.job_type is JobType.ORGANIZE_FILE:
             target = job.payload.get("target_zone")
-            if target == LibraryZone.LIBRARY.value or "→ library" in note.lower() or (
-                "library" in note.lower() and "Moved to" in note
+            if (
+                target == LibraryZone.LIBRARY.value
+                or "→ library" in note.lower()
+                or ("library" in note.lower() and "Moved to" in note)
             ):
                 organized_library += 1
             else:
@@ -413,10 +400,10 @@ def _processing_report(
 
     lines.append(
         "• Catalog: "
-        f"{int(summary.get('track_count', 0))} tracks · "
-        f"{int(summary.get('artists_linked', 0))} artists · "
-        f"{int(summary.get('albums_linked', 0))} albums · "
-        f"{int(summary.get('tracks_with_cover', 0))} with cover"
+        f"{summary['track_count']} tracks · "
+        f"{summary['artists_linked']} artists · "
+        f"{summary['albums_linked']} albums · "
+        f"{summary['tracks_with_cover']} with cover"
     )
     return "\n".join(lines)
 
@@ -515,6 +502,5 @@ def _insight(
             "Scan Incoming to start hashing and identification."
         )
     return (
-        "Pipeline idle. Collection looks settled — check Library or Reports "
-        "for a deeper look."
+        "Pipeline idle. Collection looks settled — check Library or Reports " "for a deeper look."
     )

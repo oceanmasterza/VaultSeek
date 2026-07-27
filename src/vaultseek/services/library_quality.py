@@ -3,14 +3,14 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from enum import Enum
+from enum import StrEnum
 from uuid import UUID
 
 from vaultseek.core.config import AcquisitionConfig
 from vaultseek.models.entities.track import Track
 
 
-class AlbumHealth(str, Enum):
+class AlbumHealth(StrEnum):
     """Traffic-light status for an album against quality + completeness prefs."""
 
     COMPLETE_OK = "complete_ok"
@@ -19,7 +19,7 @@ class AlbumHealth(str, Enum):
     UNKNOWN = "unknown"
 
 
-class TrackHealth(str, Enum):
+class TrackHealth(StrEnum):
     """Per-track display status."""
 
     OK = "ok"
@@ -53,10 +53,13 @@ def track_meets_quality_prefs(
     if preferred and preferred.casefold() in {"flac", "alac", "wav", "aiff"}:
         return False
 
-    if preferred and (track.codec or "").casefold() != preferred.casefold():
+    if (
+        preferred
+        and (track.codec or "").casefold() != preferred.casefold()
+        and not prefs.prefer_lossless
+    ):
         # Prefer-lossless collections still accept matching lossy at min bitrate.
-        if not prefs.prefer_lossless:
-            return False
+        return False
 
     if prefs.min_bitrate_kbps > 0:
         if not track.bitrate or int(track.bitrate) < int(prefs.min_bitrate_kbps):
@@ -88,12 +91,8 @@ def album_status_from_tracks(
     expected_count: int | None = None,
     missing_count: int = 0,
 ) -> AlbumStatus:
-    quality_gaps = sum(
-        1 for track in present if not track_meets_quality_prefs(track, prefs)
-    )
-    if missing_count > 0 or (
-        expected_count is not None and len(present) < expected_count
-    ):
+    quality_gaps = sum(1 for track in present if not track_meets_quality_prefs(track, prefs))
+    if missing_count > 0 or (expected_count is not None and len(present) < expected_count):
         health = AlbumHealth.INCOMPLETE
     elif quality_gaps > 0:
         health = AlbumHealth.COMPLETE_QUALITY_GAP
@@ -107,7 +106,7 @@ def album_status_from_tracks(
         present_count=len(present),
         expected_count=expected_count,
         quality_gap_count=quality_gaps,
-        missing_count=missing_count
-        if missing_count
-        else max(0, (expected_count or 0) - len(present)),
+        missing_count=(
+            missing_count if missing_count else max(0, (expected_count or 0) - len(present))
+        ),
     )

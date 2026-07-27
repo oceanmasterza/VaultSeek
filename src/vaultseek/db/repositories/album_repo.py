@@ -14,8 +14,8 @@ from vaultseek.db.tables import album_artwork, artists
 from vaultseek.db.tables import albums as albums_table
 from vaultseek.db.tables import tracks as tracks_table
 from vaultseek.db.uuid_utils import blob_to_uuid, uuid_to_blob
+from vaultseek.models.dto.browse_dto import AlbumBrowseRow
 from vaultseek.models.entities.album import Album
-from vaultseek.services.dto.browse_dto import AlbumBrowseRow
 
 
 class AlbumRepository:
@@ -68,9 +68,7 @@ class AlbumRepository:
         lib = uuid_to_blob(library_id)
         present_count = func.count(tracks_table.c.id).label("present_count")
         has_cover = exists(
-            select(album_artwork.c.artwork_id).where(
-                album_artwork.c.album_id == albums_table.c.id
-            )
+            select(album_artwork.c.artwork_id).where(album_artwork.c.album_id == albums_table.c.id)
         ).label("has_cover")
         statement = (
             select(
@@ -103,9 +101,7 @@ class AlbumRepository:
             .limit(limit)
         )
         if artist_id is not None:
-            statement = statement.where(
-                albums_table.c.album_artist_id == uuid_to_blob(artist_id)
-            )
+            statement = statement.where(albums_table.c.album_artist_id == uuid_to_blob(artist_id))
         if query:
             like = f"%{query}%"
             statement = statement.where(

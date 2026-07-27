@@ -199,9 +199,7 @@ class ImportPipeline:
     def run_after_verification(self, verification: VerificationResult) -> ImportResult:
         """Import only when verification succeeded (mandatory gate)."""
         if not verification.ok:
-            raise ValueError(
-                f"Refusing import for job {verification.job_id}: verification failed"
-            )
+            raise ValueError(f"Refusing import for job {verification.job_id}: verification failed")
         return self.run(verification.job_id, verification.local_paths)
 
 

@@ -76,9 +76,12 @@ class ScoringEngine:
             # Soft preference for lossless when the job has no codec preference.
             score += self._weights.format_match * 0.5
 
-        if job.preferred_bit_depth and result.bit_depth:
-            if result.bit_depth >= job.preferred_bit_depth:
-                score += self._weights.bit_depth
+        if (
+            job.preferred_bit_depth
+            and result.bit_depth
+            and result.bit_depth >= job.preferred_bit_depth
+        ):
+            score += self._weights.bit_depth
 
         if _field_matches(job.title, result.title, haystack):
             score += self._weights.title_match

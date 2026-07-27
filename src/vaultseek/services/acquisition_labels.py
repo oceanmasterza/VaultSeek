@@ -65,8 +65,7 @@ def maybe_log_album_fully_acquired(
     siblings = [
         sibling
         for sibling in list_jobs(library_id=job.library_id)
-        if sibling.job_type is AcquisitionJobType.MISSING_TRACK
-        and album_group_key(sibling) == key
+        if sibling.job_type is AcquisitionJobType.MISSING_TRACK and album_group_key(sibling) == key
     ]
     if not siblings:
         return

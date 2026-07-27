@@ -7,9 +7,11 @@ from typing import Any
 from uuid import UUID
 
 from PySide6.QtCore import Qt
+from PySide6.QtGui import QBrush, QColor
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QHBoxLayout,
+    QHeaderView,
     QLabel,
     QLineEdit,
     QMessageBox,
@@ -23,6 +25,12 @@ from PySide6.QtWidgets import (
 
 from vaultseek.core.container import Container
 from vaultseek.gui.async_task import run_in_background
+from vaultseek.gui.widgets.discogs_widgets import (
+    AlbumTitleDelegate,
+    DiscogsThumbLoader,
+    release_subtitle,
+    release_tooltip,
+)
 from vaultseek.gui.widgets.table_utils import (
     begin_table_update,
     configure_data_table,
@@ -31,6 +39,9 @@ from vaultseek.gui.widgets.table_utils import (
 from vaultseek.models.entities.acquisition_job import AcquisitionJobType
 from vaultseek.plugins.builtin.discogs.provider import DiscogsProvider
 from vaultseek.services.wanted import park_album_job
+
+_SUBTITLE_ROLE = int(Qt.ItemDataRole.UserRole) + 1
+_LINK = QColor("#6cb6ff")
 
 
 @dataclass(frozen=True, slots=True)
@@ -57,6 +68,7 @@ class DiscogsPage(QWidget):
         self._artist_id: int | None = None
         self._artist_name: str = ""
         self._rows: list[_ReleaseRow] = []
+        self._thumbs = DiscogsThumbLoader()
 
         layout = QVBoxLayout(self)
         heading = QLabel("Discogs")
@@ -64,8 +76,8 @@ class DiscogsPage(QWidget):
         layout.addWidget(heading)
 
         help_lbl = QLabel(
-            "Search an artist (e.g. Armin van Buuren), browse albums / singles / "
-            "appearances by date, then select rows to queue for download via Acquisition."
+            "Search an artist, browse their Discogs discography, then select albums "
+            "to queue for download or add to Wanted."
         )
         help_lbl.setWordWrap(True)
         help_lbl.setProperty("muted", True)
@@ -99,26 +111,23 @@ class DiscogsPage(QWidget):
         left = QWidget()
         left_layout = QVBoxLayout(left)
         left_layout.setContentsMargins(0, 0, 0, 0)
-        albums_label = QLabel("Releases")
+        albums_label = QLabel("Albums")
         albums_label.setProperty("panelTitle", True)
         left_layout.addWidget(albums_label)
-        self._table = QTableWidget(0, 8)
-        self._table.setHorizontalHeaderLabels(
-            [
-                "Year",
-                "Title",
-                "Type",
-                "Role",
-                "Format",
-                "Label",
-                "Main artist",
-                "Extra / linked",
-            ]
-        )
+        self._table = QTableWidget(0, 4)
+        self._table.setHorizontalHeaderLabels(["", "Album", "Label", "Year"])
         self._table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
         self._table.setSelectionMode(QAbstractItemView.SelectionMode.ExtendedSelection)
         self._table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
-        configure_data_table(self._table)
+        configure_data_table(self._table, stretch_last=False)
+        self._table.setItemDelegateForColumn(1, AlbumTitleDelegate(self._table))
+        header = self._table.horizontalHeader()
+        header.setSectionResizeMode(0, QHeaderView.ResizeMode.Fixed)
+        header.setSectionResizeMode(1, QHeaderView.ResizeMode.Stretch)
+        header.setSectionResizeMode(2, QHeaderView.ResizeMode.ResizeToContents)
+        header.setSectionResizeMode(3, QHeaderView.ResizeMode.ResizeToContents)
+        self._table.setColumnWidth(0, 52)
+        self._table.verticalHeader().setDefaultSectionSize(48)
         self._table.itemSelectionChanged.connect(self._on_release_selected)
         left_layout.addWidget(self._table)
         split.addWidget(left)
@@ -126,15 +135,15 @@ class DiscogsPage(QWidget):
         right = QWidget()
         right_layout = QVBoxLayout(right)
         right_layout.setContentsMargins(0, 0, 0, 0)
-        self._tracks_label = QLabel("Tracks")
+        self._tracks_label = QLabel("Tracklist")
         self._tracks_label.setProperty("panelTitle", True)
         right_layout.addWidget(self._tracks_label)
-        self._tracks_hint = QLabel("Select a release to load its Discogs tracklist.")
+        self._tracks_hint = QLabel("Select an album to load its tracklist.")
         self._tracks_hint.setProperty("muted", True)
         self._tracks_hint.setWordWrap(True)
         right_layout.addWidget(self._tracks_hint)
-        self._tracks = QTableWidget(0, 4)
-        self._tracks.setHorizontalHeaderLabels(["#", "Title", "Duration", "Artists / credits"])
+        self._tracks = QTableWidget(0, 3)
+        self._tracks.setHorizontalHeaderLabels(["#", "Title", "Duration"])
         self._tracks.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
         self._tracks.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
         configure_data_table(self._tracks)
@@ -146,9 +155,7 @@ class DiscogsPage(QWidget):
 
         actions = QHBoxLayout()
         queue_btn = QPushButton("Queue selected for download")
-        queue_btn.setToolTip(
-            "Create missing-album jobs and search/download now (Wishlist)."
-        )
+        queue_btn.setToolTip("Create missing-album jobs and search/download now (Wishlist).")
         queue_btn.clicked.connect(self._queue_selected)
         wanted_btn = QPushButton("Add to Wanted")
         wanted_btn.setProperty("secondary", True)
@@ -183,9 +190,7 @@ class DiscogsPage(QWidget):
             )
 
     def _provider(self) -> DiscogsProvider:
-        return DiscogsProvider(
-            user_token=self._container.config.metadata.discogs_user_token or ""
-        )
+        return DiscogsProvider(user_token=self._container.config.metadata.discogs_user_token or "")
 
     def _search_artist(self) -> None:
         query = self._query.text().strip()
@@ -228,6 +233,7 @@ class DiscogsPage(QWidget):
             rows = hits if isinstance(hits, list) else []
             self._artist_hits = rows
             self._artists.setRowCount(len(rows))
+            self._thumbs.reset()
             self._table.setRowCount(0)
             self._rows = []
             for index, (name, artist_id) in enumerate(rows):
@@ -236,7 +242,7 @@ class DiscogsPage(QWidget):
             if not rows:
                 self._status.setText("No Discogs artists found.")
                 return
-            self._status.setText(f"{len(rows)} artist match(es) — select one to load releases.")
+            self._status.setText(f"{len(rows)} artist match(es) — select one to load albums.")
             self._artists.selectRow(0)
 
         def failed(msg: str) -> None:
@@ -259,8 +265,53 @@ class DiscogsPage(QWidget):
         self._artist_id = artist_id
         self._load_releases(artist_id, name)
 
+    def _populate_releases_table(self, parsed: list[_ReleaseRow]) -> None:
+        sorting = begin_table_update(self._table)
+        self._table.setRowCount(len(parsed))
+        link_brush = QBrush(_LINK)
+        for index, row in enumerate(parsed):
+            cover_item = QTableWidgetItem()
+            cover_item.setFlags(cover_item.flags() & ~Qt.ItemFlag.ItemIsEditable)
+            cover_item.setData(Qt.ItemDataRole.UserRole, row.release_id)
+            self._table.setItem(index, 0, cover_item)
+
+            title_item = QTableWidgetItem(row.title)
+            title_item.setForeground(link_brush)
+            title_item.setData(Qt.ItemDataRole.UserRole, row.release_id)
+            title_item.setData(
+                _SUBTITLE_ROLE,
+                release_subtitle(kind=row.kind, format_text=row.format, role=row.role),
+            )
+            title_item.setToolTip(
+                release_tooltip(
+                    artist=row.artist,
+                    format_text=row.format,
+                    kind=row.kind,
+                    role=row.role,
+                    secondary=row.secondary,
+                )
+            )
+            self._table.setItem(index, 1, title_item)
+
+            label_item = QTableWidgetItem(row.label)
+            label_item.setForeground(link_brush)
+            label_item.setData(Qt.ItemDataRole.UserRole, row.release_id)
+            label_item.setToolTip(row.label)
+            self._table.setItem(index, 2, label_item)
+
+            year_item = QTableWidgetItem(row.year)
+            year_item.setData(Qt.ItemDataRole.UserRole, row.release_id)
+            year_item.setTextAlignment(
+                int(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+            )
+            self._table.setItem(index, 3, year_item)
+
+            self._thumbs.load_row(self._table, index, row.thumb, row.release_id)
+        end_table_update(self._table, sorting=sorting)
+
     def _load_releases(self, artist_id: int, name: str) -> None:
-        self._status.setText(f"Loading Discogs releases for {name}…")
+        self._status.setText(f"Loading Discogs albums for {name}…")
+        self._thumbs.reset()
         provider = self._provider()
 
         def work() -> list[_ReleaseRow]:
@@ -270,27 +321,12 @@ class DiscogsPage(QWidget):
         def done(rows: object) -> None:
             parsed = rows if isinstance(rows, list) else []
             self._rows = parsed
-            self._table.setRowCount(len(parsed))
             self._tracks.setRowCount(0)
-            self._tracks_hint.setText("Select a release to load its Discogs tracklist.")
-            for index, row in enumerate(parsed):
-                values = [
-                    row.year,
-                    row.title,
-                    row.kind,
-                    row.role,
-                    row.format,
-                    row.label,
-                    row.artist,
-                    row.secondary,
-                ]
-                for col, text in enumerate(values):
-                    item = QTableWidgetItem(text)
-                    item.setData(Qt.ItemDataRole.UserRole, row.release_id)
-                    self._table.setItem(index, col, item)
+            self._tracks_hint.setText("Select an album to load its tracklist.")
+            self._populate_releases_table(parsed)
             self._status.setText(
-                f"{name}: {len(parsed)} release(s) from Discogs (sorted by year). "
-                "Select a release to see tracks, or multi-select and queue downloads."
+                f"{name}: {len(parsed)} album(s) from Discogs. "
+                "Select one to preview tracks, or multi-select and queue downloads."
             )
             if parsed:
                 self._table.selectRow(0)
@@ -307,14 +343,14 @@ class DiscogsPage(QWidget):
             if len(rows) > 1:
                 self._tracks.setRowCount(0)
                 self._tracks_hint.setText(
-                    f"{len(rows)} releases selected — pick one row to preview tracks."
+                    f"{len(rows)} albums selected — pick one row to preview tracks."
                 )
             return
         row_index = rows[0]
         if not (0 <= row_index < len(self._rows)):
             return
         release = self._rows[row_index]
-        self._tracks_hint.setText(f"Loading tracks for “{release.title}”…")
+        self._tracks_hint.setText(f"Loading tracklist for “{release.title}”…")
         provider = self._provider()
         kind = "master" if release.kind.casefold() == "master" else "release"
         release_id = release.release_id
@@ -325,16 +361,27 @@ class DiscogsPage(QWidget):
 
         def done(tracks: object) -> None:
             parsed = tracks if isinstance(tracks, list) else []
-            # Ignore stale responses if selection changed.
             current = sorted({index.row() for index in self._table.selectedIndexes()})
             if current != [row_index]:
                 return
+            link_brush = QBrush(_LINK)
+            sorting = begin_table_update(self._tracks)
             self._tracks.setRowCount(len(parsed))
             for index, track in enumerate(parsed):
-                self._tracks.setItem(index, 0, QTableWidgetItem(str(track.get("position") or "")))
-                self._tracks.setItem(index, 1, QTableWidgetItem(str(track.get("title") or "")))
+                pos_item = QTableWidgetItem(str(track.get("position") or ""))
+                pos_item.setTextAlignment(
+                    int(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+                )
+                self._tracks.setItem(index, 0, pos_item)
+                title_text = str(track.get("title") or "")
+                title_item = QTableWidgetItem(title_text)
+                title_item.setForeground(link_brush)
+                artists = str(track.get("artists") or "").strip()
+                if artists:
+                    title_item.setToolTip(artists)
+                self._tracks.setItem(index, 1, title_item)
                 self._tracks.setItem(index, 2, QTableWidgetItem(str(track.get("duration") or "")))
-                self._tracks.setItem(index, 3, QTableWidgetItem(str(track.get("artists") or "")))
+            end_table_update(self._tracks, sorting=sorting)
             if parsed:
                 self._tracks_hint.setText(f"{title}: {len(parsed)} track(s)")
             else:
@@ -353,7 +400,7 @@ class DiscogsPage(QWidget):
         rows = sorted({index.row() for index in self._table.selectedIndexes()})
         selected = [self._rows[row] for row in rows if 0 <= row < len(self._rows)]
         if not selected:
-            QMessageBox.information(self, "Discogs", "Select one or more releases.")
+            QMessageBox.information(self, "Discogs", "Select one or more albums.")
             return
 
         engine = self._container.acquisition_engine
@@ -401,7 +448,7 @@ class DiscogsPage(QWidget):
         rows = sorted({index.row() for index in self._table.selectedIndexes()})
         selected = [self._rows[row] for row in rows if 0 <= row < len(self._rows)]
         if not selected:
-            QMessageBox.information(self, "Discogs", "Select one or more releases.")
+            QMessageBox.information(self, "Discogs", "Select one or more albums.")
             return
 
         engine = self._container.acquisition_engine
@@ -430,7 +477,7 @@ class DiscogsPage(QWidget):
         QMessageBox.information(
             self,
             "Discogs",
-            f"Added {created} release(s) to Wanted. "
+            f"Added {created} album(s) to Wanted. "
             "Open Albums → Wanted (or Wishlist → Show Wanted) and click Start download when ready.",
         )
 
@@ -448,10 +495,9 @@ def _to_row(item: dict[str, Any], *, fallback_artist: str) -> _ReleaseRow:
         format_text = str(fmt or "").strip()
     label = str(item.get("label") or "").strip()
     artist = str(item.get("artist") or fallback_artist).strip()
-    # Extra linked artists / credits when Discogs provides them on the list payload.
     secondary_parts: list[str] = []
     if role and role.casefold() not in {"main", "primary"}:
-        secondary_parts.append(f"role: {role}")
+        secondary_parts.append(f"Role: {role}")
     stats = item.get("stats") or {}
     if isinstance(stats, dict) and stats.get("community"):
         community = stats["community"]
@@ -459,7 +505,7 @@ def _to_row(item: dict[str, Any], *, fallback_artist: str) -> _ReleaseRow:
             have = community.get("have")
             want = community.get("want")
             if have is not None or want is not None:
-                secondary_parts.append(f"have {have or 0} / want {want or 0}")
+                secondary_parts.append(f"In collection: {have or 0} · Want: {want or 0}")
     thumb = str(item.get("thumb") or "")
     release_id = int(item.get("id") or 0)
     return _ReleaseRow(
@@ -471,6 +517,6 @@ def _to_row(item: dict[str, Any], *, fallback_artist: str) -> _ReleaseRow:
         format=format_text,
         label=label,
         artist=artist,
-        secondary="; ".join(secondary_parts),
+        secondary=" · ".join(secondary_parts),
         thumb=thumb,
     )

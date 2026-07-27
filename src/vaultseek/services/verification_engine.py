@@ -106,8 +106,10 @@ class VerificationEngine:
 
         # Sibling album downloads often list paths that Nicotine never finished.
         # Verify against files that actually landed; missing siblings are notes.
-        if present and failures and all(
-            f.startswith("missing_file:") or f.startswith("not_a_file:") for f in failures
+        if (
+            present
+            and failures
+            and all(f.startswith("missing_file:") or f.startswith("not_a_file:") for f in failures)
         ):
             notes.extend(failures)
             failures.clear()

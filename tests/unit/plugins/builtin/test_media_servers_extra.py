@@ -50,9 +50,7 @@ def test_koel_connect_via_overview() -> None:
 @responses.activate
 def test_funkwhale_instance_ping() -> None:
     responses.add(responses.GET, "http://example.test/api/v1/instance/", json={}, status=200)
-    responses.add(
-        responses.POST, "http://example.test/api/v1/manage/libraries/scan/", status=202
-    )
+    responses.add(responses.POST, "http://example.test/api/v1/manage/libraries/scan/", status=202)
     plugin = FunkwhalePlugin()
     assert plugin.connect(_cfg(plugin_id="funkwhale")) is True
     assert plugin.trigger_rescan() is True

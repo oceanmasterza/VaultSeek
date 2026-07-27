@@ -417,7 +417,7 @@ class AcquisitionAutomationService:
     def _delay_seconds(self, attempt: int) -> float:
         base = float(self._pipeline.retry_base_delay_seconds)
         capped = float(self._pipeline.retry_max_delay_seconds)
-        return min(base * (2 ** (attempt - 1)), capped)
+        return float(min(base * (2 ** (attempt - 1)), capped))
 
 
 def _aware(value: datetime) -> datetime:

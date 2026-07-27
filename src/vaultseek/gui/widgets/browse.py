@@ -4,8 +4,9 @@ from __future__ import annotations
 
 from collections.abc import Mapping, Sequence
 from pathlib import Path, PureWindowsPath
+from typing import Any
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import QModelIndex, QPersistentModelIndex, Qt
 from PySide6.QtGui import QBrush, QColor, QPainter
 from PySide6.QtWidgets import (
     QStyle,
@@ -111,7 +112,7 @@ class HealthColorDelegate(QStyledItemDelegate):
         self,
         painter: QPainter,
         option: QStyleOptionViewItem,
-        index,  # noqa: ANN001 — Qt model index
+        index: QModelIndex | QPersistentModelIndex,
     ) -> None:
         opt = QStyleOptionViewItem(option)
         self.initStyleOption(opt, index)
@@ -168,9 +169,7 @@ def fill_track_table(
             "Zone": track.zone.value,
             "File": track.file_name or track.file_path,
             "Confidence": (
-                f"{track.overall_confidence:.0%}"
-                if track.overall_confidence is not None
-                else "—"
+                f"{track.overall_confidence:.0%}" if track.overall_confidence is not None else "—"
             ),
             "Quality": str(track.quality_score) if track.quality_score is not None else "—",
             "Artist": "—",
@@ -180,9 +179,7 @@ def fill_track_table(
         for col, label in enumerate(labels):
             item = QTableWidgetItem(values.get(label, "—"))
             if label in {"Confidence", "Quality"}:
-                item.setTextAlignment(
-                    Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter
-                )
+                item.setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
             if health is not None:
                 apply_track_health_style(item, health)
             table.setItem(row, col, item)
@@ -210,18 +207,19 @@ def build_folder_tree(
     tree.addTopLevelItem(all_item)
 
     roots = zone_roots(library)
-    forest: dict[str, dict] = {zone: {} for zone in roots}
+    forest: dict[str, dict[str, Any]] = {zone: {} for zone in roots}
 
     for zone, file_path in path_rows:
         root = roots.get(zone)
         if root is None:
             continue
+        relative: Path | PureWindowsPath | None
         try:
             relative = Path(file_path).resolve().relative_to(root.resolve())
         except (OSError, ValueError):
             relative = _relative_fallback(file_path, str(root))
-            if relative is None:
-                continue
+        if relative is None:
+            continue
         parts = relative.parts[:-1]
         node = forest[zone]
         for part in parts:
@@ -249,7 +247,7 @@ def build_folder_tree(
 
 def _add_dict_children(
     parent: QTreeWidgetItem,
-    node: Mapping[str, dict],
+    node: Mapping[str, Any],
     prefix: str,
     zone: str,
 ) -> None:

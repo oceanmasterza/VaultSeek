@@ -13,8 +13,8 @@ from vaultseek.db.repositories.base import batch_upsert
 from vaultseek.db.tables import artists as artists_table
 from vaultseek.db.tables import tracks as tracks_table
 from vaultseek.db.uuid_utils import blob_to_uuid, uuid_to_blob
+from vaultseek.models.dto.browse_dto import ArtistBrowseRow
 from vaultseek.models.entities.artist import Artist
-from vaultseek.services.dto.browse_dto import ArtistBrowseRow
 
 
 class ArtistRepository:

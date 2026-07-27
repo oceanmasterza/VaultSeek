@@ -82,9 +82,7 @@ class MetadataArbitrator:
         overall = _core_overall(fields)
         artist = fields.get("artist")
         needs_review = (
-            artist is None
-            or not str(artist.value or "").strip()
-            or overall < self._threshold
+            artist is None or not str(artist.value or "").strip() or overall < self._threshold
         )
         return ArbitrationResult(
             track_id=track.id,
@@ -171,12 +169,7 @@ class MetadataArbitrator:
                             results.append(_with_priority(by_id, musicbrainz.priority))
 
         # 6. Shazamio fallback — AcoustID miss / no key, same fingerprint gate.
-        if (
-            fingerprint is not None
-            and want_audio_id
-            and acoustid_hit is None
-            and track.file_path
-        ):
+        if fingerprint is not None and want_audio_id and acoustid_hit is None and track.file_path:
             shazam = self._by_id.get("shazamio")
             if shazam is not None:
                 recognize = getattr(shazam, "recognize_file", None)
@@ -190,9 +183,7 @@ class MetadataArbitrator:
                     if musicbrainz is not None:
                         mb_from_shazam = musicbrainz.lookup_by_tags(query)
                         if mb_from_shazam is not None:
-                            results.append(
-                                _with_priority(mb_from_shazam, musicbrainz.priority)
-                            )
+                            results.append(_with_priority(mb_from_shazam, musicbrainz.priority))
 
         return results
 

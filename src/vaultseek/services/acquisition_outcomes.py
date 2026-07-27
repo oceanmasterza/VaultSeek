@@ -86,7 +86,9 @@ _HUMAN_LABELS: dict[AcquisitionOutcomeCode, str] = {
     AcquisitionOutcomeCode.VERIFY_MISSING_FILE: "Download reported complete but file missing",
     AcquisitionOutcomeCode.VERIFY_FAILED: "Downloaded file failed verification",
     AcquisitionOutcomeCode.IMPORT_FAILED: "Verified but import into Incoming failed",
-    AcquisitionOutcomeCode.EXHAUSTED_NOT_ON_NETWORK: "Not found on Soulseek after repeated searches",
+    AcquisitionOutcomeCode.EXHAUSTED_NOT_ON_NETWORK: (
+        "Not found on Soulseek after repeated searches"
+    ),
 }
 
 
@@ -154,24 +156,21 @@ def classify_verification_failures(
         return AcquisitionOutcomeCode.ALREADY_OWNED
     if any(f.startswith("missing_file") or f == "no_local_paths" for f in failures):
         if all(
-            f.startswith("missing_file")
-            or f == "no_local_paths"
-            or f.startswith("duplicate_")
+            f.startswith("missing_file") or f == "no_local_paths" or f.startswith("duplicate_")
             for f in failures
-        ):
+        ) and any(f.startswith("missing_file") or f == "no_local_paths" for f in failures):
             # Only missing (+ optional dups on other paths) → treat as missing.
-            if any(f.startswith("missing_file") or f == "no_local_paths" for f in failures):
-                present_unique = [
-                    f
-                    for f in failures
-                    if not f.startswith("missing_file")
-                    and f != "no_local_paths"
-                    and not f.startswith("duplicate_")
-                ]
-                if not present_unique and any(f.startswith("duplicate_") for f in failures):
-                    # Mix of missing + duplicate: prefer already-owned when any dup hit.
-                    return AcquisitionOutcomeCode.ALREADY_OWNED
-                return AcquisitionOutcomeCode.VERIFY_MISSING_FILE
+            present_unique = [
+                f
+                for f in failures
+                if not f.startswith("missing_file")
+                and f != "no_local_paths"
+                and not f.startswith("duplicate_")
+            ]
+            if not present_unique and any(f.startswith("duplicate_") for f in failures):
+                # Mix of missing + duplicate: prefer already-owned when any dup hit.
+                return AcquisitionOutcomeCode.ALREADY_OWNED
+            return AcquisitionOutcomeCode.VERIFY_MISSING_FILE
         return AcquisitionOutcomeCode.VERIFY_MISSING_FILE
     return AcquisitionOutcomeCode.VERIFY_FAILED
 

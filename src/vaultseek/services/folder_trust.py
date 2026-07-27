@@ -80,7 +80,7 @@ class FolderTrustService:
         return self._trusted.is_trusted(library_id, normalize_folder_path(folder_path))
 
     def is_trusted_for_track(self, track: Track) -> bool:
-        return self.is_trusted(track.library_id, Path(track.file_path).parent)
+        return self.is_trusted(track.library_id, str(Path(track.file_path).parent))
 
     def try_trust_after_identify(
         self,
@@ -144,9 +144,7 @@ class FolderTrustService:
         release_mbid: str,
         tracklist: ReleaseTracklist,
     ) -> int:
-        recording_ids = {
-            track.recording_mbid for track in tracklist.tracks if track.recording_mbid
-        }
+        recording_ids = {track.recording_mbid for track in tracklist.tracks if track.recording_mbid}
         count = 0
         for path in audio_files:
             row = self._tracks.get_by_path(str(path))
@@ -169,9 +167,7 @@ class FolderTrustService:
 
     def _cancel_pending_fingerprints(self, library_id: UUID, audio_files: list[Path]) -> None:
         path_keys = {_path_key(path) for path in audio_files}
-        pending = self._jobs.list_by_status(
-            JobStatus.PENDING, library_id=library_id, limit=50_000
-        )
+        pending = self._jobs.list_by_status(JobStatus.PENDING, library_id=library_id, limit=50_000)
         for job in pending:
             if job.job_type is not JobType.FINGERPRINT_FILE:
                 continue
@@ -217,7 +213,11 @@ def _list_audio_files(folder: Path) -> list[Path]:
     if not folder.is_dir():
         return []
     return sorted(
-        (path for path in folder.iterdir() if path.is_file() and path.suffix.lower() in _AUDIO_EXTENSIONS),
+        (
+            path
+            for path in folder.iterdir()
+            if path.is_file() and path.suffix.lower() in _AUDIO_EXTENSIONS
+        ),
         key=lambda path: path.name.casefold(),
     )
 

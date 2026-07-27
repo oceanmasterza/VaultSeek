@@ -26,7 +26,7 @@ from PySide6.QtWidgets import (
 
 from vaultseek.core.config import save_config
 from vaultseek.core.container import Container
-from vaultseek.db.uuid_utils import generate_uuid7
+from vaultseek.core.uuid_utils import generate_uuid7
 from vaultseek.gui.views.rules_page import RulesPage
 from vaultseek.gui.widgets.desktop import open_path
 from vaultseek.gui.widgets.path_picker import PathPickerRow
@@ -39,6 +39,7 @@ from vaultseek.services.acquisition_bootstrap import (
     connect_acquisition_providers,
     probe_nicotine_plus_connection,
 )
+from vaultseek.services.library_reset import reset_library_processing
 from vaultseek.services.quality_presets import (
     PRESET_CHOICES,
     PRESET_CUSTOM,
@@ -46,7 +47,6 @@ from vaultseek.services.quality_presets import (
     normalize_preset_id,
     values_for_preset,
 )
-from vaultseek.services.library_reset import reset_library_processing
 
 
 class SettingsPage(QWidget):
@@ -118,9 +118,7 @@ class SettingsPage(QWidget):
         open_debug.setToolTip(str(container.paths.logs_dir / "debug.log"))
         open_app_log.setToolTip(str(container.paths.logs_dir / "vaultseek.log"))
         open_crashes.setToolTip(str(container.paths.crashes_dir))
-        open_debug.clicked.connect(
-            lambda: open_path(self._container.paths.logs_dir / "debug.log")
-        )
+        open_debug.clicked.connect(lambda: open_path(self._container.paths.logs_dir / "debug.log"))
         open_app_log.clicked.connect(
             lambda: open_path(self._container.paths.logs_dir / "vaultseek.log")
         )
@@ -340,8 +338,8 @@ class SettingsPage(QWidget):
         acoustid_box = QGroupBox("AcoustID accounts + Shazamio proxies")
         acoustid_form = QFormLayout(acoustid_box)
         for index in range(3):
-            label = QLineEdit()
-            label.setPlaceholderText(f"Account {index + 1}")
+            label_edit = QLineEdit()
+            label_edit.setPlaceholderText(f"Account {index + 1}")
             key = QLineEdit()
             key.setPlaceholderText("Application API key (optional if using Shazam only)")
             key.setEchoMode(QLineEdit.EchoMode.Password)
@@ -352,8 +350,8 @@ class SettingsPage(QWidget):
                 "by the Shazamio fallback. Different proxies = different public IPs = "
                 "higher combined request throughput."
             )
-            self._acoustid_rows.append((label, key, proxy))
-            acoustid_form.addRow(f"Label {index + 1}", label)
+            self._acoustid_rows.append((label_edit, key, proxy))
+            acoustid_form.addRow(f"Label {index + 1}", label_edit)
             acoustid_form.addRow(f"API key {index + 1}", key)
             acoustid_form.addRow(f"Proxy {index + 1}", proxy)
         acoustid_help = QLabel(
@@ -748,7 +746,9 @@ class SettingsPage(QWidget):
         key = normalize_preset_id(preset_id)
         index = self._quality_preset.findData(key)
         self._quality_applying = True
-        self._quality_preset.setCurrentIndex(index if index >= 0 else self._quality_preset.findData(PRESET_CUSTOM))
+        self._quality_preset.setCurrentIndex(
+            index if index >= 0 else self._quality_preset.findData(PRESET_CUSTOM)
+        )
         self._quality_applying = False
         self._update_quality_preset_hint()
 

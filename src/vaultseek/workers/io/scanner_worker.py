@@ -100,9 +100,7 @@ class ScannerWorker:
             },
         )
 
-    def _process_file(
-        self, job: Job, path: Path, zone: LibraryZone, *, force: bool
-    ) -> str:
+    def _process_file(self, job: Job, path: Path, zone: LibraryZone, *, force: bool) -> str:
         try:
             stat = path.stat()
         except OSError as exc:
@@ -202,14 +200,22 @@ def _build_track(
         file_modified=file_modified,
         created_at=now,
         updated_at=now,
-        duration_ms=tech.get("duration_ms") if isinstance(tech.get("duration_ms"), int) else None,
-        bitrate=tech.get("bitrate") if isinstance(tech.get("bitrate"), int) else None,
-        sample_rate=tech.get("sample_rate") if isinstance(tech.get("sample_rate"), int) else None,
-        channels=tech.get("channels") if isinstance(tech.get("channels"), int) else None,
-        bit_depth=tech.get("bit_depth") if isinstance(tech.get("bit_depth"), int) else None,
-        codec=tech.get("codec") if isinstance(tech.get("codec"), str) else None,
+        duration_ms=_optional_int(tech.get("duration_ms")),
+        bitrate=_optional_int(tech.get("bitrate")),
+        sample_rate=_optional_int(tech.get("sample_rate")),
+        channels=_optional_int(tech.get("channels")),
+        bit_depth=_optional_int(tech.get("bit_depth")),
+        codec=_optional_str(tech.get("codec")),
         is_lossless=bool(tech.get("is_lossless", False)),
     )
+
+
+def _optional_int(value: object) -> int | None:
+    return value if isinstance(value, int) else None
+
+
+def _optional_str(value: object) -> str | None:
+    return value if isinstance(value, str) else None
 
 
 def _probe_audio_tech(path: Path) -> dict[str, object]:
