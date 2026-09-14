@@ -18,7 +18,8 @@ Start here when onboarding or before architectural work.
 10. [ROADMAP.md](ROADMAP.md) — public roadmap
 11. [DEVELOPMENT_ROADMAP.md](DEVELOPMENT_ROADMAP.md) — internal engineering notebook
 12. [AI_RULES.md](AI_RULES.md) — coding and documentation rules
-13. [TECH_STACK.md](TECH_STACK.md) — languages, libraries, tooling
+13. [SOURCES.md](SOURCES.md) — acquisition sources and future-provider ideas
+14. [TECH_STACK.md](TECH_STACK.md) — languages, libraries, tooling
 
 ## Terminology (use consistently)
 

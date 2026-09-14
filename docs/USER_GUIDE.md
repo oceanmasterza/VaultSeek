@@ -47,6 +47,14 @@ Use the page that owns the field, then click **that page’s** Save button.
 | Navidrome / Jellyfin / Plex / other servers | Settings → Media servers | **Save media server** |
 | Last.fm, Spotify, Prowlarr, qBittorrent, SABnzbd | System → Plugins | **Save plugin settings** |
 
+**Detect local installs:** Settings and Plugins each have a detect button. VaultSeek
+reads standard Windows config for Prowlarr, qBittorrent, SABnzbd, Nicotine+,
+Jellyfin, Navidrome, Plex and Emby. It copies URLs/keys you select; it does not
+enable providers or recover hashed passwords. Test, then Save.
+
+Full API signup steps: in-app Help (F1) → Connection setup. Extra source ideas:
+[SOURCES.md](SOURCES.md).
+
 Settings has three Save buttons. Plugins has its own. Editing Nicotine+ and
 clicking **Save library** does not write those Nicotine+ fields.
 
@@ -209,7 +217,7 @@ Settings → Library quality. These drive orange/green colors and upgrade scans.
 Optional tokens in **Settings → Application**. Restart after saving.
 
 - Discogs: [developers settings](https://www.discogs.com/settings/developers) — genre/label/catalog and Discogs browse.
-- AcoustID: [new applications](https://acoustid.org/new-applications) — up to three keys plus optional proxies (also used by Shazamio fallback).
+- AcoustID: [new application](https://acoustid.org/new-application) — **application** key (not a user submission key). **Add another account / connection** adds more keys or proxy routes (also used by Shazamio fallback).
 
 ---
 

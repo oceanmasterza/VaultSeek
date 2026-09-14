@@ -118,6 +118,14 @@
   </header>
   <div class="wrap">
   <nav>
+    <h2>Connection setup</h2>
+    <a href="#connection-setup">Setup checklist &amp; local detection</a>
+    <a href="#fingerprint-setup">Fingerprinting &amp; multiple accounts</a>
+    <a href="#discogs-setup">Discogs registration</a>
+    <a href="#download-setup">Download clients &amp; API keys</a>
+    <a href="#server-setup">Jellyfin &amp; other media servers</a>
+    <a href="#discovery-setup">Last.fm &amp; Spotify</a>
+    <a href="#more-sources">More music sources &amp; quality</a>
     <h2>Start here</h2>
     <a href="#overview">What VaultSeek does</a>
     <a href="#first-run">First run</a>
@@ -150,6 +158,240 @@
     <a href="#troubleshooting">Troubleshooting</a>
   </nav>
   <main>
+
+    <h2 id="connection-setup">Connect your music tools</h2>
+    <p>VaultSeek coordinates three different jobs: <strong>identify</strong> audio with
+      metadata services, <strong>find and download</strong> missing releases with download
+      providers, then <strong>refresh</strong> your media server after organization.
+      A Discogs or AcoustID key does not download music. Jellyfin plays your collection;
+      it is not a source of missing albums.</p>
+    <ol>
+      <li>In <strong>Settings → Library</strong>, save your Incoming and Library folders.
+        Keep incomplete downloads outside these folders.</li>
+      <li>In <strong>Plugins → Detect local download clients</strong>, VaultSeek reads
+        standard Windows configuration files for Prowlarr, qBittorrent and SABnzbd.
+        Select only the suggestions you want to copy. This replaces the selected form
+        fields, including an existing remote address. It does not save or enable them.</li>
+      <li>Review the URLs and credentials, test each connection, enable your chosen
+        providers and click <strong>Save plugin settings</strong>.</li>
+      <li>Set up Nicotine+ and identification in <strong>Settings</strong>, then save
+        preferences. Restart for metadata/fingerprinting changes.</li>
+      <li>Select your library and save its media-server connection. Configure that
+        server to watch the organized Library directory.</li>
+      <li>Try one known album manually before enabling unattended acquisition. Check
+        download completion, verification, Incoming processing and server visibility.</li>
+    </ol>
+    <p>The <strong>Go to</strong> selector stays above Settings and Plugins so you can
+      jump to a section. <strong>Setup instructions</strong> opens this help; use its
+      search field and Next/Previous to locate a setting.</p>
+    <p><strong>Automation boundary:</strong> detection reads existing configuration only.
+      It cannot create paid accounts, accept account terms, recover hashed passwords,
+      install Nicotine plugins or enable a disabled Web UI. Portable, container and
+      remote installations need their actual address entered manually. A successful
+      connection test is not proof of indexer coverage, available peers or completed imports.</p>
+    <p>For one PC, use <code>127.0.0.1</code> with each service's configured port.
+      Common examples are Prowlarr 9696, Jellyfin 8096 and Nicotine's HTTP plugin 12339.
+      qBittorrent and SABnzbd can conflict on 8080: give them different ports.
+      Preserve URL prefixes such as <code>/sabnzbd</code>. Local detection uses saved
+      values, which may differ from a running process until it restarts.</p>
+
+    <h2 id="fingerprint-setup">Fingerprinting, registration and multiple connections</h2>
+    <p><strong>Chromaprint/fpcalc</strong> computes an audio signature locally.
+      <strong>AcoustID</strong> matches it to MusicBrainz recordings; MusicBrainz supplies
+      release metadata. Fingerprints identify recordings, not the mastering quality or
+      authenticity of a claimed high-resolution file.</p>
+    <ol>
+      <li>Use the bundled fpcalc executable. If missing, install Chromaprint's fpcalc
+        from its official release and set <code>FPCALC</code> to its full executable path
+        before starting VaultSeek. See <a href="https://acoustid.org/chromaprint">Chromaprint</a>.</li>
+      <li>Open <a href="https://acoustid.org/new-application">AcoustID application registration</a>,
+        sign in through the offered login method and register your application.</li>
+      <li>Copy the <strong>application key</strong> into Settings → Application → AcoustID.
+        The user key for fingerprint submissions is a different credential.</li>
+      <li>Give it a recognizable label. Leave Proxy blank for normal direct access.</li>
+      <li>For additional authorized credentials, choose <strong>Add another account /
+        connection</strong>, enter a label and key in each row. Clear both key and proxy
+        to remove a connection when saving. Existing additional rows are preserved.</li>
+      <li>Save preferences and restart. Scan a known, tagged audio file and inspect
+        Jobs/Activity. A valid key can still return no match for an unknown recording.</li>
+    </ol>
+    <p>Do not assume extra accounts or proxies increase your allowance. Follow the
+      service's usage terms and request approval for higher traffic.
+      <a href="https://acoustid.org/webservice">AcoustID API documentation</a>.</p>
+    <p><strong>Shazamio</strong> is a community audio-recognition fallback; this version
+      has no Shazam account or developer-key field. It uses direct access and optional
+      configured proxy routes. Service changes can break it. Proxy URLs may include
+      credentials, so the form masks them. Use only a proxy you trust.</p>
+    <p><strong>Performance choice:</strong> Fingerprint every song is the most thorough.
+      Sample album folders reduces work by trusting remaining siblings after enough
+      tracks match. Use sampling only for consistently tagged album folders; mixed
+      compilations and uncertain files deserve individual identification. Increasing
+      worker counts does not remove external service rate limits.</p>
+
+    <h2 id="discogs-setup">Discogs: metadata and artwork</h2>
+    <ol>
+      <li>Create or sign into your Discogs account and finish any email verification.</li>
+      <li>Open <a href="https://www.discogs.com/settings/developers">Settings → Developers</a>
+        and generate a personal access token. This is separate from your password and
+        two-factor authentication code.</li>
+      <li>Paste it into <strong>Settings → Application → Discogs token</strong>.
+        Save preferences and restart VaultSeek.</li>
+      <li>Search a known artist on the Discogs page. If access fails, check that the
+        token is current and copied completely; regenerate it if revoked.</li>
+    </ol>
+    <p>Discogs helps distinguish editions, catalog numbers, artwork and tracklists.
+      VaultSeek currently stores one Discogs token. Its marketplace sells physical
+      releases; the metadata API does not supply downloadable music files.</p>
+
+    <h2 id="download-setup">Nicotine+, Prowlarr, qBittorrent and SABnzbd</h2>
+    <h3>Nicotine+ / Soulseek</h3>
+    <ol>
+      <li>Install Nicotine+, set up your Soulseek login in its own settings and connect.
+        First confirm that a normal search works inside Nicotine+.</li>
+      <li>Install the community <a href="https://github.com/palaueb/api-nicotine-plus">api-nicotine-plus plugin</a>
+        into Nicotine's plugin directory as a folder containing its PLUGININFO and
+        __init__.py. Enable it under Nicotine's Plugins settings. Follow the plugin's
+        current installation instructions if its layout changes.</li>
+      <li>In the plugin settings, use a loopback host, its HTTP port (default 12339)
+        and an API token. Restart/reload the plugin after changes.</li>
+      <li>In VaultSeek Settings → Acquisition, select HTTP, enter the same host,
+        API port and API token, enable Nicotine+, test and save.</li>
+    </ol>
+    <p>The API token is not your Soulseek password. A running Nicotine process alone
+      does not provide this HTTP API. Socket mode requires the separate NDJSON bridge.
+      Keep conservative search intervals; peer availability and queues affect results.</p>
+    <h3>Prowlarr: searches indexers</h3>
+    <ol>
+      <li>Open Prowlarr and add your indexers under Indexers. Supply each indexer's
+        own login or API key and run its Test. Include supported Audio categories.</li>
+      <li>Copy Prowlarr's own key from Settings → General → Security/API Key into
+        Plugins → Prowlarr API key, or import it with local detection.</li>
+      <li>Enter its base URL, including any configured prefix. Test in VaultSeek.</li>
+      <li>Enable Prowlarr plus qBittorrent for torrents and/or SABnzbd for NZBs.
+        Save plugin settings. Set the source order in Settings → Acquisition.</li>
+    </ol>
+    <p>Indexer accounts belong in Prowlarr. VaultSeek passes torrent/NZB results
+      directly to the selected downloader; a Prowlarr connection by itself does not
+      configure Usenet access or produce downloads. See
+      <a href="https://wiki.servarr.com/prowlarr/settings">Prowlarr settings</a>.</p>
+    <h3>qBittorrent: downloads torrents</h3>
+    <ol>
+      <li>Open Tools → Options → Web UI and enable it. Choose a free port and a Web UI
+        username/password. Keep authentication enabled.</li>
+      <li>Enter the matching URL and credentials under Plugins → qBittorrent.
+        Local detection can read its port and username but cannot reverse a password hash.</li>
+      <li>Set category to <code>vaultseek</code> and optionally a dedicated download
+        path. This path is interpreted on the downloader's computer.</li>
+      <li>Test, enable qBittorrent downloads and save. Confirm a small authorized
+        download completes and is readable by VaultSeek.</li>
+    </ol>
+    <p>Keep seeding files in the downloader directory; let VaultSeek import completed
+      audio. Do not place incomplete torrent files in watched Incoming. See the
+      <a href="https://github.com/qbittorrent/qBittorrent/wiki">qBittorrent documentation</a>.</p>
+    <h3>SABnzbd: downloads Usenet articles referenced by NZBs</h3>
+    <ol>
+      <li>Finish SABnzbd's wizard. In Config → Servers enter your Usenet provider's
+        server, login, port, TLS settings and connection allowance. Test the server.
+        Additional provider accounts belong here, not in VaultSeek.</li>
+      <li>Copy the full <strong>API Key</strong> from Config → General into VaultSeek
+        Plugins → SABnzbd. The NZB-only key is insufficient for queue/history access.</li>
+      <li>In Config → Categories create <code>vaultseek</code>. Use that same category
+        in VaultSeek. Give completed downloads a dedicated, accessible folder.</li>
+      <li>Enter the actual URL/port/prefix, test, enable SABnzbd and Prowlarr, then save.</li>
+    </ol>
+    <p>An indexer finds NZBs; your Usenet provider supplies their articles. Missing
+      articles or retention limits can cause failure even when all API tests pass.
+      See <a href="https://sabnzbd.org/wiki/configuration/5.1/general">General/API settings</a>
+      and <a href="https://sabnzbd.org/wiki/configuration/5.1/categories">Categories</a>.</p>
+
+    <h2 id="server-setup">Jellyfin and other media servers</h2>
+    <p>Select the active VaultSeek library first. Open Settings → Media servers,
+      choose the plugin, fill its fields and Save media server. Entries are associated
+      with that library. Only one saved connection per plugin per library is exposed
+      by this form. Configure a music library inside the server pointing to the
+      organized Library folder, not incomplete downloads.</p>
+    <ul>
+      <li><strong>Jellyfin:</strong> sign into its dashboard as an administrator,
+        open API Keys, create a key named VaultSeek and paste it into Token. Use the
+        server URL, commonly <code>http://127.0.0.1:8096</code>. No Jellyfin cloud signup
+        is needed. Save and verify a library refresh after importing music.</li>
+      <li><strong>Emby:</strong> create a key in its administrator API Keys section;
+        use its URL and Token. Jellyfin and Emby need different ports if both run locally.</li>
+      <li><strong>Plex:</strong> use its server URL (commonly port 32400) and a Plex
+        token from your authenticated account. This adapter defaults to section 1;
+        this form does not yet expose a section selector. Verify that the refreshed
+        section is your music library.</li>
+      <li><strong>Navidrome / Subsonic:</strong> enter server URL and the username/password
+        of an account allowed to access the music library. Navidrome's optional DB path
+        must refer to a local accessible database; it is not a server address.</li>
+      <li><strong>Ampache, Koel, Funkwhale, Lyrion:</strong> use the matching installed
+        server's own authentication and endpoint documentation. These adapters expose
+        different refresh capabilities; no common account registration flow exists.
+        Do not assume that saving credentials validates them or enables every feature.</li>
+    </ul>
+    <p>Reference manuals: <a href="https://jellyfin.org/docs/">Jellyfin</a>,
+      <a href="https://emby.media/support/articles/">Emby</a>,
+      <a href="https://support.plex.tv/articles/204059436-finding-an-authentication-token-x-plex-token/">Plex token</a>,
+      <a href="https://www.navidrome.org/docs/">Navidrome</a>.</p>
+
+    <h2 id="discovery-setup">Recommendations: Last.fm and Spotify</h2>
+    <p><strong>Last.fm:</strong> sign up/sign in, open
+      <a href="https://www.last.fm/api/account/create">Create API account</a>, register
+      the application and copy its API key into Plugins → Similar music. Enable it,
+      save, select a library and click Find recommendations now. Tune similar artists
+      and albums per artist for a smaller Wishlist. This workflow does not need your
+      password or shared secret and does not download music from Last.fm.</p>
+    <p><strong>Spotify:</strong> existing apps with suitable API access can enter their
+      client ID/secret from the developer dashboard and one playlist URL per line.
+      This version uses Client Credentials, with no user authorization flow.
+      Spotify's February/March 2026 Development Mode changes require Premium for the
+      app owner and limit playlist content to playlists the authenticated user owns
+      or collaborates on. Creating a new app or buying Premium alone does not make
+      this integration work. A 403 can mean access restrictions, not an incorrect
+      secret. Use Last.fm or manually add releases to the Wishlist when unavailable.
+      <a href="https://developer.spotify.com/documentation/web-api/tutorials/february-2026-migration-guide">Spotify migration guide</a>.</p>
+
+    <h2 id="more-sources">More sources for missing music and quality upgrades</h2>
+    <p>VaultSeek’s automated waterfall is Nicotine+ (Soulseek), then Usenet,
+      then Prowlarr public torrents, then private torrents. That mix already covers
+      most digital qualities: peer FLAC/MP3, scene/Usenet packs, and tracker rips.
+      The items below are useful <strong>additions</strong>; they are not new automated
+      providers unless stated. Download permitted files, extract archives
+      <em>outside</em> Incoming, then copy finished audio into Incoming.</p>
+    <ul>
+      <li><strong>Bandcamp:</strong> independent releases and artist catalogs; purchased
+        downloads offer FLAC/ALAC and MP3/AAC among other formats.
+        <a href="https://get.bandcamp.help/en/articles/15263234-in-which-formats-can-i-download-my-purchases">Download formats</a>.</li>
+      <li><strong>Qobuz download store:</strong> purchased CD-quality and high-resolution
+        releases, subject to territory/catalog availability. Store purchases give you
+        files; streaming offline caches are different.
+        <a href="https://www.qobuz.com/us-en">Qobuz store</a>.</li>
+      <li><strong>Internet Archive / Live Music Archive:</strong> permitted live recordings,
+        historical material and artist-approved collections. Check each item's download
+        options and permissions; formats and recording quality vary.
+        <a href="https://archivesupport.zendesk.com/hc/en-us/articles/360016553532-Live-Music-Archive-etree-org">Live Music Archive guide</a>.</li>
+      <li><strong>Your CDs, old drives, NAS and backups:</strong> often the best source for rare
+        editions. Rip owned CDs to lossless audio and import; search archived
+        purchases before acquiring another copy.</li>
+      <li><strong>Artist/label stores:</strong> check for direct digital purchases,
+        particularly regional catalogs and limited releases.</li>
+      <li><strong>Private indexers in Prowlarr:</strong> tracker accounts stay in Prowlarr
+        (RED, OPS, TL, and others you are a member of). VaultSeek only consumes
+        the private-torrent tier last by default.</li>
+      <li><strong>slskd:</strong> another Soulseek client with a REST API; not wired yet.
+        Nicotine+ remains the supported Soulseek path.</li>
+      <li><strong>ListenBrainz / MusicBrainz Picard:</strong> recommendations and tagging
+        companions, not download sources.</li>
+    </ul>
+    <p>For compact listening, choose a good lossy original (for example MP3 320 or AAC).
+      For archival copies, prefer lossless originals. For high-resolution collecting,
+      require an actual high-resolution source and the desired mastering. Converting
+      MP3 to FLAC does not restore information; a FLAC filename or high bit depth alone
+      does not prove an upgrade. Compare edition, track count and audible quality as
+      well as codec before replacing a release.</p>
+    <p><strong>Recommended provider development order:</strong> local/NAS archive search,
+      then permitted Internet Archive downloads, then slskd, then store search links
+      and purchase import assistance. Details: the repo file <code>docs/SOURCES.md</code>.</p>
 
     <h2 id="overview">What VaultSeek does</h2>
     <p>

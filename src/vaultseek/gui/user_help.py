@@ -6,10 +6,12 @@ import sys
 from pathlib import Path
 
 from PySide6.QtCore import QUrl
-from PySide6.QtGui import QDesktopServices
+from PySide6.QtGui import QDesktopServices, QTextDocument
 from PySide6.QtWidgets import (
     QDialog,
     QHBoxLayout,
+    QLabel,
+    QLineEdit,
     QPushButton,
     QTextBrowser,
     QVBoxLayout,
@@ -54,7 +56,7 @@ def open_help_in_browser(parent: object | None = None) -> bool:
 class HelpDialog(QDialog):
     """Scrollable in-app help viewer (same HTML as the bundled file)."""
 
-    def __init__(self, parent: object | None = None) -> None:
+    def __init__(self, parent: object | None = None, *, topic: str = "") -> None:
         super().__init__(parent)  # type: ignore[arg-type]
         self.setWindowTitle("VaultSeek Help")
         self.resize(920, 720)
@@ -63,6 +65,20 @@ class HelpDialog(QDialog):
         layout = QVBoxLayout(self)
         self._browser = QTextBrowser()
         self._browser.setOpenExternalLinks(True)
+        search_row = QHBoxLayout()
+        self._search = QLineEdit()
+        self._search.setPlaceholderText("Find in help…")
+        self._search_status = QLabel()
+        previous = QPushButton("Previous")
+        next_button = QPushButton("Next")
+        previous.clicked.connect(lambda: self._find(backwards=True))
+        next_button.clicked.connect(self._find)
+        self._search.returnPressed.connect(self._find)
+        search_row.addWidget(self._search, 1)
+        search_row.addWidget(previous)
+        search_row.addWidget(next_button)
+        search_row.addWidget(self._search_status)
+        layout.addLayout(search_row)
         layout.addWidget(self._browser, stretch=1)
 
         buttons = QHBoxLayout()
@@ -86,3 +102,21 @@ class HelpDialog(QDialog):
             )
         else:
             self._browser.setSource(QUrl.fromLocalFile(str(path.resolve())))
+            if topic:
+                self._browser.scrollToAnchor(topic)
+
+    def _find(self, *, backwards: bool = False) -> None:
+        text = self._search.text().strip()
+        if not text:
+            self._search_status.clear()
+            return
+        flags = QTextDocument.FindFlag.FindBackward if backwards else QTextDocument.FindFlag(0)
+        found = self._browser.find(text, flags)
+        if not found:
+            cursor = self._browser.textCursor()
+            cursor.movePosition(
+                cursor.MoveOperation.End if backwards else cursor.MoveOperation.Start
+            )
+            self._browser.setTextCursor(cursor)
+            found = self._browser.find(text, flags)
+        self._search_status.setText("" if found else "No match")

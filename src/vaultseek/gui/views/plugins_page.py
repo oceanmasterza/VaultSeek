@@ -7,11 +7,13 @@ appear in the acquisition pipeline once enabled here.
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import replace
 from uuid import UUID
 
 from PySide6.QtWidgets import (
     QCheckBox,
+    QDialog,
     QFormLayout,
     QGroupBox,
     QHBoxLayout,
@@ -37,11 +39,12 @@ from vaultseek.core.config import (
 )
 from vaultseek.core.container import Container, _build_recommenders
 from vaultseek.gui.async_task import run_in_background
+from vaultseek.gui.widgets.local_setup_dialog import LocalSetupDialog
 from vaultseek.gui.widgets.scrollable import wrap_scrollable
-from vaultseek.plugins.builtin.prowlarr_qbit import ProwlarrClient, QbittorrentClient
-from vaultseek.plugins.builtin.sabnzbd import SabnzbdClient
+from vaultseek.gui.widgets.settings_navigation import add_settings_navigation
 from vaultseek.services.acquisition_bootstrap import connect_acquisition_providers
 from vaultseek.services.acquisition_sources import ensure_search_sources, expand_legacy_prowlarr
+from vaultseek.services.local_setup import LocalConnection
 from vaultseek.services.recommendation_service import RecommendationService
 
 
@@ -54,7 +57,7 @@ class PluginsPage(QWidget):
         self._library_id: UUID | None = None
 
         body = QWidget()
-        wrap_scrollable(self, body)
+        scroll = wrap_scrollable(self, body)
         layout = QVBoxLayout(body)
         layout.setContentsMargins(16, 12, 16, 16)
         layout.setSpacing(12)
@@ -71,10 +74,18 @@ class PluginsPage(QWidget):
         intro.setProperty("muted", True)
         layout.addWidget(intro)
 
+        self._detect_button = QPushButton("Detect local download clients")
+        self._detect_button.setToolTip(
+            "Read Prowlarr, qBittorrent and SABnzbd config files on this PC. "
+            "Does not enable providers or overwrite until you copy and Save."
+        )
+        self._detect_button.clicked.connect(self._detect_local)
+        layout.addWidget(self._detect_button)
         layout.addWidget(self._build_lastfm_box())
         layout.addWidget(self._build_spotify_box())
         layout.addWidget(self._build_recommender_actions())
         layout.addWidget(self._build_torrent_box())
+        layout.addWidget(self._build_other_sources_box())
 
         save_row = QHBoxLayout()
         save_btn = QPushButton("Save plugin settings")
@@ -84,6 +95,7 @@ class PluginsPage(QWidget):
         save_row.addStretch(1)
         layout.addLayout(save_row)
         layout.addStretch(1)
+        add_settings_navigation(self, scroll, "connection-setup")
 
     # ------------------------------------------------------------------ UI --
     def _build_lastfm_box(self) -> QGroupBox:
@@ -107,8 +119,9 @@ class PluginsPage(QWidget):
         form.addRow("Similar artists per seed", self._lastfm_similar)
         form.addRow("Top albums per artist", self._lastfm_albums)
         help_label = QLabel(
-            "Free key: https://www.last.fm/api/account/create. Suggestions land on "
-            "your Wishlist as parked entries you can promote to download."
+            'Free key: <a href="https://www.last.fm/api/account/create">'
+            "last.fm/api/account/create</a>. Suggestions land on your Wishlist as "
+            "parked entries you can promote to download. Last.fm is not a download source."
         )
         help_label.setWordWrap(True)
         help_label.setProperty("muted", True)
@@ -136,11 +149,13 @@ class PluginsPage(QWidget):
         form.addRow("Client secret", self._spotify_client_secret)
         form.addRow("Playlists", self._spotify_playlists)
         help_label = QLabel(
-            "Create an app at https://developer.spotify.com/dashboard for the client "
-            "ID/secret (Client Credentials / Web API). Only public playlists are supported "
-            "(no OAuth redirect / user login flow is used). Depending on Spotify's current "
-            "developer rules, Web API access may require Spotify Premium for the app owner. "
-            "Albums referenced by playlist tracks are added to your Wishlist."
+            'Create an app at <a href="https://developer.spotify.com/dashboard">'
+            "developer.spotify.com/dashboard</a> for the client ID/secret "
+            "(Client Credentials / Web API). This integration needs playlist "
+            "access permitted for your app. Spotify's 2026 Development Mode restricts "
+            "playlist contents to the signed-in owner's/collaborator's playlists; this "
+            "version has no user sign-in flow. A new client ID alone will not enable "
+            "playlist sync. See Setup instructions for alternatives."
         )
         help_label.setWordWrap(True)
         help_label.setProperty("muted", True)
@@ -216,6 +231,7 @@ class PluginsPage(QWidget):
         form.addRow("SABnzbd URL", self._sab_url)
         form.addRow("SABnzbd API key", self._sab_key)
         form.addRow("SABnzbd category", self._sab_category)
+        self._test_buttons: list[QPushButton] = []
         test_row = QHBoxLayout()
         test_prowlarr = QPushButton("Test Prowlarr")
         test_prowlarr.setProperty("secondary", True)
@@ -226,6 +242,7 @@ class PluginsPage(QWidget):
         test_sab = QPushButton("Test SABnzbd")
         test_sab.setProperty("secondary", True)
         test_sab.clicked.connect(self._test_sabnzbd)
+        self._test_buttons.extend((test_prowlarr, test_qbit, test_sab))
         test_row.addWidget(test_prowlarr)
         test_row.addWidget(test_qbit)
         test_row.addWidget(test_sab)
@@ -240,6 +257,25 @@ class PluginsPage(QWidget):
         help_label.setWordWrap(True)
         help_label.setProperty("muted", True)
         form.addRow(help_label)
+        return box
+
+    def _build_other_sources_box(self) -> QGroupBox:
+        box = QGroupBox("Other ways to find missing music")
+        layout = QVBoxLayout(box)
+        label = QLabel(
+            "VaultSeek already searches Soulseek (Nicotine+), Usenet (Prowlarr → SABnzbd), "
+            "then public and private torrent indexers (Prowlarr → qBittorrent). "
+            "For store-quality or licensed copies, buy from "
+            '<a href="https://bandcamp.com">Bandcamp</a> '
+            'or <a href="https://www.qobuz.com">Qobuz</a>, rip your CDs, or search '
+            '<a href="https://archive.org/details/etree">Live Music Archive</a>. '
+            "Copy finished audio into Incoming. Setup instructions list more options "
+            "and what we cannot automate (accounts, hashed passwords, indexer logins)."
+        )
+        label.setWordWrap(True)
+        label.setProperty("muted", True)
+        label.setOpenExternalLinks(True)
+        layout.addWidget(label)
         return box
 
     # ------------------------------------------------------------- lifecycle --
@@ -427,49 +463,71 @@ class PluginsPage(QWidget):
         self._run_status.setText("")
         QMessageBox.warning(self, "Recommendations", f"Could not run recommenders:\n{error}")
 
-    def _test_prowlarr(self) -> None:
-        client = ProwlarrClient(
-            base_url=self._prowlarr_url.text().strip() or "http://127.0.0.1:9696",
-            api_key=self._prowlarr_key.text().strip(),
+    def _detect_local(self) -> None:
+        self._detect_button.setEnabled(False)
+        run_in_background(
+            self._container.local_setup.discover,
+            on_finished=self._local_detected,
+            on_failed=self._local_failed,
         )
-        if client.probe():
-            QMessageBox.information(self, "Prowlarr", "Connected to Prowlarr.")
-        else:
-            QMessageBox.warning(
-                self,
-                "Prowlarr",
-                "Could not reach Prowlarr. Check the URL and API key "
-                "(Prowlarr → Settings → General → API Key).",
-            )
+
+    def _local_failed(self, _error: str) -> None:
+        self._detect_button.setEnabled(True)
+        QMessageBox.warning(
+            self, "Local setup", "Detection failed. Use the manual setup instructions."
+        )
+
+    def _local_detected(self, connections: list[LocalConnection]) -> None:
+        self._detect_button.setEnabled(True)
+        connections = [c for c in connections if c.name in {"Prowlarr", "qBittorrent", "SABnzbd"}]
+        dialog = LocalSetupDialog(connections, self)
+        if dialog.exec() != QDialog.DialogCode.Accepted:
+            return
+        fields = {
+            "Prowlarr": {"url": self._prowlarr_url, "key": self._prowlarr_key},
+            "qBittorrent": {"url": self._qbit_url, "username": self._qbit_username},
+            "SABnzbd": {"url": self._sab_url, "key": self._sab_key},
+        }
+        for connection in dialog.selected():
+            for name, value in connection.values.items():
+                fields[connection.name][name].setText(value)
+
+    def _test_connection(self, name: str, probe: Callable[[], bool], help_text: str) -> None:
+        for button in self._test_buttons:
+            button.setEnabled(False)
+
+        def done(ok: bool) -> None:
+            for button in self._test_buttons:
+                button.setEnabled(True)
+            if ok:
+                QMessageBox.information(
+                    self,
+                    name,
+                    "Connection check passed. This does not test searches or download completion.",
+                )
+            else:
+                QMessageBox.warning(self, name, help_text)
+
+        run_in_background(probe, on_finished=done, on_failed=lambda _: done(False))
+
+    def _test_download(self, name: str, help_text: str) -> None:
+        config = self._collect_acquisition()
+        self._test_connection(
+            name, lambda: self._container.connection_checks.download(name, config), help_text
+        )
+
+    def _test_prowlarr(self) -> None:
+        self._test_download("Prowlarr", "Check URL and Settings → General → API Key in Prowlarr.")
 
     def _test_qbittorrent(self) -> None:
-        client = QbittorrentClient(
-            base_url=self._qbit_url.text().strip() or "http://127.0.0.1:8081",
-            username=self._qbit_username.text().strip(),
-            password=self._qbit_password.text(),
+        self._test_download(
+            "qBittorrent",
+            "Enable Tools → Options → Web UI. " "Check URL, port, username and password.",
         )
-        if client.probe():
-            QMessageBox.information(self, "qBittorrent", "Logged in to qBittorrent WebUI.")
-        else:
-            QMessageBox.warning(
-                self,
-                "qBittorrent",
-                "Could not log in. Enable the qBittorrent WebUI "
-                "(Tools → Options → Web UI), use a free port (e.g. 8081 if "
-                "SABnzbd owns 8080), and check the URL/credentials.",
-            )
 
     def _test_sabnzbd(self) -> None:
-        client = SabnzbdClient(
-            base_url=self._sab_url.text().strip() or "http://127.0.0.1:8080",
-            api_key=self._sab_key.text().strip(),
+        self._test_download(
+            "SABnzbd",
+            "Check URL and Config → General → API Key "
+            "(not the NZB key). Queue access is required.",
         )
-        if client.probe():
-            QMessageBox.information(self, "SABnzbd", "Connected to SABnzbd.")
-        else:
-            QMessageBox.warning(
-                self,
-                "SABnzbd",
-                "Could not reach SABnzbd. Check the URL and API key "
-                "(SABnzbd → Config → General → API Key).",
-            )

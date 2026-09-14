@@ -84,11 +84,13 @@ from vaultseek.services.acquisition_bootstrap import connect_acquisition_provide
 from vaultseek.services.acquisition_engine import AcquisitionEngine
 from vaultseek.services.acquisition_runner import AcquisitionRunner
 from vaultseek.services.acquisition_workflow import AcquisitionWorkflow
+from vaultseek.services.connection_checks import ConnectionChecks
 from vaultseek.services.download_manager import DownloadManager
 from vaultseek.services.folder_trust import FolderTrustService
 from vaultseek.services.import_pipeline import ImportPipeline
 from vaultseek.services.job_dispatcher import JobDispatcher
 from vaultseek.services.job_queue_service import JobQueueService
+from vaultseek.services.local_setup import LocalSetupService
 from vaultseek.services.metadata_arbitrator import MetadataArbitrator
 from vaultseek.services.missing_media_analyzer import MissingMediaAnalyzer
 from vaultseek.services.operation_orchestrator import OperationOrchestrator
@@ -169,6 +171,10 @@ class Container:
     media_server_worker: MediaServerWorker
     dispatcher: JobDispatcher
     event_bus: EventBus = field(default_factory=EventBus)
+    local_setup: LocalSetupService = field(default_factory=LocalSetupService)
+    connection_checks: ConnectionChecks = field(
+        default_factory=lambda: ConnectionChecks(_build_media_server_plugins)
+    )
 
     @classmethod
     def bootstrap(cls, *, paths: AppPaths, config: AppConfig) -> Container:

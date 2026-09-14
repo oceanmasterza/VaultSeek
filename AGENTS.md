@@ -25,7 +25,7 @@ Windows desktop **Acquisition Engine** (Python 3.12+, PySide6). It finds missing
 3. [docs/DECISIONS.md](docs/DECISIONS.md) — ADRs (do not silently reverse)
 4. [docs/AI_RULES.md](docs/AI_RULES.md) — coding / docs rules
 5. [docs/architecture/02-folder-layout.md](docs/architecture/02-folder-layout.md) — import boundaries
-6. Feature-specific: [docs/PROWLARR.md](docs/PROWLARR.md), [docs/NICOTINE_PLUS.md](docs/NICOTINE_PLUS.md), [docs/USER_GUIDE.md](docs/USER_GUIDE.md)
+6. Feature-specific: [docs/PROWLARR.md](docs/PROWLARR.md), [docs/NICOTINE_PLUS.md](docs/NICOTINE_PLUS.md), [docs/USER_GUIDE.md](docs/USER_GUIDE.md), [docs/SOURCES.md](docs/SOURCES.md), in-app `docs/HELP.html`
 7. Latest **Session Notes** in [docs/DEVELOPMENT_ROADMAP.md](docs/DEVELOPMENT_ROADMAP.md)
 
 If a change alters architecture: update ADRs + architecture docs **before** or with the code (see AI_RULES documentation-first section).
@@ -46,6 +46,8 @@ If a change alters architecture: update ADRs + architecture docs **before** or w
 | SABnzbd client | `src/vaultseek/plugins/builtin/sabnzbd/` |
 | Settings UI | `src/vaultseek/gui/views/settings_page.py` |
 | Plugins UI (Prowlarr / qBit / SAB / Last.fm / Spotify) | `src/vaultseek/gui/views/plugins_page.py` |
+| Local client detection | `src/vaultseek/services/local_setup.py`, Settings/Plugins detect buttons |
+| Connection probes | `src/vaultseek/services/connection_checks.py` |
 | Unit tests | `tests/unit/` |
 
 UI must not call providers directly. Go through `ProviderManager` / services from `Container`.

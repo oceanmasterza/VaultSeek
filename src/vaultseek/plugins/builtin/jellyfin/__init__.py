@@ -43,7 +43,8 @@ class JellyfinPlugin:
             return False
         try:
             response = self._session.get(
-                urljoin(self._base, "System/Info/Public"),
+                urljoin(self._base, "System/Info"),
+                headers={"X-Emby-Token": self._token},
                 timeout=15.0,
             )
             return response.ok

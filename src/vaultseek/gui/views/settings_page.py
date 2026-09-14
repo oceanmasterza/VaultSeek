@@ -4,6 +4,7 @@ from __future__ import annotations
 
 from dataclasses import replace
 from datetime import UTC, datetime
+from functools import partial
 from pathlib import Path
 from uuid import UUID
 
@@ -11,6 +12,7 @@ from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
     QCheckBox,
     QComboBox,
+    QDialog,
     QDoubleSpinBox,
     QFormLayout,
     QGroupBox,
@@ -30,16 +32,21 @@ from vaultseek.core.config import save_config
 from vaultseek.core.container import Container
 from vaultseek.core.logging import configure_logging
 from vaultseek.core.uuid_utils import generate_uuid7
+from vaultseek.gui.async_task import run_in_background
 from vaultseek.gui.views.rules_page import RulesPage
 from vaultseek.gui.widgets.desktop import open_path
+from vaultseek.gui.widgets.local_setup_dialog import LocalSetupDialog
 from vaultseek.gui.widgets.path_picker import PathPickerRow
 from vaultseek.gui.widgets.quality_fields import QualityFields
 from vaultseek.gui.widgets.scrollable import wrap_scrollable
+from vaultseek.gui.widgets.settings_navigation import add_settings_navigation
 from vaultseek.models.entities.job import JobType
 from vaultseek.models.entities.library import Library
 from vaultseek.models.entities.media_server_state import MediaServerState
 from vaultseek.models.entities.track import LibraryZone
+from vaultseek.models.interfaces.media_server import MediaServerConfig
 from vaultseek.services.acquisition_bootstrap import (
+    NicotineProbeResult,
     connect_acquisition_providers,
     probe_nicotine_plus_connection,
 )
@@ -50,6 +57,7 @@ from vaultseek.services.acquisition_sources import (
     label_for,
 )
 from vaultseek.services.library_reset import reset_library_processing
+from vaultseek.services.local_setup import LocalConnection
 from vaultseek.services.quality_presets import normalize_preset_id
 
 
@@ -67,13 +75,20 @@ class SettingsPage(QWidget):
         self._suggest_siblings = True
 
         body = QWidget()
-        wrap_scrollable(self, body)
+        scroll = wrap_scrollable(self, body)
         layout = QVBoxLayout(body)
         layout.setContentsMargins(16, 12, 16, 16)
         layout.setSpacing(12)
         heading = QLabel("Settings")
         heading.setProperty("heading", True)
         layout.addWidget(heading)
+        self._detect_button = QPushButton("Detect local Nicotine+ and media-server settings")
+        self._detect_button.setToolTip(
+            "Read Nicotine+, Jellyfin, Navidrome, Plex and Emby config on this PC. "
+            "Does not enable providers or save until you review and Save."
+        )
+        self._detect_button.clicked.connect(self._detect_local)
+        layout.addWidget(self._detect_button)
 
         lib_box = QGroupBox("Library")
         form = QFormLayout(lib_box)
@@ -295,7 +310,7 @@ class SettingsPage(QWidget):
         acq_form.addRow("HTTP API token", self._nicotine_api_token)
         acq_form.addRow("Min seconds between searches", self._nicotine_search_interval)
         acq_form.addRow("Max searches per minute", self._nicotine_search_max_per_min)
-        test_conn = QPushButton("Test Nicotine+ connection")
+        self._nicotine_test = test_conn = QPushButton("Test Nicotine+ connection")
         test_conn.setProperty("secondary", True)
         test_conn.setToolTip(
             "Probe the current form values without saving. "
@@ -332,7 +347,8 @@ class SettingsPage(QWidget):
         prefs_form.addRow("Discogs token", self._discogs_token)
         discogs_help = QLabel(
             "Optional. Improves identification with genre/label/catalog and Discogs covers. "
-            "Token: https://www.discogs.com/settings/developers"
+            'Token: <a href="https://www.discogs.com/settings/developers">'
+            "discogs.com/settings/developers</a>"
         )
         discogs_help.setWordWrap(True)
         discogs_help.setProperty("muted", True)
@@ -341,29 +357,19 @@ class SettingsPage(QWidget):
         self._acoustid_rows: list[tuple[QLineEdit, QLineEdit, QLineEdit]] = []
         acoustid_box = QGroupBox("AcoustID accounts + Shazamio proxies")
         acoustid_form = QFormLayout(acoustid_box)
-        for index in range(3):
-            label_edit = QLineEdit()
-            label_edit.setPlaceholderText(f"Account {index + 1}")
-            key = QLineEdit()
-            key.setPlaceholderText("Application API key (optional if using Shazam only)")
-            key.setEchoMode(QLineEdit.EchoMode.Password)
-            proxy = QLineEdit()
-            proxy.setPlaceholderText("http://user:pass@host:port (optional)")
-            proxy.setToolTip(
-                "HTTP(S) proxy for this slot. Used by AcoustID (when a key is set) and "
-                "by the Shazamio fallback. Different proxies = different public IPs = "
-                "higher combined request throughput."
-            )
-            self._acoustid_rows.append((label_edit, key, proxy))
-            acoustid_form.addRow(f"Label {index + 1}", label_edit)
-            acoustid_form.addRow(f"API key {index + 1}", key)
-            acoustid_form.addRow(f"Proxy {index + 1}", proxy)
+        self._acoustid_form = QFormLayout()
+        acoustid_form.addRow(self._acoustid_form)
+        for _ in range(max(3, len(container.config.metadata.acoustid_endpoints))):
+            self._add_acoustid_row()
+        add_account = QPushButton("Add another account / connection")
+        add_account.clicked.connect(self._add_acoustid_row)
+        acoustid_form.addRow(add_account)
         acoustid_help = QLabel(
-            "AcoustID: each application key allows ~3 fingerprint lookups/sec "
-            "(per key + IP). Register keys at https://acoustid.org/new-applications. "
-            "Shazamio fallback: used when no AcoustID key is set or AcoustID returns "
-            "no match. Rotates the direct connection plus these proxies at ≤1 req/sec "
-            "per IP (community-safe Shazam rate). Restart after saving."
+            "Register an application key at https://acoustid.org/new-application "
+            "(not a user submission key). Label each authorized key separately; "
+            "leave proxy blank for a direct connection. Extra keys do not guarantee "
+            "extra quota. See Setup instructions for registration and troubleshooting. "
+            "Restart after saving."
         )
         acoustid_help.setWordWrap(True)
         acoustid_help.setProperty("muted", True)
@@ -449,11 +455,14 @@ class SettingsPage(QWidget):
         media_form.addRow("Server URL", self._ms_url)
         media_form.addRow("Username", self._ms_username)
         media_form.addRow("Password", self._ms_password)
-        media_form.addRow("Token (Jellyfin/Plex)", self._ms_token)
+        media_form.addRow("API / access token", self._ms_token)
         media_form.addRow("Navidrome DB path", self._ms_db_path)
         save_ms = QPushButton("Save media server")
         save_ms.clicked.connect(self._save_media_server)
         media_form.addRow(save_ms)
+        self._test_media = QPushButton("Test media server connection")
+        self._test_media.clicked.connect(self._test_media_connection)
+        media_form.addRow(self._test_media)
         self._ms_status = QLabel("")
         media_form.addRow(self._ms_status)
         layout.addWidget(media)
@@ -463,11 +472,96 @@ class SettingsPage(QWidget):
         layout.addWidget(self._rules_page)
 
         layout.addStretch(1)
+        add_settings_navigation(self, scroll, "connection-setup")
 
     def set_library(self, library_id: UUID | None) -> None:
         self._editing_id = library_id
         self._rules_page.set_library(library_id)
         self.refresh()
+
+    def _add_acoustid_row(self) -> None:
+        index = len(self._acoustid_rows) + 1
+        label, key, proxy = QLineEdit(), QLineEdit(), QLineEdit()
+        label.setPlaceholderText(f"Account {index}")
+        key.setPlaceholderText("Application API key")
+        key.setEchoMode(QLineEdit.EchoMode.Password)
+        proxy.setPlaceholderText("Optional http://user:pass@host:port")
+        proxy.setEchoMode(QLineEdit.EchoMode.Password)
+        proxy.setToolTip("Leave blank for direct access. Use a trusted proxy only.")
+        self._acoustid_rows.append((label, key, proxy))
+        self._acoustid_form.addRow(f"Label {index}", label)
+        self._acoustid_form.addRow(f"API key {index}", key)
+        self._acoustid_form.addRow(f"Proxy {index}", proxy)
+
+    def _detect_local(self) -> None:
+        self._detect_button.setEnabled(False)
+        run_in_background(
+            self._container.local_setup.discover,
+            on_finished=self._local_detected,
+            on_failed=self._local_failed,
+        )
+
+    def _local_failed(self, _error: str) -> None:
+        self._detect_button.setEnabled(True)
+        QMessageBox.warning(self, "Local setup", "Detection failed. Use Setup instructions.")
+
+    def _local_detected(self, connections: list[LocalConnection]) -> None:
+        self._detect_button.setEnabled(True)
+        choices = [
+            c
+            for c in connections
+            if c.name in {"Nicotine+", "Jellyfin", "Navidrome", "Plex", "Emby"}
+        ]
+        dialog = LocalSetupDialog(choices, self)
+        if dialog.exec() != QDialog.DialogCode.Accepted:
+            return
+        for connection in dialog.selected():
+            values = connection.values
+            if connection.name == "Nicotine+":
+                self._nicotine_host.setText(values["host"])
+                self._nicotine_api_port.setValue(int(values["api_port"]))
+                self._nicotine_api_token.setText(values["api_token"])
+                self._nicotine_transport.setCurrentIndex(self._nicotine_transport.findData("http"))
+            elif connection.name == "Jellyfin":
+                self._ms_plugin.setCurrentText("jellyfin")
+                self._ms_url.setText(values["url"])
+            elif connection.name == "Navidrome":
+                self._ms_plugin.setCurrentText("navidrome")
+                self._ms_url.setText(values["url"])
+            elif connection.name == "Plex":
+                self._ms_plugin.setCurrentText("plex")
+                self._ms_url.setText(values["url"])
+            elif connection.name == "Emby":
+                self._ms_plugin.setCurrentText("emby")
+                self._ms_url.setText(values["url"])
+
+    def _test_media_connection(self) -> None:
+        if self._editing_id is None:
+            QMessageBox.warning(self, "Media server", "Select or save a library first.")
+            return
+        config = MediaServerConfig(
+            library_id=self._editing_id,
+            plugin_id=self._ms_plugin.currentText(),
+            server_url=self._ms_url.text().strip(),
+            username=self._ms_username.text(),
+            password=self._ms_password.text(),
+            token=self._ms_token.text(),
+            db_path=self._ms_db_path.text() or None,
+        )
+        self._test_media.setEnabled(False)
+        run_in_background(
+            lambda: self._container.connection_checks.media(config),
+            on_finished=self._media_test_done,
+            on_failed=lambda _: self._media_test_done(False),
+        )
+
+    def _media_test_done(self, ok: bool) -> None:
+        self._test_media.setEnabled(True)
+        self._ms_status.setText(
+            "Connection check passed; a rescan has not been requested."
+            if ok
+            else "Connection failed. Check URL, credentials and Setup instructions."
+        )
 
     def refresh(self) -> None:
         config = self._container.config
@@ -478,6 +572,8 @@ class SettingsPage(QWidget):
         from vaultseek.core.config import AcoustIdEndpointConfig
 
         endpoints = list(config.metadata.acoustid_endpoints)
+        while len(self._acoustid_rows) < len(endpoints):
+            self._add_acoustid_row()
         if not endpoints and config.metadata.acoustid_api_key:
             endpoints = [
                 AcoustIdEndpointConfig(
@@ -485,9 +581,9 @@ class SettingsPage(QWidget):
                     label="Primary",
                 )
             ]
-        while len(endpoints) < 3:
+        while len(endpoints) < len(self._acoustid_rows):
             endpoints.append(AcoustIdEndpointConfig())
-        for row, endpoint in zip(self._acoustid_rows, endpoints[:3], strict=True):
+        for row, endpoint in zip(self._acoustid_rows, endpoints, strict=True):
             label_edit, key_edit, proxy_edit = row
             label_edit.setText(endpoint.label)
             key_edit.setText(endpoint.api_key)
@@ -644,8 +740,7 @@ class SettingsPage(QWidget):
         QMessageBox.information(
             self,
             "Queues cleared",
-            f"Removed {result.jobs_deleted} job(s) and "
-            f"{result.reviews_deleted} review item(s).",
+            f"Removed {result.jobs_deleted} job(s) and {result.reviews_deleted} review item(s).",
         )
 
     def _reset_catalog(self) -> None:
@@ -897,13 +992,25 @@ class SettingsPage(QWidget):
         self._source_order.setCurrentRow(target)
 
     def _test_nicotine_connection(self) -> None:
-        result = probe_nicotine_plus_connection(
+        probe = partial(
+            probe_nicotine_plus_connection,
             host=self._nicotine_host.text().strip() or "127.0.0.1",
             port=int(self._nicotine_port.value()),
             transport=str(self._nicotine_transport.currentData() or "socket"),
             api_port=int(self._nicotine_api_port.value()),
             api_token=self._nicotine_api_token.text().strip(),
         )
+        self._nicotine_test.setEnabled(False)
+        run_in_background(
+            probe,
+            on_finished=self._nicotine_test_done,
+            on_failed=lambda _: self._nicotine_test_done(
+                NicotineProbeResult(False, "Connection check failed. Check the setup instructions.")
+            ),
+        )
+
+    def _nicotine_test_done(self, result: NicotineProbeResult) -> None:
+        self._nicotine_test.setEnabled(True)
         if result.ok:
             QMessageBox.information(self, "Nicotine+ connection", result.message)
         else:

@@ -13,7 +13,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from uuid import UUID
 
-from PySide6.QtCore import Signal
+from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
     QCheckBox,
     QFormLayout,
@@ -35,6 +35,7 @@ from vaultseek.core.config import (
 )
 from vaultseek.core.container import Container
 from vaultseek.core.uuid_utils import generate_uuid7
+from vaultseek.gui.async_task import run_in_background
 from vaultseek.gui.widgets.path_picker import PathPickerRow
 from vaultseek.gui.widgets.quality_fields import QualityFields
 from vaultseek.models.entities.library import Library
@@ -42,6 +43,7 @@ from vaultseek.services.acquisition_bootstrap import (
     connect_acquisition_providers,
     probe_nicotine_plus_connection,
 )
+from vaultseek.services.local_setup import LocalConnection
 from vaultseek.services.quality_presets import PRESET_COLLECTOR, normalize_preset_id
 
 
@@ -67,7 +69,7 @@ class SetupWizard(QWizard):
 
         self._welcome = _WelcomePage()
         self._folders = _FoldersPage()
-        self._nicotine = _NicotinePage()
+        self._nicotine = _NicotinePage(container)
         self._tokens = _TokensPage(container)
         self._quality = _QualityPage()
         self._done = _DonePage()
@@ -245,10 +247,12 @@ class _WelcomePage(QWizardPage):
             "<li><b>Incoming</b> — drop new files or let downloads land here.</li>"
             "<li><b>Identify</b> — fingerprint and match to MusicBrainz / Discogs.</li>"
             "<li><b>Library</b> — organize into Artist / Year - Album folders.</li>"
-            "<li><b>Acquire</b> — search Soulseek (via Nicotine+) for missing tracks.</li>"
+            "<li><b>Acquire</b> — search Soulseek (Nicotine+), Usenet, then Prowlarr "
+            "public/private trackers in order.</li>"
             "</ol>"
-            "<p>This short wizard sets up the folders and optional download connection. "
-            "You can change everything later in Settings.</p>"
+            "<p>This short wizard sets up folders and optional identity/download accounts. "
+            "Detect local Nicotine+, Prowlarr, qBittorrent, SABnzbd and Jellyfin later "
+            "from Settings and Plugins. You can change everything later.</p>"
         )
         body.setWordWrap(True)
         body.setOpenExternalLinks(True)
@@ -311,8 +315,9 @@ class _FoldersPage(QWizardPage):
 
 
 class _NicotinePage(QWizardPage):
-    def __init__(self) -> None:
+    def __init__(self, container: Container) -> None:
         super().__init__()
+        self._container = container
         self.setTitle("Downloads (Nicotine+)")
         self.setSubTitle(
             "Optional but recommended — Soulseek searches need Nicotine+ with the "
@@ -328,6 +333,9 @@ class _NicotinePage(QWizardPage):
         self.api_token = QLineEdit()
         self.api_token.setEchoMode(QLineEdit.EchoMode.Password)
         self.api_token.setPlaceholderText("Optional API token")
+        detect = QPushButton("Detect local Nicotine+ settings")
+        detect.setProperty("secondary", True)
+        detect.clicked.connect(self._detect)
         test = QPushButton("Test connection")
         test.setProperty("secondary", True)
         self.status = QLabel("")
@@ -335,7 +343,8 @@ class _NicotinePage(QWizardPage):
         test.clicked.connect(self._test)
         skip = QLabel(
             "You can skip this and enable later in Settings → Wishlist & downloads. "
-            "Without Nicotine+, library scanning and organize still work."
+            "Prowlarr, qBittorrent and SABnzbd are under Plugins "
+            "(Detect local download clients). Help (F1) has signup and API steps."
         )
         skip.setWordWrap(True)
         skip.setProperty("muted", True)
@@ -344,11 +353,39 @@ class _NicotinePage(QWizardPage):
         layout.addRow("HTTP API port", self.api_port)
         layout.addRow("API token", self.api_token)
         row = QHBoxLayout()
+        row.addWidget(detect)
         row.addWidget(test)
         row.addStretch(1)
         layout.addRow(row)
         layout.addRow(self.status)
         layout.addRow(skip)
+
+    def _detect(self) -> None:
+        self.status.setText("Looking for local Nicotine+ settings…")
+
+        def done(items: object) -> None:
+            connections = [item for item in items] if isinstance(items, list) else []
+            for item in connections:
+                if not isinstance(item, LocalConnection) or item.name != "Nicotine+":
+                    continue
+                if not item.values:
+                    self.status.setText(item.note)
+                    return
+                self.host.setText(item.values.get("host") or "127.0.0.1")
+                self.api_port.setValue(int(item.values.get("api_port") or 12339))
+                self.api_token.setText(item.values.get("api_token") or "")
+                self.enabled.setChecked(True)
+                self.status.setText(item.note)
+                return
+            self.status.setText(
+                "No local Nicotine+ settings found. See Help → Setup instructions."
+            )
+
+        run_in_background(
+            self._container.local_setup.discover,
+            on_finished=done,
+            on_failed=lambda msg: self.status.setText(f"Detection failed: {msg}"),
+        )
 
     def _test(self) -> None:
         result = probe_nicotine_plus_connection(
@@ -379,12 +416,16 @@ class _TokensPage(QWizardPage):
             existing_key = container.config.metadata.acoustid_endpoints[0].api_key
         self.acoustid.setText(existing_key)
         help_lbl = QLabel(
-            "Discogs: https://www.discogs.com/settings/developers<br>"
-            "AcoustID: https://acoustid.org/new-applications"
+            'Discogs: <a href="https://www.discogs.com/settings/developers">'
+            "discogs.com/settings/developers</a> — create a personal access token.<br>"
+            'AcoustID: <a href="https://acoustid.org/new-application">'
+            "acoustid.org/new-application</a> — register an <b>application</b> key "
+            "(not a user submission key). Add extra keys later in Settings."
         )
         help_lbl.setOpenExternalLinks(True)
         help_lbl.setWordWrap(True)
         help_lbl.setProperty("muted", True)
+        help_lbl.setTextFormat(Qt.TextFormat.RichText)
         layout.addRow("Discogs token", self.discogs)
         layout.addRow("AcoustID key", self.acoustid)
         layout.addRow(help_lbl)

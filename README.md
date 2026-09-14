@@ -89,6 +89,7 @@ Or download a Windows build from [Releases](https://github.com/oceanmasterza/Vau
 |----------|---------|
 | [AGENTS.md](AGENTS.md) | **AI assistants** — repo map, waterfall, settings ownership, GitLab `main` |
 | [docs/USER_GUIDE.md](docs/USER_GUIDE.md) / in-app **F1** | Setup, where to change settings, download options |
+| [docs/SOURCES.md](docs/SOURCES.md) | What searches music today, and other quality sources |
 | [docs/PROWLARR.md](docs/PROWLARR.md) | Prowlarr tiers + qBittorrent + SABnzbd |
 | [docs/NICOTINE_PLUS.md](docs/NICOTINE_PLUS.md) | Nicotine+ HTTP / socket |
 | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | Layers and pipelines |
