@@ -11,10 +11,11 @@ Read the planning and architecture docs — they are the source of truth:
 3. [docs/ROADMAP.md](docs/ROADMAP.md) — public phase status (what is open for work)
 4. [docs/DEVELOPMENT_ROADMAP.md](docs/DEVELOPMENT_ROADMAP.md) — internal engineering notebook
 5. [docs/AI_RULES.md](docs/AI_RULES.md) — conventions for humans and AI assistants
+6. [AGENTS.md](AGENTS.md) — **required for AI tools** (map, waterfall, git remote, commands)
 
 Heritage MusicVault pipeline docs live under [docs/architecture/](docs/architecture/) (import pipeline, DB schema, testing).
 
-**Before implementing a feature:** confirm the phase is marked ready in ROADMAP. Propose architectural changes in [docs/DECISIONS.md](docs/DECISIONS.md) or a GitHub discussion first.
+**Before implementing a feature:** confirm the phase is marked ready in ROADMAP. Propose architectural changes in [docs/DECISIONS.md](docs/DECISIONS.md) or a project discussion first.
 
 ## GitHub Project Board
 

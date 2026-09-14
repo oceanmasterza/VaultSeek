@@ -1,12 +1,19 @@
 # Prowlarr + qBittorrent + SABnzbd
 
-VaultSeek uses **one acquisition provider** (`prowlarr`) that:
+VaultSeek searches Prowlarr once per **tier**, then routes downloads:
 
-1. Searches indexers through **Prowlarr**
-2. Sends **torrent** hits to **qBittorrent**
-3. Sends **Usenet / NZB** hits to **SABnzbd**
+| Provider id | What it searches | Download client |
+|-------------|------------------|-----------------|
+| `usenet` | Usenet / NZB results | **SABnzbd** |
+| `prowlarr_public` | Torrents from **public** indexers | **qBittorrent** |
+| `prowlarr_private` | Torrents from **private** indexers | **qBittorrent** |
 
-Enable Prowlarr plus **at least one** download client under **System → Plugins**.
+These ids are separate acquisition providers so the **search waterfall** can try Nicotine+, then Usenet, then public trackers, then private trackers (reorderable in Settings).
+
+Enable **Prowlarr** plus the matching download client(s) under **System → Plugins**:
+
+- Prowlarr + SABnzbd → enables `usenet`
+- Prowlarr + qBittorrent → enables `prowlarr_public` and `prowlarr_private`
 
 ## Ports (avoid clashes)
 
@@ -25,7 +32,7 @@ VaultSeek will talk to SABnzbd by mistake. Change qBittorrent:
 
 ## Prowlarr
 
-1. Add audio indexers (Torznab / Newznab as you prefer).
+1. Add audio indexers (Torznab / Newznab as you prefer). Tag Cloudflare-blocked public indexers for FlareSolverr if you use it.
 2. Copy the API key.
 3. In VaultSeek Plugins: enable Prowlarr, paste URL + key, set minimum seeders
    for torrents (NZBs ignore seeders).
@@ -33,39 +40,32 @@ VaultSeek will talk to SABnzbd by mistake. Change qBittorrent:
 
 Category **3000** (Audio) is the default search filter.
 
+Privacy for public vs private tiers comes from each indexer’s Prowlarr `privacy` field (refreshed on connect).
+
 ## qBittorrent
 
 1. Enable Web UI; note username / password.
 2. Optional: create category `vaultseek` (VaultSeek can set it on add).
 3. Point completed downloads somewhere VaultSeek can read (or leave the
-   default save path — completed paths are reported via the WebUI API).
-4. **Test qBittorrent** in Plugins.
+   default and rely on category paths).
+4. In Plugins: enable qBittorrent, URL, credentials, category.
 
 ## SABnzbd
 
-1. Configure your Usenet server in SABnzbd (outside VaultSeek).
-2. Copy the API key.
-3. Enable SABnzbd in Plugins; paste URL + key; optional category `vaultseek`.
-4. **Test SABnzbd**.
+1. Enable API; copy API key.
+2. Optional: category `vaultseek`.
+3. In Plugins: enable SABnzbd, URL, API key, category.
 
-Completed jobs should land under SABnzbd’s complete folder; VaultSeek reads
-audio files from the history `storage` path after status is Completed.
+## Search waterfall
 
-## Routing rules
+Under **Settings → Acquisition**:
 
-| Prowlarr protocol / link | Client used |
-|--------------------------|-------------|
-| `torrent`, magnet, `.torrent` | qBittorrent (if enabled) |
-| `usenet`, `.nzb` | SABnzbd (if enabled) |
-| Hit needs a client that is off | Skipped in search results |
+- Reorder Nicotine+ / Usenet / Prowlarr public / Prowlarr private
+- Toggle “stop after first source that finds results”
+- Set delay (seconds) after an empty source before trying the next
 
-## Verify end-to-end
+Defaults favour Soulseek first, then Usenet, then public torrents, then private.
 
-1. Save Plugins settings; restart VaultSeek if prompted.
-2. Wishlist → add an album → promote / Auto-acquire.
-3. Confirm the job moves Searching → Downloading → Verifying → Completed.
-4. Check Incoming for imported files.
+## Legacy note
 
-Do not point VaultSeek at production indexers for bulk copyrighted downloads
-you do not have rights to; use the stack for libraries you are authorized to
-complete.
+Older configs used a single `prowlarr` (or `prowlarr_qbit`) provider id. Schema **v22** expands that into `usenet` + `prowlarr_public` + `prowlarr_private`. A combined `prowlarr` provider may still exist in-process for compatibility; prefer the split ids.

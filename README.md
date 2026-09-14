@@ -29,7 +29,9 @@ Data lives under `%APPDATA%\VaultSeek`.
 
 - **Wishlist** — park albums, auto-search / download when ready
 - **Nicotine+** — Soulseek search & download (HTTP api-nicotine-plus or NDJSON socket)
-- **Prowlarr** — indexer search with downloads via **qBittorrent** (torrents) and/or **SABnzbd** (Usenet / NZB)
+- **Usenet** — Prowlarr NZB search → **SABnzbd**
+- **Prowlarr torrents** — public then private indexers → **qBittorrent**
+- **Search waterfall** — try sources in order; stop when a tier finds hits (reorderable in Settings)
 - Missing-media & quality-upgrade scans
 - Scoring, verification, import pipeline
 
@@ -48,15 +50,17 @@ Everything on the Plugins page is **off by default** so the core stays lean.
 flowchart LR
   Library[Library gaps] --> Engine[Acquisition Engine]
   Engine --> Search[Search Dispatcher]
-  Search --> Providers[Nicotine+ / Prowlarr]
-  Providers --> Score[Scoring]
+  Search --> Waterfall[Waterfall order]
+  Waterfall --> Nic[Nicotine+]
+  Waterfall --> Usenet[Usenet via Prowlarr]
+  Waterfall --> Pub[Prowlarr public]
+  Waterfall --> Priv[Prowlarr private]
+  Nic --> Score[Scoring]
+  Usenet --> Score
+  Pub --> Score
+  Priv --> Score
   Score --> DL[Download Manager]
-  DL --> QBit[qBittorrent]
-  DL --> SAB[SABnzbd]
-  DL --> Nic[Nicotine+]
-  QBit --> Verify[Verify and import]
-  SAB --> Verify
-  Nic --> Verify
+  DL --> Verify[Verify and import]
   Verify --> Library
 ```
 
@@ -83,10 +87,12 @@ Or download a Windows build from [Releases](https://github.com/oceanmasterza/Vau
 
 | Document | Purpose |
 |----------|---------|
+| [AGENTS.md](AGENTS.md) | **AI assistants** — repo map, waterfall, commands, constraints |
 | [docs/USER_GUIDE.md](docs/USER_GUIDE.md) | Setup, credentials, troubleshooting |
-| [docs/PROWLARR.md](docs/PROWLARR.md) | Prowlarr + qBittorrent + SABnzbd |
+| [docs/PROWLARR.md](docs/PROWLARR.md) | Prowlarr tiers + qBittorrent + SABnzbd |
 | [docs/NICOTINE_PLUS.md](docs/NICOTINE_PLUS.md) | Nicotine+ HTTP / socket |
 | [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) | Layers and pipelines |
+| [docs/AI_RULES.md](docs/AI_RULES.md) | Coding / docs rules for humans and AI |
 | [CHANGELOG.md](CHANGELOG.md) | Released versions |
 | [CONTRIBUTING.md](CONTRIBUTING.md) | Dev setup |
 

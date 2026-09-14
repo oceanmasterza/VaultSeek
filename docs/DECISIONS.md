@@ -2,6 +2,27 @@
 
 # VaultSeek Architecture Decision Records (ADR)
 
+## 2026-09-14 — Acquisition search waterfall (Nicotine → Usenet → Prowlarr public/private)
+
+Split the former single `prowlarr` acquisition provider into three searchable
+tiers (`usenet`, `prowlarr_public`, `prowlarr_private`) sharing one Prowlarr API
+and routing NZBs to SABnzbd / torrents to qBittorrent. `ProviderManager` supports
+`search_waterfall` (stop after first hits) and `provider_search_delay_seconds`
+between empty tiers. Default order puts Nicotine+ first. Settings exposes a
+reorderable source list. Schema version **22**. See `AGENTS.md` and `PROWLARR.md`.
+
+---
+
+## 2026-09-14 — Local connection setup and responsive diagnostics
+
+Keep the Acquisition Engine and provider boundary unchanged. Add a read-only,
+injectable local configuration discovery service with explicit supported paths.
+Discovery produces suggestions, never edits third-party files, enables providers,
+or overwrites saved remote connections automatically. UI imports are reviewed in
+the existing forms before saving. Reuse background tasks for connection tests;
+keep network calls off the GUI thread. Preserve all configured fingerprint slots.
+Setup instructions remain in bundled HELP.html, accessible offline and by topic.
+
 ---
 
 ## Purpose

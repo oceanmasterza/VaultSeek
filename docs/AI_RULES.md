@@ -4,6 +4,8 @@
 
 This repository is intentionally designed for AI-assisted software development.
 
+**Third-party AI assistants:** start with [../AGENTS.md](../AGENTS.md) (repo map, acquisition waterfall, commands, git remote). Then follow the rules below.
+
 These rules exist to maximise code quality, maintainability and consistency.
 
 If these rules conflict with a requested implementation, the AI should explain the conflict before writing code.
@@ -295,6 +297,8 @@ Searches must be provider-independent.
 The **Search Dispatcher** (inside the Acquisition Engine) produces `SearchRequest` objects.
 
 Providers translate `SearchRequest` into provider-specific requests.
+
+**Waterfall (schema v22+):** `ProviderManager` walks `provider_order` and, when `search_waterfall` is enabled, stops after the first source that returns hits. Empty tiers wait `provider_search_delay_seconds` before the next source. Default order: Nicotine+ → Usenet → Prowlarr public → Prowlarr private. See [../AGENTS.md](../AGENTS.md) and [PROWLARR.md](PROWLARR.md).
 
 ---
 
