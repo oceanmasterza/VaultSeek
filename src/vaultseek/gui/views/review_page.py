@@ -7,7 +7,6 @@ from uuid import UUID
 from PySide6.QtGui import QKeySequence, QShortcut
 from PySide6.QtWidgets import (
     QHBoxLayout,
-    QLabel,
     QMessageBox,
     QPushButton,
     QTableWidget,
@@ -18,6 +17,8 @@ from PySide6.QtWidgets import (
 
 from vaultseek.core.container import Container
 from vaultseek.core.exceptions import ReviewError
+from vaultseek.gui.widgets.empty_state import EmptyState
+from vaultseek.gui.widgets.page_header import add_page_header
 from vaultseek.gui.widgets.table_utils import (
     configure_data_table,
 )
@@ -33,9 +34,18 @@ class ReviewPage(QWidget):
         self._item_ids: list[UUID] = []
 
         layout = QVBoxLayout(self)
-        self._heading = QLabel("Review Queue")
-        self._heading.setProperty("heading", True)
-        layout.addWidget(self._heading)
+        self._heading = add_page_header(
+            layout,
+            "Review Queue",
+            "Approve, reject, or defer uncertain identifications. "
+            "High-confidence matches auto-approve using Settings → Identify auto-approve.",
+        )
+
+        self._empty = EmptyState(
+            "Nothing to review",
+            "Uncertain identifications land here. Scan Incoming or wait for the pipeline.",
+        )
+        layout.addWidget(self._empty)
 
         self._table = QTableWidget(0, 4)
         self._table.setHorizontalHeaderLabels(["Type", "Track", "Confidence", "Reason"])
@@ -82,10 +92,17 @@ class ReviewPage(QWidget):
         self._item_ids = []
         if self._library_id is None:
             self._heading.setText("Review Queue")
+            self._empty.setVisible(True)
+            self._table.setVisible(False)
             return
 
         items = list(self._container.review_queue.get_pending(self._library_id))
         self._heading.setText(f"Review Queue ({len(items)} pending)")
+        empty = len(items) == 0
+        self._empty.setVisible(empty)
+        self._table.setVisible(not empty)
+        if empty:
+            return
         self._table.setRowCount(len(items))
         for row, item in enumerate(items):
             self._item_ids.append(item.id)
@@ -116,6 +133,7 @@ class ReviewPage(QWidget):
     def _act(self, action: object) -> None:
         ids = self._selected_ids()
         if not ids:
+            QMessageBox.information(self, "Review", "Select one or more items first.")
             return
         try:
             for item_id in ids:

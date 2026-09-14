@@ -265,6 +265,10 @@ class MainWindow(QMainWindow):
         go_review.setShortcut(QKeySequence("Ctrl+R"))
         go_review.triggered.connect(lambda: self._go_to("review"))
         view_menu.addAction(go_review)
+        go_wishlist = QAction("&Wishlist", self)
+        go_wishlist.setShortcut(QKeySequence("Ctrl+W"))
+        go_wishlist.triggered.connect(lambda: self._go_to("acquisition"))
+        view_menu.addAction(go_wishlist)
         go_jobs = QAction("&Jobs", self)
         go_jobs.setShortcut(QKeySequence("Ctrl+J"))
         go_jobs.triggered.connect(lambda: self._go_to("jobs"))
@@ -273,6 +277,9 @@ class MainWindow(QMainWindow):
         go_settings.setShortcut(QKeySequence("Ctrl+,"))
         go_settings.triggered.connect(lambda: self._go_to("settings"))
         view_menu.addAction(go_settings)
+        go_plugins = QAction("&Plugins", self)
+        go_plugins.triggered.connect(lambda: self._go_to("plugins"))
+        view_menu.addAction(go_plugins)
         view_menu.addSeparator()
         jump = QAction("&Jump to…", self)
         jump.setShortcut(QKeySequence("Ctrl+K"))
@@ -318,7 +325,7 @@ class MainWindow(QMainWindow):
 
     def _show_setup_wizard(self, *, force: bool = False) -> None:
         del force  # Always user-invoked or one-shot first run; same dialog either way.
-        wizard = SetupWizard(self._container, parent=self)
+        wizard = SetupWizard(self._container, parent=self, library_id=self._library_id)
         wizard.finished_setup.connect(self._on_setup_finished)
         wizard.exec()
 

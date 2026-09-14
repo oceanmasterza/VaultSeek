@@ -44,7 +44,7 @@ class FindMusicPage(QWidget):
         layout.addWidget(heading)
         help_lbl = QLabel(
             "Scan your library for missing or low-quality tracks, or browse Discogs "
-            "and queue albums to download. Progress lives under Wishlist (Acquisition)."
+            "and queue albums to download. Progress and Wanted items live under Wishlist."
         )
         help_lbl.setWordWrap(True)
         help_lbl.setProperty("muted", True)
@@ -53,9 +53,7 @@ class FindMusicPage(QWidget):
         self._tabs = QTabWidget()
         self._gaps = _GapsTab(container)
         self._gaps.navigate_requested.connect(self.navigate_requested.emit)
-        self._discogs = DiscogsPage(container)
-        # Discogs page already has its own heading — hide duplicate chrome feel
-        # by nesting it as the Discogs tab content.
+        self._discogs = DiscogsPage(container, embedded=True)
         self._tabs.addTab(self._gaps, "Library gaps")
         self._tabs.addTab(self._discogs, "Discogs browse")
         layout.addWidget(self._tabs, stretch=1)
@@ -145,8 +143,6 @@ class _GapsTab(QWidget):
             f"{len(jobs)} wishlist job(s) · {active} active. "
             "Scan for gaps below, then open Wishlist to auto-acquire."
         )
-        # Keep the empty panel as guidance even when jobs exist — it is the
-        # primary CTA surface for this tab.
         self._empty.setVisible(len(jobs) == 0)
 
     def _scan_missing(self) -> None:

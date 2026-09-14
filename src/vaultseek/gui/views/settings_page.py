@@ -28,10 +28,12 @@ from PySide6.QtWidgets import (
 
 from vaultseek.core.config import save_config
 from vaultseek.core.container import Container
+from vaultseek.core.logging import configure_logging
 from vaultseek.core.uuid_utils import generate_uuid7
 from vaultseek.gui.views.rules_page import RulesPage
 from vaultseek.gui.widgets.desktop import open_path
 from vaultseek.gui.widgets.path_picker import PathPickerRow
+from vaultseek.gui.widgets.quality_fields import QualityFields
 from vaultseek.gui.widgets.scrollable import wrap_scrollable
 from vaultseek.models.entities.job import JobType
 from vaultseek.models.entities.library import Library
@@ -48,13 +50,7 @@ from vaultseek.services.acquisition_sources import (
     label_for,
 )
 from vaultseek.services.library_reset import reset_library_processing
-from vaultseek.services.quality_presets import (
-    PRESET_CHOICES,
-    PRESET_CUSTOM,
-    infer_preset,
-    normalize_preset_id,
-    values_for_preset,
-)
+from vaultseek.services.quality_presets import normalize_preset_id
 
 
 class SettingsPage(QWidget):
@@ -87,57 +83,35 @@ class SettingsPage(QWidget):
         self._incoming = PathPickerRow(placeholder=r"e.g. D:\Music\Incoming")
         self._incoming.setToolTip(
             "Drop folder. Files stay here through identify/rules; they move to "
-            "Library only after auto-approve or Review approval."
+            "Library only after auto-approve or Review approval. Watched when enabled below."
         )
         self._staging = PathPickerRow(placeholder=r"e.g. D:\Music\Staging")
         self._library = PathPickerRow(placeholder=r"e.g. D:\Music\Library")
         self._archive = PathPickerRow(placeholder=r"e.g. D:\Music\Archive")
-        self._incoming.setToolTip("Drop zone for new files. Watched when enabled below.")
         self._staging.setToolTip(
-            "Optional hold folder (legacy/manual). New files stay in Incoming "
-            "until confirmed, then move straight to Library."
+            "Optional hold folder (legacy/manual). Left blank, VaultSeek suggests "
+            "a Staging sibling of Incoming. New files stay in Incoming until confirmed."
         )
         self._library.setToolTip("Canonical organized collection.")
-        self._archive.setToolTip("Duplicates and rejected files.")
+        self._archive.setToolTip("Optional. Duplicates and rejected files.")
         self._watch = QCheckBox("Watch incoming folder")
         self._watch.setToolTip("Automatically enqueue a scan when new files appear.")
         self._threshold = QDoubleSpinBox()
         self._threshold.setRange(0.0, 1.0)
         self._threshold.setSingleStep(0.05)
         self._threshold.setValue(0.90)
-        self._threshold.setToolTip("Metadata confidence at or above this value auto-approves.")
+        self._threshold.setToolTip(
+            "Per-library identify confidence at or above this value skips Review "
+            "and organizes straight to Library. Separate from the download "
+            "auto-acquire threshold below."
+        )
         form.addRow("Name", self._name)
         form.addRow("Incoming", self._incoming)
-        form.addRow("Staging", self._staging)
+        form.addRow("Staging (optional)", self._staging)
         form.addRow("Library", self._library)
-        form.addRow("Archive", self._archive)
-        self._logs_path = PathPickerRow(show_browse=False, read_only=True, show_open=True)
-        self._logs_path.setToolTip("Application log files (vaultseek.log, debug.log).")
-        self._reports_path = PathPickerRow(show_browse=False, read_only=True, show_open=True)
-        self._reports_path.setToolTip("Generated library/acquisition report files.")
-        form.addRow("Logs", self._logs_path)
-        form.addRow("Reports", self._reports_path)
-        logs_actions = QHBoxLayout()
-        open_debug = QPushButton("Open debug.log")
-        open_app_log = QPushButton("Open vaultseek.log")
-        open_crashes = QPushButton("Open crashes")
-        for btn in (open_debug, open_app_log, open_crashes):
-            btn.setProperty("secondary", True)
-        open_debug.setToolTip(str(container.paths.logs_dir / "debug.log"))
-        open_app_log.setToolTip(str(container.paths.logs_dir / "vaultseek.log"))
-        open_crashes.setToolTip(str(container.paths.crashes_dir))
-        open_debug.clicked.connect(lambda: open_path(self._container.paths.logs_dir / "debug.log"))
-        open_app_log.clicked.connect(
-            lambda: open_path(self._container.paths.logs_dir / "vaultseek.log")
-        )
-        open_crashes.clicked.connect(lambda: open_path(self._container.paths.crashes_dir))
-        logs_actions.addWidget(open_debug)
-        logs_actions.addWidget(open_app_log)
-        logs_actions.addWidget(open_crashes)
-        logs_actions.addStretch(1)
-        form.addRow(logs_actions)
+        form.addRow("Archive (optional)", self._archive)
         form.addRow(self._watch)
-        form.addRow("Auto-approve threshold", self._threshold)
+        form.addRow("Identify auto-approve", self._threshold)
         # Suggest sibling folders after the first zone is chosen.
         self._incoming.path_changed.connect(self._maybe_suggest_siblings)
         layout.addWidget(lib_box)
@@ -189,7 +163,25 @@ class SettingsPage(QWidget):
         reset_layout.addLayout(reset_btns)
         layout.addWidget(reset_box)
 
-        acq_box = QGroupBox("Acquisition")
+        quality_box = QGroupBox("Library quality")
+        quality_form = QFormLayout(quality_box)
+        quality_help = QLabel(
+            "Drives orange/green traffic lights on Library and Albums, and quality-upgrade scans. "
+            "Not a download-provider setting — those live under Wishlist & downloads and Plugins."
+        )
+        quality_help.setWordWrap(True)
+        quality_help.setProperty("muted", True)
+        quality_form.addRow(quality_help)
+        self._quality = QualityFields()
+        self._quality.add_to_form(quality_form)
+        self._download_whole_album = QCheckBox(
+            "When upgrading, prefer matching whole-album folders from the same peer"
+        )
+        self._download_whole_album.setChecked(True)
+        quality_form.addRow(self._download_whole_album)
+        layout.addWidget(quality_box)
+
+        acq_box = QGroupBox("Wishlist & downloads (Nicotine+)")
         acq_form = QFormLayout(acq_box)
         self._acq_threshold = QDoubleSpinBox()
         self._acq_threshold.setRange(0.0, 1.0)
@@ -197,13 +189,14 @@ class SettingsPage(QWidget):
         self._acq_threshold.setValue(0.45)
         self._acq_threshold.setToolTip(
             "Minimum match score (0–1) to download automatically. "
-            "Lower = more automatic downloads from Soulseek; higher = more manual approval."
+            "Lower = more automatic downloads; higher = more manual approval. "
+            "This is not the identify auto-approve threshold above."
         )
-        self._auto_queue_jobs = QCheckBox("Auto-queue jobs created by Scan for missing")
+        self._auto_queue_jobs = QCheckBox("Auto-queue jobs created by Find missing songs")
         self._auto_queue_jobs.setToolTip(
             "When enabled, missing-media scan jobs are queued so background automation "
             "can search and download. When disabled, jobs stay Created until you "
-            "Auto-acquire selected on the Acquisition page."
+            "Auto-acquire selected on the Wishlist page."
         )
         self._nicotine_enabled = QCheckBox("Enable Nicotine+ provider")
         self._nicotine_transport = QComboBox()
@@ -236,38 +229,6 @@ class SettingsPage(QWidget):
         self._nicotine_search_max_per_min.setToolTip(
             "Hard cap on Soulseek searches in any rolling 60-second window."
         )
-        acq_form.addRow("Auto-acquire threshold", self._acq_threshold)
-        acq_form.addRow(self._auto_queue_jobs)
-        self._quality_preset = QComboBox()
-        for preset_id, label, tip in PRESET_CHOICES:
-            self._quality_preset.addItem(label, preset_id)
-            idx = self._quality_preset.count() - 1
-            self._quality_preset.setItemData(idx, tip, Qt.ItemDataRole.ToolTipRole)
-        self._quality_preset.setToolTip(
-            "Named profiles for orange traffic lights and quality upgrades. "
-            "Custom keeps your manual codec / bitrate values."
-        )
-        self._quality_preset_hint = QLabel("")
-        self._quality_preset_hint.setProperty("muted", True)
-        self._quality_preset_hint.setWordWrap(True)
-        self._quality_applying = False
-        self._prefer_lossless = QCheckBox("Prefer lossless (FLAC/ALAC) when available")
-        self._prefer_lossless.setChecked(True)
-        self._preferred_codec = QLineEdit()
-        self._preferred_codec.setPlaceholderText("Optional exact codec, e.g. FLAC or MP3")
-        self._min_bitrate = QSpinBox()
-        self._min_bitrate.setRange(0, 3200)
-        self._min_bitrate.setSingleStep(32)
-        self._min_bitrate.setValue(192)
-        self._min_bitrate.setSuffix(" kbps")
-        self._min_bitrate.setToolTip(
-            "Minimum acceptable bitrate for lossy files. Green = meets this; "
-            "orange = present but below. 0 disables the bitrate floor."
-        )
-        self._download_whole_album = QCheckBox(
-            "When upgrading, prefer matching whole-album folders from the same peer"
-        )
-        self._download_whole_album.setChecked(True)
         self._wishlist_hours = QDoubleSpinBox()
         self._wishlist_hours.setRange(0.0, 168.0)
         self._wishlist_hours.setSingleStep(1.0)
@@ -278,17 +239,9 @@ class SettingsPage(QWidget):
             "How often background wishlist searches run. 0 = as often as Soulseek "
             "rate limits allow. Example: 6 = at most one search pass every 6 hours."
         )
-        acq_form.addRow("Quality preset", self._quality_preset)
-        acq_form.addRow(self._quality_preset_hint)
-        acq_form.addRow(self._prefer_lossless)
-        acq_form.addRow("Preferred codec", self._preferred_codec)
-        acq_form.addRow("Min bitrate (lossy)", self._min_bitrate)
-        acq_form.addRow(self._download_whole_album)
+        acq_form.addRow("Download auto-acquire", self._acq_threshold)
+        acq_form.addRow(self._auto_queue_jobs)
         acq_form.addRow("Wishlist search every", self._wishlist_hours)
-        self._quality_preset.currentIndexChanged.connect(self._on_quality_preset_changed)
-        self._prefer_lossless.toggled.connect(self._on_quality_fields_edited)
-        self._preferred_codec.textEdited.connect(self._on_quality_fields_edited)
-        self._min_bitrate.valueChanged.connect(self._on_quality_fields_edited)
 
         order_box = QGroupBox("Search source order (waterfall)")
         order_layout = QVBoxLayout(order_box)
@@ -351,11 +304,9 @@ class SettingsPage(QWidget):
         test_conn.clicked.connect(self._test_nicotine_connection)
         acq_form.addRow(test_conn)
         acq_help = QLabel(
-            "HTTP mode talks to the community api-nicotine-plus plugin inside Nicotine+. "
-            "Socket mode expects a VaultSeek NDJSON companion on the NDJSON port. "
-            "Completed downloads are copied into Incoming, then organized into your Music folder. "
-            "Restart VaultSeek after saving acquisition settings. "
-            "Enable Nicotine+ (and keep it connected) or searches return no results. "
+            "Nicotine+ is the built-in Soulseek source. Prowlarr / qBittorrent / SABnzbd "
+            "and discovery add-ons are configured on System → Plugins. "
+            "HTTP mode talks to the api-nicotine-plus plugin; socket mode uses the NDJSON port. "
             "Search rate limits protect against Soulseek's automatic 30-minute flood ban."
         )
         acq_help.setWordWrap(True)
@@ -508,7 +459,7 @@ class SettingsPage(QWidget):
         layout.addWidget(media)
         self._ms_plugin.currentTextChanged.connect(self._load_media_server_form)
 
-        self._rules_page = RulesPage(container)
+        self._rules_page = RulesPage(container, embedded=True)
         layout.addWidget(self._rules_page)
 
         layout.addStretch(1)
@@ -520,8 +471,6 @@ class SettingsPage(QWidget):
 
     def refresh(self) -> None:
         config = self._container.config
-        self._logs_path.setText(str(self._container.paths.logs_dir))
-        self._reports_path.setText(str(self._container.paths.reports_dir))
         self._rules_page.refresh()
         self._log_level.setCurrentText(config.log_level)
         self._theme.setCurrentText(config.theme)
@@ -549,13 +498,7 @@ class SettingsPage(QWidget):
         self._sync_fingerprint_sample_enabled()
         self._acq_threshold.setValue(config.acquisition.auto_acquire_threshold)
         self._auto_queue_jobs.setChecked(config.acquisition.auto_queue_jobs)
-        self._set_quality_preset_combo(
-            normalize_preset_id(getattr(config.acquisition, "quality_preset", PRESET_CUSTOM))
-        )
-        self._prefer_lossless.setChecked(config.acquisition.prefer_lossless)
-        self._preferred_codec.setText(config.acquisition.preferred_codec or "")
-        self._min_bitrate.setValue(int(config.acquisition.min_bitrate_kbps))
-        self._update_quality_preset_hint()
+        self._quality.load(config.acquisition)
         self._download_whole_album.setChecked(config.acquisition.download_whole_album_on_upgrade)
         self._wishlist_hours.setValue(float(config.acquisition.wishlist_search_interval_hours))
         self._search_waterfall.setChecked(bool(config.acquisition.search_waterfall))
@@ -737,13 +680,20 @@ class SettingsPage(QWidget):
 
     def _save_library(self) -> None:
         name = self._name.text().strip()
-        incoming = self._incoming.text()
-        staging = self._staging.text()
-        library_path = self._library.text()
-        archive = self._archive.text()
-        if not name or not incoming or not staging or not library_path or not archive:
-            QMessageBox.warning(self, "Settings", "Name and all four zone paths are required.")
+        incoming = self._incoming.text().strip()
+        library_path = self._library.text().strip()
+        if not name or not incoming or not library_path:
+            QMessageBox.warning(self, "Settings", "Name, Incoming, and Library paths are required.")
             return
+        incoming_parent = Path(incoming).expanduser()
+        try:
+            incoming_parent = incoming_parent.resolve().parent
+        except OSError:
+            incoming_parent = Path(incoming).parent
+        staging = self._staging.text().strip() or str(incoming_parent / "Staging")
+        archive = self._archive.text().strip() or str(incoming_parent / "Archive")
+        self._staging.setText(staging)
+        self._archive.setText(archive)
 
         for label, path in (
             ("Incoming", incoming),
@@ -798,52 +748,10 @@ class SettingsPage(QWidget):
         sample = self._fingerprint_mode.currentData() == "sample"
         self._fingerprint_sample_min.setEnabled(sample)
 
-    def _set_quality_preset_combo(self, preset_id: str) -> None:
-        key = normalize_preset_id(preset_id)
-        index = self._quality_preset.findData(key)
-        self._quality_applying = True
-        self._quality_preset.setCurrentIndex(
-            index if index >= 0 else self._quality_preset.findData(PRESET_CUSTOM)
-        )
-        self._quality_applying = False
-        self._update_quality_preset_hint()
-
-    def _update_quality_preset_hint(self) -> None:
-        tip = ""
-        for preset_id, _label, description in PRESET_CHOICES:
-            if preset_id == self._quality_preset.currentData():
-                tip = description
-                break
-        self._quality_preset_hint.setText(tip)
-
-    def _on_quality_preset_changed(self, _index: int = 0) -> None:
-        if self._quality_applying:
-            return
-        values = values_for_preset(str(self._quality_preset.currentData() or PRESET_CUSTOM))
-        self._update_quality_preset_hint()
-        if values is None:
-            return
-        self._quality_applying = True
-        self._prefer_lossless.setChecked(values.prefer_lossless)
-        self._preferred_codec.setText(values.preferred_codec)
-        self._min_bitrate.setValue(values.min_bitrate_kbps)
-        self._quality_applying = False
-
-    def _on_quality_fields_edited(self, *_args: object) -> None:
-        if self._quality_applying:
-            return
-        matched = infer_preset(
-            prefer_lossless=self._prefer_lossless.isChecked(),
-            preferred_codec=self._preferred_codec.text().strip(),
-            min_bitrate_kbps=int(self._min_bitrate.value()),
-        )
-        if self._quality_preset.currentData() != matched:
-            self._set_quality_preset_combo(matched)
-
     def _save_preferences(self) -> None:
         from dataclasses import replace as dc_replace
 
-        from vaultseek.core.config import AcoustIdEndpointConfig, NicotinePlusConfig
+        from vaultseek.core.config import AcoustIdEndpointConfig
 
         endpoint_rows: list[AcoustIdEndpointConfig] = []
         for index, (label_edit, key_edit, proxy_edit) in enumerate(self._acoustid_rows, start=1):
@@ -912,17 +820,21 @@ class SettingsPage(QWidget):
             search_timeout_seconds=self._container.config.acquisition.search_timeout_seconds,
             auto_queue_jobs=self._auto_queue_jobs.isChecked(),
             auto_acquire_threshold=float(self._acq_threshold.value()),
-            prefer_lossless=self._prefer_lossless.isChecked(),
-            preferred_codec=self._preferred_codec.text().strip(),
-            min_bitrate_kbps=int(self._min_bitrate.value()),
-            quality_preset=normalize_preset_id(self._quality_preset.currentData()),
+            prefer_lossless=self._quality.prefer_lossless.isChecked(),
+            preferred_codec=self._quality.preferred_codec.text().strip(),
+            min_bitrate_kbps=int(self._quality.min_bitrate.value()),
+            quality_preset=normalize_preset_id(self._quality.preset_id()),
             download_whole_album_on_upgrade=self._download_whole_album.isChecked(),
             wishlist_search_interval_hours=float(self._wishlist_hours.value()),
-            nicotine_plus=NicotinePlusConfig(
+            nicotine_plus=dc_replace(
+                self._container.config.acquisition.nicotine_plus,
                 enabled=self._nicotine_enabled.isChecked(),
                 host=self._nicotine_host.text().strip() or "127.0.0.1",
                 port=int(self._nicotine_port.value()),
-                transport=str(self._nicotine_transport.currentData() or "socket"),
+                transport=str(
+                    self._nicotine_transport.currentData()
+                    or self._container.config.acquisition.nicotine_plus.transport
+                ),
                 api_port=int(self._nicotine_api_port.value()),
                 api_token=self._nicotine_api_token.text().strip(),
                 search_min_interval_seconds=float(self._nicotine_search_interval.value()),
@@ -938,6 +850,7 @@ class SettingsPage(QWidget):
         )
         save_config(updated, self._container.paths.config_file)
         self._container.config = updated
+        configure_logging(self._container.paths, level=updated.log_level)
         connect_acquisition_providers(acquisition, self._container.provider_manager)
         self._container.acquisition_runner.set_auto_acquire_threshold(
             acquisition.auto_acquire_threshold
@@ -947,8 +860,9 @@ class SettingsPage(QWidget):
         QMessageBox.information(
             self,
             "Settings",
-            "Preferences saved. Restart VaultSeek so Discogs, fingerprinting, AcoustID, "
-            "and Shazamio settings take effect.",
+            "Preferences saved. Theme, log level, Nicotine+, and quality apply now. "
+            "Restart VaultSeek so Discogs, fingerprinting, AcoustID, and Shazamio "
+            "settings take effect.",
         )
 
     def _populate_source_order(self, order: tuple[str, ...] | list[str]) -> None:

@@ -26,6 +26,7 @@ Windows desktop **Acquisition Engine** (Python 3.12+, PySide6). It finds missing
 4. [docs/AI_RULES.md](docs/AI_RULES.md) — coding / docs rules
 5. [docs/architecture/02-folder-layout.md](docs/architecture/02-folder-layout.md) — import boundaries
 6. Feature-specific: [docs/PROWLARR.md](docs/PROWLARR.md), [docs/NICOTINE_PLUS.md](docs/NICOTINE_PLUS.md), [docs/USER_GUIDE.md](docs/USER_GUIDE.md)
+7. Latest **Session Notes** in [docs/DEVELOPMENT_ROADMAP.md](docs/DEVELOPMENT_ROADMAP.md)
 
 If a change alters architecture: update ADRs + architecture docs **before** or with the code (see AI_RULES documentation-first section).
 
@@ -65,7 +66,7 @@ Behaviour (`ProviderManager.search`):
 - `search_waterfall=True` (default): **stop after the first connected source that returns hits**
 - `provider_search_delay_seconds` (default `15`): wait after an **empty** tier before trying the next
 - Nicotine `SearchThrottleError` must **not** block later tiers
-- Users reorder sources + delay under **Settings → Acquisition → Search source order**
+- Users reorder sources + delay under **Settings → Wishlist & downloads → Search source order**
 - Enable Prowlarr / SABnzbd / qBittorrent under **Plugins**; Nicotine+ under Settings
 
 Legacy id `prowlarr` / `prowlarr_qbit` expands to the three Prowlarr tiers on migrate/connect. Prefer the split ids in new code.
@@ -77,15 +78,55 @@ Key modules: `acquisition_sources.py`, `acquisition_bootstrap.py`, `provider_man
 ## Config rules
 
 - Never bump `CURRENT_SCHEMA_VERSION` without a `_migrate_vN_to_vN+1` and updating `config/defaults.json`
-- Nested acquisition settings (`prowlarr`, `qbittorrent`, `sabnzbd`, `nicotine_plus`) live on `AcquisitionConfig` — Settings page must **not** wipe Plugins fields on save
+- Nested acquisition settings (`prowlarr`, `qbittorrent`, `sabnzbd`, `nicotine_plus`) live on `AcquisitionConfig`
+- **One writer per nested field:** Settings saves Nicotine+ / waterfall / quality with `dataclasses.replace` on the existing `AcquisitionConfig`. Plugins saves Prowlarr / qBit / SAB the same way. Never rebuild `AcquisitionConfig(...)` from scratch — that wiped credentials.
 - Strongly typed dataclasses only; no ad-hoc nested dict config for new features
+
+---
+
+## Settings vs Plugins ownership (do not duplicate writers)
+
+| Setting | Owner page | Save button |
+|---------|------------|-------------|
+| Folders, watch, identify auto-approve | Settings → Library | **Save library** |
+| Quality preset / lossless / bitrate / whole-album | Settings → Library quality | **Save preferences** |
+| Wishlist interval, auto-acquire, Nicotine+, **search waterfall** | Settings → Wishlist & downloads | **Save preferences** |
+| Theme, log level, Discogs, AcoustID, fingerprinting | Settings → Application | **Save preferences** |
+| Media servers | Settings → Media servers | **Save media server** |
+| Last.fm, Spotify, Prowlarr, qBittorrent, SABnzbd | System → Plugins | **Save plugin settings** |
+
+- Dashboard shows wishlist hours as **read-only** (“Change in Settings”).
+- Wanted management lives on **Wishlist**, not Albums.
+- Log/report path pickers belong on **System → Logs**, not Settings → Library.
+- Shared widgets: `gui/widgets/quality_fields.py`, `page_header.py`, `health_legend.py`.
+- Setup wizard must update the **active** library (not `list_all()[0]`), use `replace()` for Nicotine+, write `acoustid_endpoints`, and must not reset onboarding tips on re-run.
+
+---
+
+## Multi-AI + GitLab coordination
+
+Canonical remote: `gitlab` → `git@10.11.11.123:xpe-dev-main/vaultseek.git`. Primary branch: **`main`**.
+
+Before you start a session:
+
+1. `git fetch gitlab` and `git pull --ff-only gitlab main` (or rebase onto it). Do not assume `master` or GitHub `origin` is current.
+2. Read this file, [docs/DECISIONS.md](docs/DECISIONS.md), and the latest **Session Notes** in [docs/DEVELOPMENT_ROADMAP.md](docs/DEVELOPMENT_ROADMAP.md).
+3. Leave notes the next AI can use: update Session Notes + ADRs when behaviour or ownership changes.
+
+When you finish user-visible or architectural work:
+
+1. Update `AGENTS.md` / ADRs / Session Notes in the **same commit** as the code.
+2. Push **`gitlab main`** (`git push gitlab main`). Do **not** force-push. Do **not** retarget `origin`. Do **not** change git `user.*`.
+3. `master` may lag `main`; do not merge them unless a human asks.
+
+Do not overwrite another AI’s nested config fields. Settings vs Plugins ownership above is the merge contract.
 
 ---
 
 ## Commands (Windows)
 
 ```powershell
-cd C:\Dev\VaultSeek   # or your clone
+cd C:\OtherDev\VaultSeek   # also used: C:\Dev\VaultSeek
 .\.venv\Scripts\activate
 pip install -e ".[dev]"
 ruff check src/ tests/

@@ -58,7 +58,7 @@ Privacy for public vs private tiers comes from each indexer’s Prowlarr `privac
 
 ## Search waterfall
 
-Under **Settings → Acquisition**:
+Under **Settings → Wishlist & downloads**:
 
 - Reorder Nicotine+ / Usenet / Prowlarr public / Prowlarr private
 - Toggle “stop after first source that finds results”

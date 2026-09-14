@@ -13,10 +13,9 @@ from datetime import UTC, datetime
 from pathlib import Path
 from uuid import UUID
 
-from PySide6.QtCore import Qt, Signal
+from PySide6.QtCore import Signal
 from PySide6.QtWidgets import (
     QCheckBox,
-    QComboBox,
     QFormLayout,
     QHBoxLayout,
     QLabel,
@@ -31,24 +30,19 @@ from PySide6.QtWidgets import (
 )
 
 from vaultseek.core.config import (
-    NicotinePlusConfig,
+    AcoustIdEndpointConfig,
     save_config,
 )
 from vaultseek.core.container import Container
 from vaultseek.core.uuid_utils import generate_uuid7
 from vaultseek.gui.widgets.path_picker import PathPickerRow
+from vaultseek.gui.widgets.quality_fields import QualityFields
 from vaultseek.models.entities.library import Library
 from vaultseek.services.acquisition_bootstrap import (
     connect_acquisition_providers,
     probe_nicotine_plus_connection,
 )
-from vaultseek.services.quality_presets import (
-    PRESET_CHOICES,
-    PRESET_CUSTOM,
-    infer_preset,
-    normalize_preset_id,
-    values_for_preset,
-)
+from vaultseek.services.quality_presets import PRESET_COLLECTOR, normalize_preset_id
 
 
 class SetupWizard(QWizard):
@@ -56,9 +50,16 @@ class SetupWizard(QWizard):
 
     finished_setup = Signal(object)  # UUID | None
 
-    def __init__(self, container: Container, parent: QWidget | None = None) -> None:
+    def __init__(
+        self,
+        container: Container,
+        parent: QWidget | None = None,
+        *,
+        library_id: UUID | None = None,
+    ) -> None:
         super().__init__(parent)
         self._container = container
+        self._library_id = library_id
         self.setWindowTitle("VaultSeek setup")
         self.setWizardStyle(QWizard.WizardStyle.ModernStyle)
         self.setMinimumWidth(640)
@@ -78,7 +79,39 @@ class SetupWizard(QWizard):
         self.addPage(self._quality)
         self.addPage(self._done)
 
+        self._prefill()
         self.finished.connect(self._on_finished)
+
+    def _target_library(self) -> Library | None:
+        if self._library_id is not None:
+            found = self._container.library_repo.get(self._library_id)
+            if found is not None:
+                return found
+        existing = self._container.library_repo.list_all()
+        return existing[0] if existing else None
+
+    def _prefill(self) -> None:
+        """Load the active library and saved config so re-runs do not wipe fields."""
+        library = self._target_library()
+        if library is not None:
+            self._library_id = library.id
+            self._folders.name_edit.setText(library.name)
+            self._folders.incoming.setText(library.incoming_path)
+            self._folders.library.setText(library.library_path)
+            self._folders.staging.setText(library.staging_path)
+            self._folders.archive.setText(library.archive_path)
+            self._folders.watch.setChecked(library.watch_enabled)
+
+        nicotine = self._container.config.acquisition.nicotine_plus
+        self._nicotine.enabled.setChecked(nicotine.enabled)
+        self._nicotine.host.setText(nicotine.host or "127.0.0.1")
+        self._nicotine.api_port.setValue(int(nicotine.api_port or 12339))
+        self._nicotine.api_token.setText(nicotine.api_token)
+
+        if self._container.config.setup_completed:
+            self._quality.fields.load(self._container.config.acquisition)
+        else:
+            self._quality.fields.select_preset(PRESET_COLLECTOR)
 
     def _on_finished(self, result: int) -> None:
         if result != QWizard.DialogCode.Accepted:
@@ -106,11 +139,10 @@ class SetupWizard(QWizard):
             Path(path).mkdir(parents=True, exist_ok=True)
 
         now = datetime.now(UTC)
-        existing = self._container.library_repo.list_all()
-        if existing:
-            library = existing[0]
+        existing = self._target_library()
+        if existing is not None:
             updated = replace(
-                library,
+                existing,
                 name=name,
                 incoming_path=incoming,
                 staging_path=staging,
@@ -120,7 +152,7 @@ class SetupWizard(QWizard):
                 updated_at=now,
             )
             self._container.library_repo.upsert(updated)
-            library_id = library.id
+            library_id = existing.id
         else:
             library_id = generate_uuid7()
             library = Library(
@@ -137,58 +169,60 @@ class SetupWizard(QWizard):
             )
             self._container.library_repo.upsert(library)
 
-        # Merge Nicotine + quality + optional tokens into app config.
-        nicotine = NicotinePlusConfig(
+        # Merge Nicotine + quality + optional tokens without wiping nested fields.
+        existing_nic = self._container.config.acquisition.nicotine_plus
+        nicotine = replace(
+            existing_nic,
             enabled=self._nicotine.enabled.isChecked(),
             host=self._nicotine.host.text().strip() or "127.0.0.1",
-            port=22024,
-            transport="http",
             api_port=int(self._nicotine.api_port.value()),
             api_token=self._nicotine.api_token.text().strip(),
-            search_min_interval_seconds=(
-                self._container.config.acquisition.nicotine_plus.search_min_interval_seconds
-            ),
-            search_max_per_minute=(
-                self._container.config.acquisition.nicotine_plus.search_max_per_minute
-            ),
         )
         enabled = list(self._container.config.acquisition.enabled_providers)
         if nicotine.enabled:
             if "nicotine_plus" not in enabled:
                 enabled.append("nicotine_plus")
             enabled = [p for p in enabled if p != "stub"]
+        else:
+            enabled = [p for p in enabled if p != "nicotine_plus"]
         if not enabled:
             enabled = ["stub"]
 
+        quality = self._quality.fields
         acquisition = replace(
             self._container.config.acquisition,
             enabled_providers=tuple(dict.fromkeys(enabled)),
-            provider_order=self._container.config.acquisition.provider_order,
-            search_timeout_seconds=self._container.config.acquisition.search_timeout_seconds,
             auto_queue_jobs=True,
-            auto_acquire_threshold=self._container.config.acquisition.auto_acquire_threshold,
-            prefer_lossless=self._quality.prefer_lossless.isChecked(),
-            preferred_codec=self._quality.preferred_codec.text().strip(),
-            min_bitrate_kbps=int(self._quality.min_bitrate.value()),
-            quality_preset=normalize_preset_id(self._quality.preset.currentData()),
-            download_whole_album_on_upgrade=(
-                self._container.config.acquisition.download_whole_album_on_upgrade
-            ),
-            wishlist_search_interval_hours=(
-                self._container.config.acquisition.wishlist_search_interval_hours
-            ),
+            prefer_lossless=quality.prefer_lossless.isChecked(),
+            preferred_codec=quality.preferred_codec.text().strip(),
+            min_bitrate_kbps=int(quality.min_bitrate.value()),
+            quality_preset=normalize_preset_id(quality.preset_id()),
             nicotine_plus=nicotine,
         )
-        metadata = replace(
-            self._container.config.metadata,
-            discogs_user_token=self._tokens.discogs.text().strip(),
-            acoustid_api_key=self._tokens.acoustid.text().strip()
-            or self._container.config.metadata.acoustid_api_key,
-        )
+        discogs_token = self._tokens.discogs.text().strip()
+        acoustid_key = self._tokens.acoustid.text().strip()
+        metadata = self._container.config.metadata
+        endpoints = list(metadata.acoustid_endpoints)
+        if acoustid_key:
+            if endpoints:
+                endpoints[0] = replace(endpoints[0], api_key=acoustid_key)
+            else:
+                endpoints = [AcoustIdEndpointConfig(api_key=acoustid_key, label="Primary")]
+            metadata = replace(
+                metadata,
+                discogs_user_token=discogs_token,
+                acoustid_api_key=acoustid_key,
+                acoustid_endpoints=tuple(endpoints),
+            )
+        else:
+            metadata = replace(metadata, discogs_user_token=discogs_token)
+        already_completed = self._container.config.setup_completed
         updated_config = replace(
             self._container.config,
             setup_completed=True,
-            onboarding_tips_dismissed=False,
+            onboarding_tips_dismissed=(
+                self._container.config.onboarding_tips_dismissed if already_completed else False
+            ),
             acquisition=acquisition,
             metadata=metadata,
         )
@@ -300,7 +334,7 @@ class _NicotinePage(QWizardPage):
         self.status.setWordWrap(True)
         test.clicked.connect(self._test)
         skip = QLabel(
-            "You can skip this and enable later in Settings → Acquisition. "
+            "You can skip this and enable later in Settings → Wishlist & downloads. "
             "Without Nicotine+, library scanning and organize still work."
         )
         skip.setWordWrap(True)
@@ -340,7 +374,10 @@ class _TokensPage(QWizardPage):
         self.acoustid = QLineEdit()
         self.acoustid.setEchoMode(QLineEdit.EchoMode.Password)
         self.acoustid.setPlaceholderText("AcoustID application API key")
-        self.acoustid.setText(container.config.metadata.acoustid_api_key or "")
+        existing_key = container.config.metadata.acoustid_api_key or ""
+        if not existing_key and container.config.metadata.acoustid_endpoints:
+            existing_key = container.config.metadata.acoustid_endpoints[0].api_key
+        self.acoustid.setText(existing_key)
         help_lbl = QLabel(
             "Discogs: https://www.discogs.com/settings/developers<br>"
             "AcoustID: https://acoustid.org/new-applications"
@@ -359,74 +396,8 @@ class _QualityPage(QWizardPage):
         self.setTitle("Library quality")
         self.setSubTitle("Used for orange “below prefs / missing” highlights and upgrade jobs.")
         layout = QFormLayout(self)
-        self._applying = False
-        self.preset = QComboBox()
-        for preset_id, label, tip in PRESET_CHOICES:
-            self.preset.addItem(label, preset_id)
-            self.preset.setItemData(self.preset.count() - 1, tip, Qt.ItemDataRole.ToolTipRole)
-        self.preset_hint = QLabel("")
-        self.preset_hint.setProperty("muted", True)
-        self.preset_hint.setWordWrap(True)
-        self.prefer_lossless = QCheckBox("Prefer lossless (FLAC) when available")
-        self.prefer_lossless.setChecked(True)
-        self.preferred_codec = QLineEdit()
-        self.preferred_codec.setPlaceholderText("Optional, e.g. FLAC or MP3")
-        self.min_bitrate = QSpinBox()
-        self.min_bitrate.setRange(0, 3200)
-        self.min_bitrate.setSingleStep(32)
-        self.min_bitrate.setValue(192)
-        self.min_bitrate.setSuffix(" kbps")
-        layout.addRow("Quality preset", self.preset)
-        layout.addRow(self.preset_hint)
-        layout.addRow(self.prefer_lossless)
-        layout.addRow("Preferred codec", self.preferred_codec)
-        layout.addRow("Min bitrate for lossy", self.min_bitrate)
-        self.preset.currentIndexChanged.connect(self._on_preset_changed)
-        self.prefer_lossless.toggled.connect(self._on_fields_edited)
-        self.preferred_codec.textEdited.connect(self._on_fields_edited)
-        self.min_bitrate.valueChanged.connect(self._on_fields_edited)
-        # Default first-run suggestion: Collector (prefer lossless, 320 floor).
-        collector_index = self.preset.findData("collector")
-        if collector_index >= 0:
-            self.preset.setCurrentIndex(collector_index)
-        self._on_preset_changed()
-
-    def _on_preset_changed(self, _index: int = 0) -> None:
-        if self._applying:
-            return
-        values = values_for_preset(str(self.preset.currentData() or PRESET_CUSTOM))
-        tip = ""
-        for preset_id, _label, description in PRESET_CHOICES:
-            if preset_id == self.preset.currentData():
-                tip = description
-                break
-        self.preset_hint.setText(tip)
-        if values is None:
-            return
-        self._applying = True
-        self.prefer_lossless.setChecked(values.prefer_lossless)
-        self.preferred_codec.setText(values.preferred_codec)
-        self.min_bitrate.setValue(values.min_bitrate_kbps)
-        self._applying = False
-
-    def _on_fields_edited(self, *_args: object) -> None:
-        if self._applying:
-            return
-        matched = infer_preset(
-            prefer_lossless=self.prefer_lossless.isChecked(),
-            preferred_codec=self.preferred_codec.text().strip(),
-            min_bitrate_kbps=int(self.min_bitrate.value()),
-        )
-        index = self.preset.findData(matched)
-        if index >= 0 and self.preset.currentIndex() != index:
-            self._applying = True
-            self.preset.setCurrentIndex(index)
-            self._applying = False
-            tip = next(
-                (d for pid, _l, d in PRESET_CHOICES if pid == matched),
-                "",
-            )
-            self.preset_hint.setText(tip)
+        self.fields = QualityFields()
+        self.fields.add_to_form(layout)
 
 
 class _DonePage(QWizardPage):

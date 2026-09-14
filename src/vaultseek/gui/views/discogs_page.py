@@ -61,7 +61,13 @@ class _ReleaseRow:
 class DiscogsPage(QWidget):
     """Search Discogs artists and queue selected releases for acquisition."""
 
-    def __init__(self, container: Container, parent: QWidget | None = None) -> None:
+    def __init__(
+        self,
+        container: Container,
+        parent: QWidget | None = None,
+        *,
+        embedded: bool = False,
+    ) -> None:
         super().__init__(parent)
         self._container = container
         self._library_id: UUID | None = None
@@ -71,17 +77,19 @@ class DiscogsPage(QWidget):
         self._thumbs = DiscogsThumbLoader()
 
         layout = QVBoxLayout(self)
-        heading = QLabel("Discogs")
-        heading.setProperty("heading", True)
-        layout.addWidget(heading)
-
-        help_lbl = QLabel(
-            "Search an artist, browse their Discogs discography, then select albums "
-            "to queue for download or add to Wanted."
-        )
-        help_lbl.setWordWrap(True)
-        help_lbl.setProperty("muted", True)
-        layout.addWidget(help_lbl)
+        if embedded:
+            layout.setContentsMargins(0, 8, 0, 0)
+        else:
+            heading = QLabel("Discogs")
+            heading.setProperty("heading", True)
+            layout.addWidget(heading)
+            help_lbl = QLabel(
+                "Search an artist, browse their Discogs discography, then select albums "
+                "to queue for download or add to Wanted."
+            )
+            help_lbl.setWordWrap(True)
+            help_lbl.setProperty("muted", True)
+            layout.addWidget(help_lbl)
 
         search_row = QHBoxLayout()
         self._query = QLineEdit()
@@ -160,8 +168,8 @@ class DiscogsPage(QWidget):
         wanted_btn = QPushButton("Add to Wanted")
         wanted_btn.setProperty("secondary", True)
         wanted_btn.setToolTip(
-            "Park selected releases on the Wanted shelf without searching yet. "
-            "Start download later from Albums → Wanted or Wishlist."
+            "Park selected releases without searching yet. "
+            "Start or remove them later on Wishlist → Show Wanted."
         )
         wanted_btn.clicked.connect(self._add_to_wanted)
         select_all = QPushButton("Select all")
@@ -188,6 +196,10 @@ class DiscogsPage(QWidget):
             self._status.setText(
                 "Add a Discogs token in Settings → Application, then search an artist."
             )
+            return
+        current = self._status.text()
+        if current.startswith("Add a Discogs token"):
+            self._status.setText("Enter an artist name and press Search.")
 
     def _provider(self) -> DiscogsProvider:
         return DiscogsProvider(user_token=self._container.config.metadata.discogs_user_token or "")
@@ -478,7 +490,7 @@ class DiscogsPage(QWidget):
             self,
             "Discogs",
             f"Added {created} album(s) to Wanted. "
-            "Open Albums → Wanted (or Wishlist → Show Wanted) and click Start download when ready.",
+            "Open Wishlist, enable Show Wanted, then Start Wanted download.",
         )
 
 

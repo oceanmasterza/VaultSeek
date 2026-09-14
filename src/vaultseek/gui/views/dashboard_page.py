@@ -7,7 +7,6 @@ from uuid import UUID
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QFont, QTextCursor
 from PySide6.QtWidgets import (
-    QDoubleSpinBox,
     QFrame,
     QHBoxLayout,
     QLabel,
@@ -24,7 +23,7 @@ from PySide6.QtWidgets import (
 from vaultseek.core.config import save_config
 from vaultseek.core.container import Container
 from vaultseek.core.logging import get_live_log_buffer
-from vaultseek.gui.widgets.pipeline_flow import PipelineFlowWidget
+from vaultseek.gui.widgets.pipeline_flow import STAGE_NAV_KEYS, PipelineFlowWidget
 from vaultseek.gui.widgets.table_utils import (
     configure_data_table,
 )
@@ -210,22 +209,17 @@ class DashboardPage(QWidget):
         layout.addLayout(acq_kpi)
 
         wishlist_row = QHBoxLayout()
-        wishlist_row.addWidget(QLabel("Wishlist search every"))
-        self._wishlist_hours = QDoubleSpinBox()
-        self._wishlist_hours.setRange(0.0, 168.0)
-        self._wishlist_hours.setSingleStep(1.0)
-        self._wishlist_hours.setDecimals(1)
-        self._wishlist_hours.setSuffix(" hours")
-        self._wishlist_hours.setSpecialValueText("Continuous")
-        self._wishlist_hours.setToolTip(
-            "0 = search as often as rate limits allow. "
-            "Set 6 to run at most one wishlist search pass every 6 hours."
-        )
-        self._wishlist_hours.valueChanged.connect(self._on_wishlist_hours_changed)
-        wishlist_row.addWidget(self._wishlist_hours)
         self._wishlist_hint = QLabel("")
         self._wishlist_hint.setProperty("muted", True)
+        self._wishlist_hint.setWordWrap(True)
         wishlist_row.addWidget(self._wishlist_hint, stretch=1)
+        change_interval = QPushButton("Change in Settings")
+        change_interval.setProperty("secondary", True)
+        change_interval.setToolTip(
+            "Wishlist search interval is saved with Settings → Wishlist & downloads."
+        )
+        change_interval.clicked.connect(lambda: self.navigate_requested.emit("settings"))
+        wishlist_row.addWidget(change_interval)
         layout.addLayout(wishlist_row)
 
         # Quick actions
@@ -300,6 +294,7 @@ class DashboardPage(QWidget):
             muted=True,
         )
         self._pipeline = PipelineFlowWidget()
+        self._pipeline.stage_clicked.connect(self._on_pipeline_stage_clicked)
         pipe_layout.addWidget(pipe_title)
         pipe_layout.addWidget(pipe_help)
         pipe_layout.addWidget(self._pipeline)
@@ -451,30 +446,20 @@ class DashboardPage(QWidget):
 
     def refresh(self) -> None:
         hours = float(self._container.config.acquisition.wishlist_search_interval_hours or 0.0)
-        self._wishlist_hours.blockSignals(True)
-        self._wishlist_hours.setValue(hours)
-        self._wishlist_hours.blockSignals(False)
-        self._wishlist_hint.setText(
-            "Continuous (rate-limited)" if hours <= 0 else f"At most every {hours:g} hour(s)"
+        interval = (
+            "Wishlist search: continuous (rate-limited)"
+            if hours <= 0
+            else f"Wishlist search: at most every {hours:g} hour(s)"
         )
+        self._wishlist_hint.setText(interval + " — change under Settings → Wishlist & downloads.")
         snap = build_dashboard_snapshot(self._container, self._library_id)
         self._apply(snap)
         self._refresh_live_log()
 
-    def _on_wishlist_hours_changed(self, value: float) -> None:
-        from dataclasses import replace
-
-        acquisition = replace(
-            self._container.config.acquisition,
-            wishlist_search_interval_hours=float(value),
-        )
-        updated = replace(self._container.config, acquisition=acquisition)
-        save_config(updated, self._container.paths.config_file)
-        self._container.config = updated
-        self._container.acquisition_automation_service.set_acquisition_config(acquisition)
-        self._wishlist_hint.setText(
-            "Continuous (rate-limited)" if value <= 0 else f"At most every {float(value):g} hour(s)"
-        )
+    def _on_pipeline_stage_clicked(self, stage_key: str) -> None:
+        nav_key = STAGE_NAV_KEYS.get(stage_key)
+        if nav_key:
+            self.navigate_requested.emit(nav_key)
 
     def _dismiss_onboarding_tips(self) -> None:
         from dataclasses import replace
@@ -499,18 +484,29 @@ class DashboardPage(QWidget):
         else:
             steps.append("1. Library folders — done.")
 
-        nicotine_on = self._container.config.acquisition.nicotine_plus.enabled
-        connected = self._container.provider_manager.has_connected_search_providers()
-        if not nicotine_on:
+        acq = self._container.config.acquisition
+        nicotine_on = acq.nicotine_plus.enabled
+        prowlarr_on = acq.prowlarr.enabled and (acq.qbittorrent.enabled or acq.sabnzbd.enabled)
+        connected_ids = set(self._container.provider_manager.connected_provider_ids())
+        nicotine_ok = nicotine_on and "nicotine_plus" in connected_ids
+        prowlarr_ok = prowlarr_on and "prowlarr" in connected_ids
+        if not nicotine_on and not prowlarr_on:
             steps.append(
-                "2. Enable Nicotine+ in the wizard or Settings → Acquisition (for downloads)."
+                "2. Enable a download source: Settings → Wishlist & downloads (Nicotine+) "
+                "or System → Plugins (Prowlarr)."
             )
-        elif not connected:
+        elif not (nicotine_ok or prowlarr_ok):
             steps.append(
-                "2. Start Nicotine+ with api-nicotine-plus, then Test connection in Settings."
+                "2. Start the enabled download client, then Test connection in Settings "
+                "(Nicotine+) or Plugins (Prowlarr)."
             )
         else:
-            steps.append("2. Nicotine+ connected — ready to search.")
+            names = [
+                name
+                for name, ok in (("Nicotine+", nicotine_ok), ("Prowlarr", prowlarr_ok))
+                if ok
+            ]
+            steps.append(f"2. Download source connected — {', '.join(names)}.")
 
         if snap.track_count == 0:
             steps.append("3. Scan Incoming (or drop music into Incoming) to build the catalog.")

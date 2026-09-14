@@ -7,6 +7,7 @@ from uuid import UUID
 from PySide6.QtWidgets import (
     QHBoxLayout,
     QLabel,
+    QMessageBox,
     QPushButton,
     QTableWidget,
     QTableWidgetItem,
@@ -16,6 +17,8 @@ from PySide6.QtWidgets import (
 
 from vaultseek.core.container import Container
 from vaultseek.gui.datetime_format import format_local_datetime
+from vaultseek.gui.widgets.empty_state import EmptyState
+from vaultseek.gui.widgets.page_header import add_page_header
 from vaultseek.gui.widgets.table_utils import (
     configure_data_table,
 )
@@ -32,12 +35,21 @@ class JobsPage(QWidget):
         self._job_ids: list[UUID] = []
 
         layout = QVBoxLayout(self)
-        heading = QLabel("Jobs")
-        heading.setProperty("heading", True)
-        layout.addWidget(heading)
+        add_page_header(
+            layout,
+            "Jobs",
+            "Library pipeline queue (scan, hash, identify, artwork). "
+            "Wishlist downloads are on Find & get → Wishlist.",
+        )
 
         self._stats = QLabel("")
         layout.addWidget(self._stats)
+
+        self._empty = EmptyState(
+            "No pipeline jobs",
+            "Scan Incoming from the File menu or Dashboard to start processing files.",
+        )
+        layout.addWidget(self._empty)
 
         self._table = QTableWidget(0, 5)
         self._table.setHorizontalHeaderLabels(["Type", "Status", "Attempts", "Details", "Created"])
@@ -74,6 +86,8 @@ class JobsPage(QWidget):
         self._job_ids = []
         if self._library_id is None:
             self._stats.setText("No library selected.")
+            self._empty.setVisible(True)
+            self._table.setVisible(False)
             return
 
         stats = self._container.job_queue.get_stats(self._library_id)
@@ -106,6 +120,12 @@ class JobsPage(QWidget):
                     )
                 )
 
+        empty = len(rows) == 0
+        self._empty.setVisible(empty)
+        self._table.setVisible(not empty)
+        if empty:
+            return
+
         self._table.setRowCount(len(rows))
         for row_index, (job_id, job_type, status, attempts, error, created) in enumerate(rows):
             self._job_ids.append(job_id)
@@ -120,11 +140,19 @@ class JobsPage(QWidget):
         return [self._job_ids[row] for row in sorted(rows) if 0 <= row < len(self._job_ids)]
 
     def _cancel_selected(self) -> None:
-        for job_id in self._selected_ids():
+        ids = self._selected_ids()
+        if not ids:
+            QMessageBox.information(self, "Jobs", "Select one or more jobs to cancel.")
+            return
+        for job_id in ids:
             self._container.job_queue.cancel(job_id)
         self.refresh()
 
     def _retry_selected(self) -> None:
-        for job_id in self._selected_ids():
+        ids = self._selected_ids()
+        if not ids:
+            QMessageBox.information(self, "Jobs", "Select one or more failed jobs to retry.")
+            return
+        for job_id in ids:
             self._container.job_queue.retry_failed(job_id)
         self.refresh()

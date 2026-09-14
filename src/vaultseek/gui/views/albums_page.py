@@ -33,6 +33,7 @@ from vaultseek.gui.widgets.browse import (
 )
 from vaultseek.gui.widgets.desktop import reveal_in_explorer
 from vaultseek.gui.widgets.empty_state import EmptyState
+from vaultseek.gui.widgets.health_legend import health_legend_label
 from vaultseek.gui.widgets.table_utils import (
     begin_table_update,
     configure_data_table,
@@ -49,7 +50,7 @@ from vaultseek.services.library_scan_actions import (
     run_missing_scan_for_album,
     run_quality_upgrade_scan,
 )
-from vaultseek.services.wanted import list_wanted, promote_wanted, remove_wanted
+from vaultseek.services.wanted import list_wanted
 
 
 class AlbumsPage(QWidget):
@@ -100,13 +101,7 @@ class AlbumsPage(QWidget):
         find_music.clicked.connect(lambda: self.navigate_requested.emit("find"))
         toolbar.addWidget(find_music)
         layout.addLayout(toolbar)
-        legend = QLabel(
-            "Colors: green = complete & meets quality · "
-            "orange = missing songs or below quality prefs"
-        )
-        legend.setProperty("muted", True)
-        legend.setWordWrap(True)
-        layout.addWidget(legend)
+        layout.addWidget(health_legend_label())
 
         self._empty = EmptyState(
             "No albums yet",
@@ -191,42 +186,17 @@ class AlbumsPage(QWidget):
         wanted_box = QFrame()
         wanted_box.setProperty("dashPanel", True)
         self._wanted_box = wanted_box
-        wanted_layout = QVBoxLayout(wanted_box)
-        wanted_title = QLabel("Wanted")
-        wanted_title.setProperty("panelTitle", True)
-        wanted_layout.addWidget(wanted_title)
-        wanted_help = QLabel(
-            "Parked Discogs picks waiting for download. "
-            "Add from Find music → Discogs → Add to Wanted."
-        )
-        wanted_help.setWordWrap(True)
-        wanted_help.setProperty("muted", True)
-        wanted_layout.addWidget(wanted_help)
-        self._wanted_table = QTableWidget(0, 4)
-        self._wanted_table.setHorizontalHeaderLabels(["Artist", "Album", "Year", "Source"])
-        self._wanted_table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
-        self._wanted_table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
-        configure_data_table(self._wanted_table)
-        self._wanted_table.setMaximumHeight(160)
-        wanted_layout.addWidget(self._wanted_table)
-        wanted_actions = QHBoxLayout()
-        start_btn = QPushButton("Start download")
-        start_btn.setToolTip("Promote selected Wanted items to the Wishlist and begin search.")
-        start_btn.clicked.connect(self._promote_wanted_selected)
-        remove_btn = QPushButton("Remove")
-        remove_btn.setProperty("secondary", True)
-        remove_btn.clicked.connect(self._remove_wanted_selected)
-        find_discogs = QPushButton("Find music…")
-        find_discogs.setProperty("secondary", True)
-        find_discogs.clicked.connect(lambda: self.navigate_requested.emit("find_discogs"))
-        wanted_actions.addWidget(start_btn)
-        wanted_actions.addWidget(remove_btn)
-        wanted_actions.addWidget(find_discogs)
-        wanted_actions.addStretch(1)
-        wanted_layout.addLayout(wanted_actions)
-        self._wanted_empty = QLabel("No Wanted items — add releases from Discogs browse.")
-        self._wanted_empty.setProperty("muted", True)
-        wanted_layout.addWidget(self._wanted_empty)
+        wanted_layout = QHBoxLayout(wanted_box)
+        wanted_layout.setContentsMargins(12, 8, 12, 8)
+        self._wanted_status = QLabel("Wanted items are managed on Wishlist.")
+        self._wanted_status.setProperty("muted", True)
+        self._wanted_status.setWordWrap(True)
+        open_wanted = QPushButton("Open Wishlist")
+        open_wanted.setProperty("secondary", True)
+        open_wanted.setToolTip("Parked Discogs picks live on Wishlist → Show Wanted.")
+        open_wanted.clicked.connect(lambda: self.navigate_requested.emit("acquisition"))
+        wanted_layout.addWidget(self._wanted_status, stretch=1)
+        wanted_layout.addWidget(open_wanted)
         layout.addWidget(wanted_box)
 
         self._status = QLabel("")
@@ -268,7 +238,7 @@ class AlbumsPage(QWidget):
             end_table_update(self._tracks)
             return
         self._wanted_box.setVisible(True)
-        self._reload_wanted()
+        self._reload_wanted_count()
         needle = self._search.text().strip() or None
         rows = self._container.album_repo.list_for_library(
             self._library_id,
@@ -318,16 +288,14 @@ class AlbumsPage(QWidget):
             for col, item in enumerate(cells):
                 apply_album_health_style(item, status.health)
                 self._table.setItem(i, col, item)
-        self._status.setText(f"{len(rows)} album(s) · {len(self._wanted_ids)} wanted")
+        self._status.setText(f"{len(rows)} album(s)")
         end_table_update(self._table)
         end_table_update(self._tracks)
 
-    def _reload_wanted(self) -> None:
-        begin_table_update(self._wanted_table)
+    def _reload_wanted_count(self) -> None:
         self._wanted_ids = []
-        self._wanted_table.setRowCount(0)
         if self._library_id is None:
-            end_table_update(self._wanted_table)
+            self._wanted_status.setText("Wanted items are managed on Wishlist.")
             return
         artist_name = None
         if self._filter_artist_id is not None:
@@ -338,60 +306,17 @@ class AlbumsPage(QWidget):
             self._library_id,
             artist=artist_name,
         )
-        self._wanted_empty.setVisible(len(jobs) == 0)
-        self._wanted_table.setVisible(len(jobs) > 0)
-        self._wanted_table.setRowCount(len(jobs))
-        for index, job in enumerate(jobs):
-            self._wanted_ids.append(job.id)
-            source = str(job.extra.get("source") or "wanted")
-            artist_item = QTableWidgetItem(job.artist or "")
-            artist_item.setData(Qt.ItemDataRole.UserRole, str(job.id))
-            year_item = QTableWidgetItem()
-            year_item.setData(Qt.ItemDataRole.DisplayRole, str(job.year) if job.year else "")
-            year_item.setData(Qt.ItemDataRole.EditRole, int(job.year or 0))
-            self._wanted_table.setItem(index, 0, artist_item)
-            self._wanted_table.setItem(index, 1, QTableWidgetItem(job.album or ""))
-            self._wanted_table.setItem(index, 2, year_item)
-            self._wanted_table.setItem(index, 3, QTableWidgetItem(source))
-        end_table_update(self._wanted_table)
-
-    def _selected_wanted_ids(self) -> list[UUID]:
-        rows = {index.row() for index in self._wanted_table.selectedIndexes()}
-        ids: list[UUID] = []
-        for row in sorted(rows):
-            item = self._wanted_table.item(row, 0)
-            raw = item.data(Qt.ItemDataRole.UserRole) if item else None
-            if raw:
-                ids.append(UUID(str(raw)))
-            elif 0 <= row < len(self._wanted_ids):
-                ids.append(self._wanted_ids[row])
-        return ids
-
-    def _promote_wanted_selected(self) -> None:
-        ids = self._selected_wanted_ids()
-        if not ids:
-            QMessageBox.information(self, "Wanted", "Select one or more Wanted rows.")
-            return
-        engine = self._container.acquisition_engine
-        for job_id in ids:
-            promote_wanted(engine, job_id)
-        QMessageBox.information(
-            self,
-            "Wanted",
-            f"Started download for {len(ids)} item(s). Open Wishlist to watch progress.",
-        )
-        self.refresh()
-        self.navigate_requested.emit("acquisition")
-
-    def _remove_wanted_selected(self) -> None:
-        ids = self._selected_wanted_ids()
-        if not ids:
-            QMessageBox.information(self, "Wanted", "Select one or more Wanted rows.")
-            return
-        engine = self._container.acquisition_engine
-        for job_id in ids:
-            remove_wanted(engine, job_id)
-        self.refresh()
+        self._wanted_ids = [job.id for job in jobs]
+        if jobs:
+            self._wanted_status.setText(
+                f"{len(jobs)} Wanted item(s) parked — start or remove them on Wishlist "
+                "(enable Show Wanted)."
+            )
+        else:
+            self._wanted_status.setText(
+                "No Wanted items. Add releases from Find music → Discogs, then manage "
+                "them on Wishlist."
+            )
 
     def _musicbrainz(self) -> MusicBrainzProvider | None:
         for provider in self._container.plugin_manager.get_metadata_providers():

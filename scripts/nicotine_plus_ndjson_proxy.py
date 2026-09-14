@@ -15,7 +15,7 @@ Run the proxy:
     --http-host 127.0.0.1 --http-port 12339 \
     --api-token YOUR_TOKEN_OR_EMPTY
 
-Then in VaultSeek Settings → Acquisition → Nicotine+ transport:
+Then in VaultSeek Settings → Wishlist & downloads → Nicotine+ transport:
   * choose "VaultSeek NDJSON socket"
   * set NDJSON port to the listen-port above
 """

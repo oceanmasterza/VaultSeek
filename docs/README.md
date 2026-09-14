@@ -6,7 +6,7 @@ Start here when onboarding or before architectural work.
 
 ## Essential reading (order)
 
-1. [../AGENTS.md](../AGENTS.md) — third-party AI onboarding (repo map, waterfall, commands)
+1. [../AGENTS.md](../AGENTS.md) — third-party AI onboarding (repo map, waterfall, Settings vs Plugins, GitLab `main`)
 2. [../README.md](../README.md) — project landing page
 3. [USER_GUIDE.md](USER_GUIDE.md) — first run, plugins, troubleshooting
 4. [PROWLARR.md](PROWLARR.md) — Prowlarr tiers + qBittorrent + SABnzbd

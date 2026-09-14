@@ -29,7 +29,7 @@ from vaultseek.gui.widgets.table_utils import (
     end_table_update,
 )
 from vaultseek.models.entities.acquisition_job import AcquisitionJobState
-from vaultseek.services.wanted import is_parked
+from vaultseek.services.wanted import is_parked, promote_wanted, remove_wanted
 
 
 class AcquisitionPage(QWidget):
@@ -60,13 +60,25 @@ class AcquisitionPage(QWidget):
         self._summary.setWordWrap(True)
         layout.addWidget(self._summary)
 
+        wanted_row = QHBoxLayout()
         self._show_wanted = QCheckBox("Show Wanted (parked)")
         self._show_wanted.setToolTip(
-            "Wanted items are parked Discogs picks that do not search until you Start download. "
-            "Hidden from this list by default."
+            "Wanted items are parked Discogs picks that do not search until you start them. "
+            "Hidden from this list by default. Manage them here — not on Albums."
         )
         self._show_wanted.toggled.connect(self.refresh)
-        layout.addWidget(self._show_wanted)
+        start_wanted = QPushButton("Start Wanted download")
+        start_wanted.setToolTip("Promote selected Wanted rows so they search and download.")
+        start_wanted.setProperty("secondary", True)
+        start_wanted.clicked.connect(self._promote_wanted_selected)
+        remove_wanted_btn = QPushButton("Remove Wanted")
+        remove_wanted_btn.setProperty("secondary", True)
+        remove_wanted_btn.clicked.connect(self._remove_wanted_selected)
+        wanted_row.addWidget(self._show_wanted)
+        wanted_row.addWidget(start_wanted)
+        wanted_row.addWidget(remove_wanted_btn)
+        wanted_row.addStretch(1)
+        layout.addLayout(wanted_row)
 
         self._empty = EmptyState(
             "Wishlist is empty",
@@ -101,8 +113,8 @@ class AcquisitionPage(QWidget):
         scan_btn.setToolTip("Create AcquisitionJobs from MusicBrainz release gaps.")
         run_btn.setToolTip(
             "Search providers, score hits, and download when score meets the "
-            "auto-acquire threshold in Settings. Uses the selected row(s), or the "
-            "top row when nothing is selected."
+            "auto-acquire threshold in Settings. Uses the selected row(s); "
+            "falls back to the top row when nothing is selected."
         )
         acquire_btn.setToolTip(
             "Download the highest-scored result for the selected job "
@@ -281,7 +293,7 @@ class AcquisitionPage(QWidget):
         """Refresh job rows; download polling is handled by automation service."""
         self.refresh()
 
-    def _selected_ids(self) -> list[UUID]:
+    def _selected_ids(self, *, fallback_first: bool = False) -> list[UUID]:
         rows = {index.row() for index in self._table.selectedIndexes()}
         ids: list[UUID] = []
         for row in sorted(rows):
@@ -293,13 +305,13 @@ class AcquisitionPage(QWidget):
                 ids.append(self._job_ids[row])
         if ids:
             return ids
-        if self._job_ids:
+        if fallback_first and self._job_ids:
             self._table.selectRow(0)
             return [self._job_ids[0]]
         return []
 
     def _auto_acquire_selected(self) -> None:
-        selected = self._selected_ids()
+        selected = self._selected_ids(fallback_first=True)
         if not selected:
             QMessageBox.information(self, "Acquisition", "No jobs available.")
             return
@@ -309,9 +321,8 @@ class AcquisitionPage(QWidget):
                 self,
                 "Acquisition",
                 "No acquisition providers are connected.\n\n"
-                "Enable Nicotine+ in Settings → Acquisition and confirm Nicotine+ "
-                "(and its API / proxy) is running. Failures also appear under "
-                "Dashboard → Attention needed.",
+                "Enable Nicotine+ in Settings → Wishlist & downloads or Prowlarr "
+                "on System → Plugins, and confirm the client is running.",
             )
         runner = self._container.acquisition_runner
         self._summary.setText("Running auto-acquire in the background…")
@@ -411,7 +422,7 @@ class AcquisitionPage(QWidget):
         )
 
     def _acquire_top_selected(self) -> None:
-        selected = self._selected_ids()
+        selected = self._selected_ids(fallback_first=True)
         if not selected:
             QMessageBox.information(self, "Acquisition", "No jobs available.")
             return
@@ -585,7 +596,11 @@ class AcquisitionPage(QWidget):
         )
 
     def _cancel_selected(self) -> None:
-        for job_id in self._selected_ids():
+        selected = self._selected_ids(fallback_first=False)
+        if not selected:
+            QMessageBox.information(self, "Wishlist", "Select one or more jobs to cancel.")
+            return
+        for job_id in selected:
             job = self._container.acquisition_engine.get(job_id)
             if job is None:
                 continue
@@ -593,6 +608,45 @@ class AcquisitionPage(QWidget):
                 self._container.download_manager.cancel(job_id)
             else:
                 self._container.acquisition_engine.cancel(job_id)
+        self.refresh()
+
+    def _promote_wanted_selected(self) -> None:
+        if not self._show_wanted.isChecked():
+            self._show_wanted.setChecked(True)
+        selected = self._selected_ids(fallback_first=False)
+        engine = self._container.acquisition_engine
+        parked = [job_id for job_id in selected if is_parked(engine.get(job_id))]
+        if not parked:
+            QMessageBox.information(
+                self,
+                "Wanted",
+                "Select Wanted (parked) rows after enabling Show Wanted.",
+            )
+            return
+        for job_id in parked:
+            promote_wanted(engine, job_id)
+        QMessageBox.information(
+            self,
+            "Wanted",
+            f"Started download for {len(parked)} item(s).",
+        )
+        self.refresh()
+
+    def _remove_wanted_selected(self) -> None:
+        if not self._show_wanted.isChecked():
+            self._show_wanted.setChecked(True)
+        selected = self._selected_ids(fallback_first=False)
+        engine = self._container.acquisition_engine
+        parked = [job_id for job_id in selected if is_parked(engine.get(job_id))]
+        if not parked:
+            QMessageBox.information(
+                self,
+                "Wanted",
+                "Select Wanted (parked) rows after enabling Show Wanted.",
+            )
+            return
+        for job_id in parked:
+            remove_wanted(engine, job_id)
         self.refresh()
 
 
@@ -637,7 +691,7 @@ class _ResultPickerDialog(QDialog):
     ) -> None:
         row = self._table.rowCount()
         self._table.insertRow(row)
-        self._table.setItem(row, 0, QTableWidgetItem(f"{score:.2f}"))
+        self._table.setItem(row, 0, QTableWidgetItem(f"{score:.0%}"))
         self._table.setItem(row, 1, QTableWidgetItem(display_name))
         self._table.setItem(row, 2, QTableWidgetItem(provider_id))
         self._table.setItem(row, 3, QTableWidgetItem(format))
@@ -649,7 +703,7 @@ class _ResultPickerDialog(QDialog):
         # Store result id on the "Result" cell.
         result_cell = self._table.item(row, 1)
         if result_cell is not None:
-            result_cell.setData(256, result_id)  # Qt.UserRole
+            result_cell.setData(Qt.ItemDataRole.UserRole, result_id)
 
     def row_count(self) -> int:
         return self._table.rowCount()
@@ -665,6 +719,6 @@ class _ResultPickerDialog(QDialog):
             return
         row_index = sorted(rows)[0]
         item = self._table.item(row_index, 1)
-        rid = item.data(256) if item is not None else None  # Qt.UserRole
+        rid = item.data(Qt.ItemDataRole.UserRole) if item is not None else None
         self._selected_result_id = str(rid) if rid is not None else None
         self.accept()

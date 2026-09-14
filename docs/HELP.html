@@ -72,6 +72,7 @@
     }
     main h2:first-of-type { margin-top: 0; border-top: none; }
     main h3 { margin-top: 1.25rem; color: #f0f0f0; }
+    main h4 { margin-top: 1rem; color: #ddd; }
     p, li { max-width: 72ch; }
     code, kbd {
       background: #333;
@@ -113,381 +114,642 @@
 <body>
   <header>
     <h1>VaultSeek Help</h1>
-    <p>Version 1.1.0 — music library management and acquisition for Windows</p>
+    <p>Version 1.1.0 — find what you are missing, then keep the library tidy</p>
   </header>
   <div class="wrap">
   <nav>
-    <h2>Start</h2>
-    <a href="#overview">Overview</a>
+    <h2>Start here</h2>
+    <a href="#overview">What VaultSeek does</a>
     <a href="#first-run">First run</a>
-    <a href="#navigation">Navigation</a>
-    <a href="#zones">Library zones</a>
+    <a href="#where-settings">Where to change settings</a>
+    <a href="#navigation">Finding your way around</a>
+    <a href="#zones">Incoming, Library, and other folders</a>
+    <a href="#daily">Day-to-day use</a>
     <h2>Pages</h2>
     <a href="#dashboard">Dashboard</a>
     <a href="#library">Library (Files)</a>
-    <a href="#artists-albums">Artists &amp; Albums</a>
+    <a href="#artists-albums">Artists, Albums, Artwork</a>
     <a href="#find-music">Find music</a>
     <a href="#wishlist">Wishlist</a>
-    <a href="#review">Review queue</a>
-    <a href="#jobs-activity">Jobs &amp; Activity</a>
-    <a href="#settings">Settings</a>
-    <a href="#plugins">Plugins</a>
-    <h2>Acquisition</h2>
-    <a href="#acquisition-flow">How acquisition works</a>
-    <a href="#nicotine">Nicotine+</a>
-    <a href="#prowlarr">Prowlarr + qBit + SAB</a>
-    <a href="#lastfm-spotify">Last.fm &amp; Spotify</a>
+    <a href="#review">Review</a>
+    <a href="#jobs-activity">Jobs, Activity, Reports, Logs</a>
+    <h2>Download options</h2>
+    <a href="#choose-source">Which download setup?</a>
+    <a href="#acquisition-flow">How a download works</a>
+    <a href="#waterfall">Search source order</a>
+    <a href="#nicotine">Soulseek (Nicotine+)</a>
+    <a href="#prowlarr">Prowlarr + qBittorrent / SABnzbd</a>
+    <a href="#lastfm-spotify">Last.fm and Spotify</a>
+    <h2>Settings reference</h2>
+    <a href="#settings">Settings page</a>
+    <a href="#plugins">Plugins page</a>
+    <a href="#quality">Quality presets</a>
     <h2>Reference</h2>
     <a href="#shortcuts">Keyboard shortcuts</a>
-    <a href="#data-folders">Data &amp; logs</a>
+    <a href="#data-folders">Data and logs</a>
     <a href="#troubleshooting">Troubleshooting</a>
   </nav>
   <main>
 
-    <h2 id="overview">Overview</h2>
+    <h2 id="overview">What VaultSeek does</h2>
     <p>
-      VaultSeek is a Windows desktop application that helps you <strong>organize</strong>,
-      <strong>identify</strong>, and <strong>complete</strong> a personal music library.
-      It watches an <em>Incoming</em> folder, fingerprints and tags audio, moves approved
-      files into <em>Library</em>, syncs artwork, and can search external sources for
-      missing tracks or better quality versions.
+      VaultSeek is a Windows desktop app for a personal music collection.
+      It watches a drop folder, identifies songs, organizes them into a tidy
+      Library, and can search download sources for missing tracks or better-quality copies.
     </p>
-    <p>Typical workflow:</p>
+    <p>Think of it in two halves:</p>
     <ol>
-      <li>Drop new files into <strong>Incoming</strong> (or download via acquisition).</li>
-      <li>VaultSeek scans, fingerprints, and identifies metadata.</li>
-      <li>Uncertain items appear in <strong>Review</strong>; the rest auto-approve or wait per your threshold.</li>
-      <li>Approved files are <strong>organized</strong> into Library (artist/album folders).</li>
-      <li>Use <strong>Find music</strong> to detect gaps, then <strong>Wishlist</strong> to search and download.</li>
+      <li><strong>Library work</strong> — scan Incoming, fingerprint, identify, review, organize, artwork, media-server refresh.</li>
+      <li><strong>Acquisition</strong> — find gaps, queue a Wishlist, search sources, download, verify, then import back into Incoming.</li>
     </ol>
+    <p>
+      VaultSeek does not replace Soulseek, Prowlarr, qBittorrent, or SABnzbd.
+      Those programs do the actual searching and downloading. VaultSeek talks to them
+      and then treats the finished files like anything else you dropped in Incoming.
+    </p>
 
     <h2 id="first-run">First run</h2>
     <p>
-      On first launch, the <strong>Setup wizard</strong> (<em>Help → Setup wizard</em>) walks you through:
+      The first time you start VaultSeek with no library, the
+      <strong>Setup wizard</strong> opens. You can reopen it anytime from
+      <em>Help → Setup wizard…</em> or the Dashboard button.
     </p>
+    <p>The wizard asks for:</p>
     <ul>
-      <li>Library name and four zone folders (Incoming, Staging, Library, Archive)</li>
-      <li>Optional Nicotine+ connection settings</li>
-      <li>Optional Discogs and AcoustID tokens</li>
-      <li>Quality preferences for acquisition</li>
+      <li>A library name, plus <strong>Incoming</strong> and <strong>Library</strong> folders (Staging and Archive are optional and filled in as siblings if you leave them blank).</li>
+      <li>Optional Nicotine+ connection (Soulseek downloads).</li>
+      <li>Optional Discogs and AcoustID keys (better identification and Discogs browse).</li>
+      <li>A quality preset (what “good enough” means for orange/green row colors and upgrades).</li>
     </ul>
     <p>
-      You can reopen the wizard anytime from the menu. After setup, use
-      <strong>File → Scan Incoming</strong> or <strong>Settings → Scan incoming now</strong>
-      to process files already in Incoming.
+      After Finish, follow the Dashboard <em>Getting started</em> checklist:
+      confirm folders, connect a download source if you want one, then
+      <strong>Scan Incoming</strong>.
+    </p>
+    <div class="note">
+      Re-running the wizard updates the library currently selected in the top
+      toolbar. It no longer overwrites “the first library only,” and it keeps
+      Nicotine+ transport settings you already saved.
+    </div>
+
+    <h2 id="where-settings">Where to change settings</h2>
+    <p>
+      Settings are split on purpose so one Save button cannot wipe another page.
+      Use the page that owns the field, then click <strong>that page’s</strong> Save.
+    </p>
+    <table>
+      <tr><th>What you want to change</th><th>Open this page</th><th>Click this button</th></tr>
+      <tr>
+        <td>Incoming / Library / Archive folders, watch Incoming, identify auto-approve</td>
+        <td>System → Settings → Library</td>
+        <td><strong>Save library</strong></td>
+      </tr>
+      <tr>
+        <td>Quality preset, lossless / bitrate, whole-album upgrades</td>
+        <td>System → Settings → Library quality</td>
+        <td><strong>Save preferences</strong></td>
+      </tr>
+      <tr>
+        <td>Wishlist search interval, auto-acquire score, Nicotine+ (Soulseek), search source order</td>
+        <td>System → Settings → Wishlist &amp; downloads</td>
+        <td><strong>Save preferences</strong></td>
+      </tr>
+      <tr>
+        <td>Theme, log level, Discogs token, AcoustID keys, fingerprinting</td>
+        <td>System → Settings → Application</td>
+        <td><strong>Save preferences</strong></td>
+      </tr>
+      <tr>
+        <td>Navidrome / Jellyfin / Plex / other media servers</td>
+        <td>System → Settings → Media servers</td>
+        <td><strong>Save media server</strong></td>
+      </tr>
+      <tr>
+        <td>Last.fm, Spotify playlists, Prowlarr, qBittorrent, SABnzbd</td>
+        <td>System → Plugins</td>
+        <td><strong>Save plugin settings</strong></td>
+      </tr>
+      <tr>
+        <td>Wishlist search interval (quick look)</td>
+        <td>Dashboard shows the current value</td>
+        <td>Use <em>Change in Settings</em> — the Dashboard does not save this anymore</td>
+      </tr>
+    </table>
+    <div class="warn">
+      Settings has three Save buttons (library, preferences, media server).
+      Plugins has its own Save. If you edit Nicotine+ and click
+      <em>Save library</em>, those Nicotine+ changes are not written yet.
+    </div>
+    <p>
+      Theme and log level apply as soon as you save preferences.
+      Discogs, AcoustID, Shazamio, and fingerprint mode need a
+      <strong>restart of VaultSeek</strong> after Save preferences.
+      Prowlarr / qBittorrent / SABnzbd reconnect as soon as you save Plugins.
     </p>
 
-    <h2 id="navigation">Navigation</h2>
-    <p>The left sidebar groups pages into four hubs:</p>
+    <h2 id="navigation">Finding your way around</h2>
+    <p>The left sidebar is grouped into four hubs:</p>
     <table>
-      <tr><th>Hub</th><th>Pages</th></tr>
-      <tr><td><strong>Home</strong></td><td>Dashboard — overview, pipeline, attention items</td></tr>
-      <tr><td><strong>Library</strong></td><td>Files, Artists, Albums, Artwork, Duplicates</td></tr>
-      <tr><td><strong>Find &amp; get</strong></td><td>Find music, Review, Wishlist</td></tr>
-      <tr><td><strong>System</strong></td><td>Jobs, Activity, Reports, Logs, Settings, Plugins</td></tr>
+      <tr><th>Hub</th><th>Pages</th><th>Use it for</th></tr>
+      <tr><td><strong>Home</strong></td><td>Dashboard</td><td>Health, pipeline, getting started</td></tr>
+      <tr><td><strong>Library</strong></td><td>Files, Artists, Albums, Artwork, Duplicates</td><td>Browse what you already have</td></tr>
+      <tr><td><strong>Find &amp; get</strong></td><td>Find music, Review, Wishlist</td><td>Gaps, Discogs, approve IDs, downloads</td></tr>
+      <tr><td><strong>System</strong></td><td>Jobs, Activity, Reports, Logs, Settings, Plugins</td><td>Background work and configuration</td></tr>
     </table>
     <p>
-      Use the <strong>Library</strong> dropdown at the top to switch libraries.
-      Press <kbd>Ctrl+K</kbd> for <em>Jump to…</em> and open any page quickly.
+      The <strong>Library</strong> dropdown at the top switches collections.
+      Press <kbd>Ctrl+K</kbd> for <em>Jump to…</em> and type a page name.
     </p>
 
-    <h2 id="zones">Library zones</h2>
-    <p>Each library uses four folders on disk (configured in <strong>Settings → Library</strong>):</p>
+    <h2 id="zones">Incoming, Library, and other folders</h2>
+    <p>Each library is four folders on disk (Settings → Library):</p>
     <table>
-      <tr><th>Zone</th><th>Purpose</th></tr>
-      <tr><td><strong>Incoming</strong></td><td>Drop zone for new audio. Watched when enabled. Files stay here through identify/review until approved.</td></tr>
-      <tr><td><strong>Staging</strong></td><td>Optional legacy hold folder. Most workflows use Incoming → Library directly.</td></tr>
-      <tr><td><strong>Library</strong></td><td>Canonical organized collection (artist/album layout after organize).</td></tr>
-      <tr><td><strong>Archive</strong></td><td>Duplicates and rejected files.</td></tr>
+      <tr><th>Folder</th><th>Required?</th><th>What it is for</th></tr>
+      <tr>
+        <td><strong>Incoming</strong></td>
+        <td>Yes</td>
+        <td>Drop new files here. Downloads land here after they are verified. Files stay here through identify and review, then move to Library when approved.</td>
+      </tr>
+      <tr>
+        <td><strong>Library</strong></td>
+        <td>Yes</td>
+        <td>The organized collection (artist / year – album folders after organize).</td>
+      </tr>
+      <tr>
+        <td><strong>Staging</strong></td>
+        <td>No</td>
+        <td>Optional hold folder. If you leave it blank, VaultSeek suggests a sibling named Staging. Everyday use is Incoming → Library.</td>
+      </tr>
+      <tr>
+        <td><strong>Archive</strong></td>
+        <td>No</td>
+        <td>Duplicates and rejected files. Blank is filled with a sibling named Archive.</td>
+      </tr>
     </table>
     <p>
-      <strong>Watch incoming folder</strong> — when checked, new files in Incoming trigger a scan automatically.
-      <strong>Auto-approve threshold</strong> (0–1) — metadata confidence at or above this value skips Review.
+      <strong>Watch incoming folder</strong> — when checked, new files in Incoming
+      start a scan automatically.
     </p>
+    <p>
+      <strong>Identify auto-approve</strong> (0–1, default 0.90) — if identification
+      confidence is at least this high, the track skips Review and can organize
+      straight to Library. This is <em>not</em> the download score
+      (that is <strong>Download auto-acquire</strong> under Wishlist &amp; downloads).
+    </p>
+
+    <h2 id="daily">Day-to-day use</h2>
+    <ol>
+      <li>Put audio in <strong>Incoming</strong> (or let a download finish there).</li>
+      <li><strong>File → Scan Incoming</strong> (or wait if Watch is on). Watch <strong>Jobs</strong> while hash / fingerprint / identify run.</li>
+      <li>Open <strong>Review</strong> if items need a decision. Approve good matches.</li>
+      <li>Browse <strong>Library / Artists / Albums</strong>. Green rows meet your quality preset; orange rows are missing or below prefs.</li>
+      <li>To fill gaps: <strong>Find music → Find missing songs</strong> (or Discogs browse). Then open <strong>Wishlist</strong> and Auto-acquire, or pick a result.</li>
+      <li>Parked Discogs picks sit as <strong>Wanted</strong>. On Wishlist, enable <em>Show Wanted</em>, then <em>Start Wanted download</em>.</li>
+    </ol>
 
     <h2 id="dashboard">Dashboard</h2>
     <p>
-      Shows library health: track counts by zone, acquisition pipeline stages, recent failures,
-      and a <em>Getting started</em> checklist for new installs. Click attention items to jump
-      to Review, Wishlist, or Logs as appropriate.
+      Operations home: pipeline counts, collection totals, wishlist progress,
+      a live log tail, and a Getting started checklist until you dismiss it.
     </p>
+    <ul>
+      <li>Click a KPI card to jump to Jobs, Review, Library, Find music, or Wishlist.</li>
+      <li>Wishlist search cadence is shown as text. Change it in Settings → Wishlist &amp; downloads.</li>
+      <li>The checklist tells you whether Nicotine+ and/or Prowlarr are actually connected — not just enabled.</li>
+    </ul>
 
     <h2 id="library">Library (Files)</h2>
     <p>
-      Browse every track in the active library with zone, confidence, and quality indicators.
-      Color coding reflects your quality preset (green = meets target, orange = below).
+      Folder tree plus a track table. Colors: green = meets quality prefs;
+      orange = missing file or below your bitrate / lossless prefs.
     </p>
     <ul>
-      <li><strong>Right-click</strong> — Reveal in Explorer, Find missing songs, Find quality upgrades, Open Find music</li>
-      <li><strong>Column headers</strong> — Click to sort; drag column edges to resize</li>
+      <li><strong>Scan Incoming</strong> — queue a scan of this library’s Incoming folder.</li>
+      <li><strong>Find music…</strong> — jump to gap scans and Discogs.</li>
+      <li>Right-click a row for Explorer, gap scan, or quality-upgrade scan.</li>
     </ul>
 
-    <h2 id="artists-albums">Artists &amp; Albums</h2>
+    <h2 id="artists-albums">Artists, Albums, Artwork, Duplicates</h2>
     <h3>Artists</h3>
-    <p>List artists with album and track counts. Select an artist to see their tracks.</p>
+    <p>Artists created during identify. Select a row for tracks; double-click to open Albums filtered to that artist.</p>
     <h3>Albums</h3>
     <p>
-      Browse albums with health status (complete / missing tracks / quality issues).
-      Selecting an album shows cover art and a track list compared to MusicBrainz when available.
+      Album list with cover and tracks. Orange means missing songs or below quality prefs.
+      Right-click to find missing songs for one album or the whole library, or queue a download.
     </p>
-    <p><strong>Album right-click actions:</strong></p>
-    <ul>
-      <li><em>Find missing songs (this album)</em> — fast scan for gaps on one album only</li>
-      <li><em>Find missing songs (whole library)</em> — full library gap scan</li>
-      <li><em>Queue this album for download</em> — add a whole-album Wishlist job</li>
-    </ul>
     <p>
-      The <strong>Wanted</strong> panel lists parked albums (from Discogs or manual picks)
-      before you promote them to active download jobs.
+      Parked Wanted items are <strong>not</strong> managed here. Albums shows a count
+      and an <em>Open Wishlist</em> button. Start or remove Wanted items on Wishlist.
+    </p>
+    <h3>Artwork</h3>
+    <p>Cover status (OK / low-res / missing). Covers are fetched by pipeline jobs, not from this page.</p>
+    <h3>Duplicates</h3>
+    <p>
+      Open groups the pipeline detected. A side-by-side compare viewer is not built yet.
+      Possible-duplicate items also appear on Review.
     </p>
 
     <h2 id="find-music">Find music</h2>
-    <p>Two tabs:</p>
+    <p>One place to queue downloads. Two tabs:</p>
     <h3>Library gaps</h3>
     <ul>
-      <li><strong>Find missing songs</strong> — compares your library to MusicBrainz tracklists and missing files on disk; creates Wishlist jobs per missing track</li>
-      <li><strong>Find quality upgrades</strong> — finds tracks below your quality preset; creates upgrade jobs</li>
+      <li><strong>Find missing songs</strong> — compare identified albums to MusicBrainz tracklists and create Wishlist jobs for gaps. Needs MusicBrainz-linked albums (identify first).</li>
+      <li><strong>Find quality upgrades</strong> — queue upgrades for tracks below Settings → Library quality.</li>
+      <li><strong>Open wishlist</strong> — jump to the download queue.</li>
     </ul>
-    <p>Results appear on the status line (no popup). Open <strong>Wishlist</strong> to acquire.</p>
     <h3>Discogs browse</h3>
     <p>
-      Search Discogs for releases, preview tracklists, and add selections to Wanted or Wishlist.
-      Requires a Discogs token in Settings (optional but recommended).
+      Search an artist, browse the discography, then either
+      <strong>Queue selected for download</strong> (search now) or
+      <strong>Add to Wanted</strong> (park until you start them on Wishlist).
+      Needs a Discogs token in Settings → Application.
     </p>
 
-    <h2 id="wishlist">Wishlist (Acquisition page)</h2>
+    <h2 id="wishlist">Wishlist</h2>
     <p>
-      Central place for <strong>acquisition jobs</strong> — each job represents something
-      you want to find and download (missing track, album, or quality upgrade).
+      The download queue. Each row is one thing you asked VaultSeek to find
+      (a missing track, a missing album, or a quality upgrade).
     </p>
     <table>
-      <tr><th>Action</th><th>What it does</th></tr>
-      <tr><td>Auto-acquire selected</td><td>Search providers, score results, download if above threshold</td></tr>
-      <tr><td>Scan for missing</td><td>Run a full-library missing-track scan from here</td></tr>
-      <tr><td>Show wanted</td><td>Include parked Wanted-shelf jobs in the table</td></tr>
+      <tr><th>Button</th><th>What it does</th></tr>
+      <tr><td>Auto-acquire selected</td><td>Search connected sources, score hits, download if the score meets <em>Download auto-acquire</em>. Uses selected rows, or the top row if nothing is selected.</td></tr>
+      <tr><td>Acquire top result</td><td>Download the highest-scored hit for the selected job (or the top row).</td></tr>
+      <tr><td>Pick result…</td><td>When a job is waiting for you, choose which search hit to download.</td></tr>
+      <tr><td>Cancel selected</td><td>Cancel only the rows you selected (will not cancel the first row by accident).</td></tr>
+      <tr><td>Scan for missing</td><td>Same gap scan as Find music, started from here.</td></tr>
+      <tr><td>Show Wanted</td><td>Include parked Discogs picks in the table.</td></tr>
+      <tr><td>Start Wanted download</td><td>Promote selected Wanted rows so they search and download.</td></tr>
+      <tr><td>Remove Wanted</td><td>Cancel selected parked Wanted rows.</td></tr>
     </table>
+    <p>Typical job path:</p>
     <p>
-      Job states progress through: Created → Queued → Searching → Scoring → Downloading →
-      Verifying → Importing → Completed (or No results / Waiting for user).
+      Created → Queued → Searching → Scoring → Downloading → Verifying → Importing → Completed.
+      Other outcomes: No results, Waiting for user, Failed, Cancelled.
     </p>
 
-    <h2 id="review">Review queue</h2>
+    <h2 id="review">Review</h2>
     <p>
-      Human approval for uncertain metadata, duplicates, or failed acquisitions.
+      Human gate for uncertain identifications and similar problems.
       <kbd>Ctrl+Enter</kbd> approve, <kbd>Ctrl+Shift+R</kbd> reject.
-      Approved items continue through organize; rejected items may move to Archive.
+      Approved items continue to organize; rejected items may go to Archive.
+    </p>
+    <p>
+      How many items land here depends on <strong>Identify auto-approve</strong>
+      in Settings → Library. Lower = more automatic; higher = more Review.
     </p>
 
-    <h2 id="jobs-activity">Jobs &amp; Activity</h2>
+    <h2 id="jobs-activity">Jobs, Activity, Reports, Logs</h2>
     <h3>Jobs</h3>
-    <p>Background pipeline tasks: scan, hash, fingerprint, identify, organize, artwork, media-server sync. Filter by library and status.</p>
+    <p>
+      The library pipeline queue: scan, hash, fingerprint, identify, organize, artwork, media-server sync.
+      Wishlist downloads are a different queue (see Wishlist). Cancel and retry need a selected row.
+    </p>
     <h3>Activity</h3>
-    <p>Recent acquisition and import events — useful when debugging search or download issues.</p>
-    <h3>Reports &amp; Logs</h3>
+    <p>Combined timeline of pipeline jobs and wishlist downloads. Select a row, then Open… to jump to Jobs or Wishlist.</p>
+    <h3>Reports</h3>
+    <p>Session charts of acquisition outcomes, plus “Generate library summary file” into the reports folder.</p>
+    <h3>Logs</h3>
     <p>
-      <strong>Reports</strong> — generated library summaries on disk.
-      <strong>Logs</strong> — live view of <code>vaultseek.log</code> and <code>debug.log</code>.
-      Open log folder via <em>File → Open Log Folder</em>.
+      Tail of <code>vaultseek.log</code>, plus buttons for debug.log and the crashes folder.
+      Also: <em>File → Open Log Folder</em>.
     </p>
 
-    <h2 id="settings">Settings (detailed)</h2>
-
-    <h3>Library</h3>
-    <p>Save, create, or edit libraries. Use <strong>New library</strong> for additional collections.</p>
-
-    <h3>Reset processing</h3>
-    <ul>
-      <li><strong>Clear job &amp; review queues</strong> — removes pending jobs/review items; catalog tracks remain</li>
-      <li><strong>Clear catalog records</strong> — removes DB track rows (files on disk are not deleted)</li>
-    </ul>
-
-    <h3>Acquisition</h3>
+    <h2 id="choose-source">Which download setup should I use?</h2>
+    <p>Pick one path, or combine them. You only need to enable what you actually run.</p>
     <table>
-      <tr><th>Setting</th><th>Description</th></tr>
-      <tr><td>Auto-acquire threshold</td><td>Minimum match score (0–1) to download automatically without manual pick</td></tr>
-      <tr><td>Auto-queue jobs</td><td>When enabled, gap-scan jobs are queued immediately for background search</td></tr>
-      <tr><td>Quality preset</td><td>Named profiles (Completist, Collector, etc.) for traffic-light display and upgrades</td></tr>
-      <tr><td>Prefer lossless</td><td>Prefer FLAC/ALAC when searching</td></tr>
-      <tr><td>Preferred codec</td><td>Optional exact codec (e.g. FLAC, MP3)</td></tr>
-      <tr><td>Min bitrate</td><td>Floor for lossy files (kbps); 0 disables</td></tr>
-      <tr><td>Download whole album on upgrade</td><td>When upgrading via Soulseek, enqueue sibling tracks from the same peer folder</td></tr>
-      <tr><td>Wishlist search every</td><td>Hours between background wishlist search passes; 0 = as often as rate limits allow</td></tr>
+      <tr><th>Your setup</th><th>Enable in VaultSeek</th><th>Leave off</th></tr>
+      <tr>
+        <td><strong>Soulseek only</strong></td>
+        <td>Settings → Wishlist &amp; downloads: Enable Nicotine+</td>
+        <td>Prowlarr / qBittorrent / SABnzbd on Plugins</td>
+      </tr>
+      <tr>
+        <td><strong>Torrents only</strong></td>
+        <td>Plugins: Prowlarr + qBittorrent</td>
+        <td>SABnzbd; Nicotine+ if you do not use Soulseek</td>
+      </tr>
+      <tr>
+        <td><strong>Usenet only</strong></td>
+        <td>Plugins: Prowlarr + SABnzbd</td>
+        <td>qBittorrent; Nicotine+ if unused</td>
+      </tr>
+      <tr>
+        <td><strong>Torrents and Usenet</strong></td>
+        <td>Plugins: Prowlarr + qBittorrent + SABnzbd</td>
+        <td>—</td>
+      </tr>
+      <tr>
+        <td><strong>Soulseek plus indexers</strong></td>
+        <td>Nicotine+ in Settings, and Prowlarr plus at least one download client on Plugins</td>
+        <td>—</td>
+      </tr>
+      <tr>
+        <td><strong>Suggestions only (no downloads yet)</strong></td>
+        <td>Plugins: Last.fm and/or Spotify. Recommendations land on Wishlist as parked items.</td>
+        <td>You still need Nicotine+ or Prowlarr later if you want files</td>
+      </tr>
     </table>
-
-    <h3>Nicotine+ (Soulseek)</h3>
-    <p>Configured here; enable the provider and set transport:</p>
-    <ul>
-      <li><strong>HTTP</strong> — talks to the <em>api-nicotine-plus</em> plugin (recommended). Default API port <code>12339</code>.</li>
-      <li><strong>Socket</strong> — NDJSON companion proxy on port <code>22024</code> (advanced).</li>
-    </ul>
-    <p>
-      Use <strong>Test Nicotine+ connection</strong> before saving.
-      Set conservative search rate limits to avoid Soulseek flood bans (~30 minutes).
-    </p>
-
-    <h3>Application</h3>
-    <ul>
-      <li><strong>Log level</strong> — DEBUG for troubleshooting</li>
-      <li><strong>Theme</strong> — dark or light</li>
-      <li><strong>Discogs token</strong> — metadata and covers from Discogs</li>
-      <li><strong>AcoustID</strong> — up to 3 API keys + optional HTTP proxies for fingerprint throughput</li>
-      <li><strong>Fingerprinting</strong> — fingerprint every file, or sample N songs per album folder (faster)</li>
-    </ul>
-
-    <h3>Media servers</h3>
-    <p>
-      Configure Navidrome, Jellyfin, Plex, Emby, Subsonic, Ampache, Koel, Funkwhale, or Lyrion.
-      VaultSeek can trigger library scans after imports when configured.
-    </p>
-
-    <h3>Organize rules</h3>
-    <p>Custom path templates and rules for how files are named and placed in Library (see Rules section at bottom of Settings).</p>
-
-    <h2 id="plugins">Plugins (detailed)</h2>
-    <p class="note">
-      All plugins are <strong>opt-in</strong> and disabled by default. Save settings after changes;
-      download providers reconnect immediately.
-    </p>
-
-    <h3>Similar music (Last.fm)</h3>
-    <p>
-      Suggests albums by artists similar to those in your library.
-      Free API key from <a href="https://www.last.fm/api/account/create">last.fm/api</a>.
-      Suggestions appear on the Wishlist as parked entries — they do not download automatically.
-    </p>
-
-    <h3>Spotify playlist sync</h3>
-    <p>
-      Mirrors albums from public Spotify playlists into your Wishlist.
-      Create an app at <a href="https://developer.spotify.com/dashboard">developer.spotify.com/dashboard</a>,
-      enable <strong>Web API</strong>, and paste the <strong>Client ID</strong> and
-      <strong>Client secret</strong> here.
-    </p>
-    <div class="warn">
-      VaultSeek uses Spotify’s <strong>Client Credentials</strong> flow (app token, not user login).
-      Only <strong>public</strong> playlists are supported. Spotify’s developer rules may require
-      <strong>Spotify Premium</strong> on the account that owns the developer app for Web API access.
-      A dummy redirect URI (e.g. <code>http://127.0.0.1:8888/callback</code>) is often required
-      when creating the app even though VaultSeek does not use OAuth redirects.
+    <div class="note">
+      Prowlarr by itself cannot download. Enable Prowlarr <em>and</em>
+      qBittorrent (torrents) and/or SABnzbd (NZBs). VaultSeek skips a search hit
+      if the matching client is turned off.
     </div>
 
-    <h3>Prowlarr + qBittorrent + SABnzbd</h3>
-    <p>Indexer search with downloads routed by result type:</p>
-    <table>
-      <tr><th>Result type</th><th>Download client</th></tr>
-      <tr><td>Torrent / magnet</td><td>qBittorrent (if enabled)</td></tr>
-      <tr><td>Usenet / NZB</td><td>SABnzbd (if enabled)</td></tr>
-    </table>
-    <p>Enable Prowlarr plus <strong>at least one</strong> download client. Use the Test buttons to verify connectivity.</p>
-
-    <h2 id="acquisition-flow">How acquisition works</h2>
+    <h2 id="acquisition-flow">How a download works</h2>
     <ol>
-      <li><strong>Search</strong> — providers (Nicotine+, Prowlarr, …) query external sources</li>
-      <li><strong>Score</strong> — results ranked by artist/album/title/format match</li>
-      <li><strong>Download</strong> — best hit sent to qBittorrent, SABnzbd, or Nicotine+</li>
-      <li><strong>Verify</strong> — files checked before import</li>
-      <li><strong>Import</strong> — audio copied into Incoming, then normal scan/organize pipeline</li>
+      <li><strong>You queue a job</strong> — Find missing songs, Discogs, or a manual album queue.</li>
+      <li><strong>Search</strong> — connected sources (Nicotine+, Prowlarr, …) look for the artist / album / track.</li>
+      <li><strong>Score</strong> — hits are ranked by how well they match title, artist, format, and your quality prefs.</li>
+      <li><strong>Download</strong> — if the score is at or above Download auto-acquire, VaultSeek starts the download. Otherwise the job waits for you to pick a result.</li>
+      <li><strong>Verify</strong> — files are never trusted automatically. VaultSeek checks they look like real audio.</li>
+      <li><strong>Import</strong> — verified files are copied into Incoming, then the normal scan → identify → organize path runs.</li>
     </ol>
     <p>
-      For missing-track jobs, VaultSeek searches for the <strong>whole album</strong> first;
-      if no acceptable album pack is found, it falls back to per-track search at the same quality settings.
+      For missing-track jobs, VaultSeek looks for a <strong>whole album</strong> first.
+      If no acceptable album pack is found, it falls back to a per-track search
+      using the same quality settings.
+    </p>
+    <p>
+      Background wishlist searches run on the interval in Settings
+      (0 hours = as often as Soulseek / provider rate limits allow).
     </p>
 
-    <h2 id="nicotine">Connecting Nicotine+</h2>
+    <h2 id="waterfall">Search source order (waterfall)</h2>
+    <p>
+      When more than one download source is enabled, VaultSeek tries them in a
+      list you control. Open <strong>Settings → Wishlist &amp; downloads → Search source order</strong>,
+      then <strong>Save preferences</strong>.
+    </p>
+    <p>Default order:</p>
     <ol>
-      <li>Install and run <a href="https://nicotine-plus.org/">Nicotine+</a> on the same PC.</li>
-      <li>Log into Soulseek inside Nicotine+ and stay connected.</li>
-      <li>Install <strong>api-nicotine-plus</strong> (HTTP API plugin) if using HTTP transport.</li>
-      <li>In VaultSeek <strong>Settings → Acquisition</strong>: enable Nicotine+, set transport to HTTP, port <code>12339</code>, optional API token.</li>
+      <li>Nicotine+ (Soulseek)</li>
+      <li>Usenet (Prowlarr NZBs → SABnzbd)</li>
+      <li>Prowlarr public torrents → qBittorrent</li>
+      <li>Prowlarr private torrents → qBittorrent</li>
+    </ol>
+    <ul>
+      <li><strong>Stop after the first source that finds results</strong> (on by default) — later sources are skipped once a connected source returns hits.</li>
+      <li><strong>Wait after an empty source</strong> (default 15 seconds) — pause before trying the next tier when the current one found nothing.</li>
+      <li>A Soulseek rate-limit error does <em>not</em> stop later sources.</li>
+      <li>Turn the stop-after-first-hit box off if you want every connected source searched every time.</li>
+    </ul>
+    <p>
+      Enable Prowlarr / SABnzbd / qBittorrent on <strong>Plugins</strong>.
+      Enable Nicotine+ on Settings. Reorder does not turn sources on.
+    </p>
+
+    <h2 id="nicotine">Soulseek via Nicotine+</h2>
+    <p>
+      VaultSeek does not speak the Soulseek protocol itself. It talks to
+      <a href="https://nicotine-plus.org/">Nicotine+</a> running on the same PC.
+    </p>
+    <h3>Recommended: HTTP (api-nicotine-plus)</h3>
+    <ol>
+      <li>Install and start Nicotine+. Log into Soulseek and stay connected.</li>
+      <li>Install the community <strong>api-nicotine-plus</strong> plugin so Nicotine+ exposes an HTTP API (default port <code>12339</code>).</li>
+      <li>In VaultSeek: Settings → <strong>Wishlist &amp; downloads</strong>.</li>
+      <li>Check <em>Enable Nicotine+ provider</em>.</li>
+      <li>Transport: <strong>HTTP (api-nicotine-plus)</strong>. Host usually <code>127.0.0.1</code>. HTTP API port <code>12339</code>. Token if your plugin requires one.</li>
       <li>Click <strong>Test Nicotine+ connection</strong>, then <strong>Save preferences</strong>.</li>
     </ol>
+    <h3>Advanced: NDJSON socket</h3>
+    <p>
+      Use this only if you run VaultSeek’s NDJSON companion proxy
+      (<code>scripts/nicotine_plus_ndjson_proxy.py</code>) on port <code>22024</code>.
+      Set transport to <em>VaultSeek NDJSON socket</em> and match the NDJSON port.
+      Keep the same HTTP plugin running behind the proxy.
+    </p>
+    <h3>Search rate limits</h3>
+    <p>
+      Soulseek can ban accounts that search too quickly (often about 30 minutes).
+      Defaults are conservative: at least 5 seconds between searches, and at most
+      8 searches per minute. Raise these only if you know what you are doing.
+    </p>
+    <div class="warn">
+      Nicotine+ must stay running and logged in. If it is closed, Wishlist searches
+      return nothing even when the provider is “enabled” in Settings.
+    </div>
 
-    <h2 id="prowlarr">Connecting Prowlarr, qBittorrent, and SABnzbd</h2>
-
-    <h3>Ports (important)</h3>
+    <h2 id="prowlarr">Prowlarr with qBittorrent and/or SABnzbd</h2>
+    <p>
+      Configure this on <strong>System → Plugins</strong> (not Settings).
+      Prowlarr searches your indexers. VaultSeek then sends the hit to the matching download client.
+    </p>
     <table>
-      <tr><th>App</th><th>Default URL</th></tr>
-      <tr><td>Prowlarr</td><td><code>http://127.0.0.1:9696</code></td></tr>
-      <tr><td>SABnzbd</td><td><code>http://127.0.0.1:8080</code></td></tr>
-      <tr><td>qBittorrent</td><td><code>http://127.0.0.1:8081</code> (avoid sharing 8080 with SABnzbd)</td></tr>
+      <tr><th>What Prowlarr found</th><th>Where it downloads</th></tr>
+      <tr><td>Torrent or magnet</td><td>qBittorrent, if enabled</td></tr>
+      <tr><td>Usenet / NZB</td><td>SABnzbd, if enabled</td></tr>
     </table>
+
+    <h3>Ports — avoid a clash</h3>
+    <table>
+      <tr><th>App</th><th>Typical URL</th><th>Where to copy the key</th></tr>
+      <tr><td>Prowlarr</td><td><code>http://127.0.0.1:9696</code></td><td>Prowlarr → Settings → General → API Key</td></tr>
+      <tr><td>SABnzbd</td><td><code>http://127.0.0.1:8080</code></td><td>SABnzbd → Config → General → API Key</td></tr>
+      <tr><td>qBittorrent</td><td><code>http://127.0.0.1:8081</code></td><td>Web UI username and password (Tools → Options → Web UI)</td></tr>
+    </table>
+    <div class="warn">
+      SABnzbd often occupies port 8080. VaultSeek defaults qBittorrent to
+      <strong>8081</strong> so the two do not collide. If qBittorrent is still on 8080,
+      VaultSeek may talk to SABnzbd by mistake. Change qBittorrent’s Web UI port, restart it,
+      then paste the same URL in Plugins.
+    </div>
 
     <h3>Prowlarr</h3>
     <ol>
-      <li>Add audio indexers in Prowlarr (Torznab / Newznab).</li>
-      <li>Copy API key from Prowlarr → Settings → General.</li>
-      <li>In VaultSeek <strong>Plugins</strong>: enable Prowlarr, paste URL + key, set minimum seeders for torrents.</li>
+      <li>Add audio indexers in Prowlarr (Torznab and/or Newznab).</li>
+      <li>Copy the API key.</li>
+      <li>In VaultSeek Plugins: enable Prowlarr, paste URL and key, set minimum torrent seeders (NZBs ignore seeders).</li>
+      <li>Click <strong>Test Prowlarr</strong>.</li>
     </ol>
+    <p>VaultSeek searches Prowlarr’s Audio category (3000) by default.</p>
 
-    <h3>qBittorrent</h3>
+    <h3>qBittorrent (torrents)</h3>
     <ol>
-      <li>Enable Web UI in qBittorrent (Tools → Options → Web UI).</li>
-      <li>Set port to <strong>8081</strong> if SABnzbd uses 8080.</li>
-      <li>In Plugins: enable qBittorrent, enter URL, username, password, optional category <code>vaultseek</code>.</li>
+      <li>Enable the Web UI. Prefer port 8081 if SABnzbd uses 8080.</li>
+      <li>In Plugins: enable qBittorrent, enter URL, username, password.</li>
+      <li>Optional category <code>vaultseek</code> keeps VaultSeek torrents easy to spot.</li>
+      <li>Optional save path; blank uses qBittorrent’s default. VaultSeek reads the completed path from the Web UI.</li>
+      <li>Click <strong>Test qBittorrent</strong>.</li>
     </ol>
 
-    <h3>SABnzbd</h3>
+    <h3>SABnzbd (Usenet / NZB)</h3>
     <ol>
-      <li>Configure your Usenet server in SABnzbd.</li>
-      <li>Copy API key from SABnzbd → Config → General.</li>
-      <li>In Plugins: enable SABnzbd, paste URL + key, optional category.</li>
+      <li>Configure your Usenet server inside SABnzbd first.</li>
+      <li>Copy the API key from Config → General.</li>
+      <li>In Plugins: enable SABnzbd, paste URL and key, optional category <code>vaultseek</code>.</li>
+      <li>Click <strong>Test SABnzbd</strong>.</li>
+    </ol>
+    <p>When a job completes, VaultSeek imports audio from SABnzbd’s completed-folder path, then runs Incoming as usual.</p>
+
+    <h3>Save and try one album</h3>
+    <ol>
+      <li>Click <strong>Save plugin settings</strong>.</li>
+      <li>Find music → queue one album (or promote a Wanted item).</li>
+      <li>Wishlist → Auto-acquire. Watch the job: Searching → Downloading → Verifying → Completed.</li>
+      <li>Check Incoming, then Library after organize.</li>
     </ol>
 
-    <div class="note">
-      Saving <strong>Settings</strong> no longer clears Plugins download credentials.
-      If searches fail after changing Settings, open Plugins and confirm Prowlarr/qBit/SAB are still enabled, then Save.
+    <h2 id="lastfm-spotify">Last.fm and Spotify (suggestions only)</h2>
+    <p>These plugins never download files. They add parked Wishlist entries you can promote later.</p>
+    <h3>Similar music (Last.fm)</h3>
+    <ol>
+      <li>Create a free key at <a href="https://www.last.fm/api/account/create">last.fm/api/account/create</a>.</li>
+      <li>Plugins: enable similar-music, paste the key, set how many similar artists and top albums to pull.</li>
+      <li>Save plugin settings, then <strong>Find recommendations now</strong>.</li>
+    </ol>
+    <h3>Spotify playlist sync</h3>
+    <ol>
+      <li>Create an app at <a href="https://developer.spotify.com/dashboard">developer.spotify.com/dashboard</a> (Web API / Client Credentials).</li>
+      <li>Paste Client ID and Client secret. Add public playlist URLs, one per line.</li>
+      <li>Save, then Find recommendations now.</li>
+    </ol>
+    <div class="warn">
+      Only <strong>public</strong> playlists work. VaultSeek does not log you into Spotify.
+      Web API access typically requires <strong>Spotify Premium</strong> on the account that owns the developer app.
+      A dummy redirect URI such as <code>http://127.0.0.1:8888/callback</code> is often required when creating the app, even though VaultSeek does not use it.
     </div>
 
-    <h2 id="lastfm-spotify">Last.fm &amp; Spotify tips</h2>
+    <h2 id="settings">Settings page (every group)</h2>
+
+    <h3>Library</h3>
+    <p>Name and folder paths for the library selected in the top toolbar. <strong>New library</strong> clears the form so you can add another collection. <strong>Scan incoming now</strong> queues a scan after the library is saved.</p>
+
+    <h3>Reset processing</h3>
     <ul>
-      <li>Run <strong>Find recommendations now</strong> on the Plugins page after saving credentials.</li>
-      <li>New suggestions are de-duplicated against albums you already own.</li>
-      <li>Promote Wishlist items when you are ready to download — recommenders never download by themselves.</li>
+      <li><strong>Clear job &amp; review queues</strong> — deletes pending/running/failed jobs and review items. Catalog tracks and files on disk stay.</li>
+      <li><strong>Clear catalog records</strong> — also removes track rows from the database. Files on disk are not deleted. Dashboard totals go back to zero. Re-scan Incoming to rebuild.</li>
     </ul>
+
+    <h3>Library quality</h3>
+    <p>
+      Drives orange/green colors on Library and Albums, and “Find quality upgrades.”
+      This is not a download-provider setting. See <a href="#quality">Quality presets</a>.
+    </p>
+    <p>
+      <em>When upgrading, prefer matching whole-album folders from the same peer</em>
+      — on Soulseek upgrades, prefer a folder that has the rest of the album from the same user.
+    </p>
+
+    <h3>Wishlist &amp; downloads (Nicotine+)</h3>
+    <table>
+      <tr><th>Setting</th><th>Meaning</th></tr>
+      <tr><td>Download auto-acquire</td><td>Minimum search-match score (0–1) to start a download without you picking. Lower = more automatic. Default 0.45. Different from Identify auto-approve.</td></tr>
+      <tr><td>Auto-queue jobs from Find missing</td><td>On: gap-scan jobs are queued so background search can start. Off: jobs stay Created until you Auto-acquire on Wishlist.</td></tr>
+      <tr><td>Wishlist search every</td><td>Hours between background wishlist passes. 0 = Continuous (still rate-limited). Example: 6 = at most one pass every 6 hours.</td></tr>
+      <tr><td>Enable Nicotine+</td><td>Turn Soulseek search/download on. See <a href="#nicotine">Nicotine+</a>.</td></tr>
+      <tr><td>Search source order</td><td>Reorder Nicotine+ / Usenet / Prowlarr public / Prowlarr private. See <a href="#waterfall">Search source order</a>.</td></tr>
+      <tr><td>Stop after first source with hits</td><td>Waterfall: skip later tiers once one connected source returns results.</td></tr>
+      <tr><td>Wait after an empty source</td><td>Seconds to pause before the next tier when the current one found nothing. Default 15.</td></tr>
+    </table>
+
+    <h3>Application</h3>
+    <ul>
+      <li><strong>Log level</strong> — INFO for everyday use; DEBUG when something fails (applies on Save).</li>
+      <li><strong>Theme</strong> — dark or light (applies on Save).</li>
+      <li><strong>Discogs token</strong> — personal access token from
+        <a href="https://www.discogs.com/settings/developers">discogs.com/settings/developers</a>.
+        Improves identify (genre, label, catalog) and enables Discogs browse. Restart after save.</li>
+      <li><strong>AcoustID accounts + Shazamio proxies</strong> — up to three application keys
+        (register at <a href="https://acoustid.org/new-applications">acoustid.org/new-applications</a>)
+        and optional HTTP proxies. Each key+IP is limited to about 3 lookups/sec.
+        Proxies are also used by the Shazamio fallback (about 1 request/sec per IP). Restart after save.</li>
+      <li><strong>Fingerprinting</strong> — every song, or sample a folder (faster). Sample mode only skips remaining files after enough songs match the same album, tags and filenames look right, and the file count matches the official track list. Needs an AcoustID key. Restart after save.</li>
+    </ul>
+    <p><em>Open log folder</em> / <em>Open data folder</em> are shortcuts. The full log viewer is System → Logs.</p>
+
+    <h3>Media servers</h3>
+    <p>
+      Optional. After organize, VaultSeek can tell a server to refresh.
+      Choose the plugin (Navidrome, Jellyfin, Plex, Emby, Subsonic, Ampache, Koel, Funkwhale, Lyrion),
+      enter URL and login or token, and for Navidrome optionally the local SQLite database path.
+      Click <strong>Save media server</strong> (this is not part of Save preferences).
+    </p>
+
+    <h3>Organize rules</h3>
+    <p>
+      Read-only list of automation rules for this library. A visual rule builder is not available yet.
+    </p>
+
+    <h2 id="plugins">Plugins page</h2>
+    <p>
+      Everything here is <strong>off by default</strong>. Enable only what you run.
+      After you edit boxes, click <strong>Save plugin settings</strong>.
+      Use the Test buttons before you rely on a client.
+    </p>
+    <p>
+      Nicotine+, Discogs, AcoustID, and quality prefs are <em>not</em> on this page —
+      they live in Settings. See <a href="#where-settings">Where to change settings</a>.
+    </p>
+    <p>
+      <strong>Find recommendations now</strong> runs Last.fm / Spotify against the
+      active library and adds new Wishlist entries. Save first. Already-owned and
+      already-listed albums are skipped.
+    </p>
+
+    <h2 id="quality">Quality presets</h2>
+    <p>These control traffic-light colors and upgrade scans, and they influence which search hits look “good enough.”</p>
+    <table>
+      <tr><th>Preset</th><th>What it means</th></tr>
+      <tr><td>Completist</td><td>Prefer lossless (FLAC/ALAC). No minimum bitrate for lossy files.</td></tr>
+      <tr><td>Collector</td><td>Prefer lossless. Lossy must be at least 320 kbps. Suggested on first-run wizard.</td></tr>
+      <tr><td>Lossy OK</td><td>Accept good MP3 (prefer MP3, min 192 kbps).</td></tr>
+      <tr><td>Custom</td><td>You edited lossless / codec / bitrate by hand.</td></tr>
+    </table>
+    <p>Editing the three fields under the preset automatically switches the combo to Custom (or back to a named preset if the values match).</p>
 
     <h2 id="shortcuts">Keyboard shortcuts</h2>
     <table>
       <tr><th>Shortcut</th><th>Action</th></tr>
       <tr><td><kbd>F1</kbd></td><td>Open this help</td></tr>
-      <tr><td><kbd>Ctrl+Shift+S</kbd></td><td>Scan Incoming</td></tr>
+      <tr><td><kbd>Ctrl+Shift+S</kbd></td><td>Scan Incoming (new or changed files only)</td></tr>
       <tr><td><kbd>Ctrl+D</kbd></td><td>Dashboard</td></tr>
       <tr><td><kbd>Ctrl+L</kbd></td><td>Library files</td></tr>
       <tr><td><kbd>Ctrl+F</kbd></td><td>Find music</td></tr>
       <tr><td><kbd>Ctrl+R</kbd></td><td>Review</td></tr>
+      <tr><td><kbd>Ctrl+W</kbd></td><td>Wishlist</td></tr>
       <tr><td><kbd>Ctrl+J</kbd></td><td>Jobs</td></tr>
       <tr><td><kbd>Ctrl+,</kbd></td><td>Settings</td></tr>
       <tr><td><kbd>Ctrl+K</kbd></td><td>Jump to…</td></tr>
-      <tr><td><kbd>F5</kbd></td><td>Refresh current page</td></tr>
-      <tr><td><kbd>Ctrl+Enter</kbd></td><td>Approve (Review page)</td></tr>
+      <tr><td><kbd>F5</kbd></td><td>Refresh the current page</td></tr>
+      <tr><td><kbd>Ctrl+Enter</kbd></td><td>Approve selected Review items</td></tr>
+      <tr><td><kbd>Ctrl+Shift+R</kbd></td><td>Reject selected Review items</td></tr>
     </table>
 
-    <h2 id="data-folders">Data &amp; logs</h2>
-    <p>VaultSeek stores configuration and the database under:</p>
-    <p><code>%APPDATA%\VaultSeek\</code></p>
+    <h2 id="data-folders">Data and logs</h2>
+    <p>VaultSeek stores its own data under <code>%APPDATA%\VaultSeek\</code> (not inside your music folders):</p>
     <ul>
-      <li><code>config.json</code> — settings (includes API keys; never share this file)</li>
-      <li><code>vaultseek.db</code> — SQLite catalog</li>
-      <li><code>logs\vaultseek.log</code> — main log</li>
-      <li><code>logs\debug.log</code> — verbose debug log</li>
-      <li><code>crashes\</code> — crash dumps if any</li>
+      <li><code>config.json</code> — settings and API keys. Do not share this file.</li>
+      <li><code>vaultseek.db</code> — catalog database</li>
+      <li><code>logs\vaultseek.log</code> — everyday log</li>
+      <li><code>logs\debug.log</code> — verbose log</li>
+      <li><code>crashes\</code> — crash logs if something dies</li>
+      <li><code>reports\</code> — generated summary files</li>
     </ul>
-    <p>Only one VaultSeek instance should run at a time (database lock).</p>
+    <p>Only one VaultSeek window should run at a time (the database is locked).</p>
+    <p>Help → About shows the exact data and log paths for this install.</p>
 
     <h2 id="troubleshooting">Troubleshooting</h2>
     <table>
-      <tr><th>Problem</th><th>Things to check</th></tr>
-      <tr><td>No search results</td><td>Provider connected? Test buttons in Settings/Plugins. Nicotine+ logged into Soulseek?</td></tr>
-      <tr><td>Prowlarr works but no downloads</td><td>qBittorrent or SABnzbd enabled in Plugins? Correct ports? Save Plugins after editing.</td></tr>
-      <tr><td>qBittorrent login failed</td><td>Port clash with SABnzbd — use <code>http://127.0.0.1:8081</code> for qBit</td></tr>
-      <tr><td>SABnzbd probe fails</td><td>API key in SABnzbd Config → General; SABnzbd running</td></tr>
-      <tr><td>Spotify token error</td><td>Client ID/secret correct? Web API enabled on developer app? Premium requirement?</td></tr>
-      <tr><td>UI freeze during scan</td><td>Large library scans run in background; use album-scoped “Find missing” for one album</td></tr>
-      <tr><td>Second window exits</td><td>Another VaultSeek instance is already running</td></tr>
-      <tr><td>Jobs stuck</td><td>Check Activity and Logs; verify providers online; check Review for parked failures</td></tr>
+      <tr><th>Problem</th><th>What to try</th></tr>
+      <tr><td>No search results</td><td>Is a source enabled <em>and</em> connected? Use Test in Settings (Nicotine+) or Plugins (Prowlarr). Is Nicotine+ logged into Soulseek? Are Prowlarr indexers healthy?</td></tr>
+      <tr><td>Prowlarr finds hits but nothing downloads</td><td>Enable qBittorrent for torrents and/or SABnzbd for NZBs. Save plugin settings. Check ports.</td></tr>
+      <tr><td>qBittorrent “could not log in”</td><td>Web UI enabled? Port clash with SABnzbd? Try <code>http://127.0.0.1:8081</code>.</td></tr>
+      <tr><td>SABnzbd probe fails</td><td>SABnzbd running? API key from Config → General?</td></tr>
+      <tr><td>Nicotine+ test fails</td><td>Nicotine+ running, plugin installed, host/port/token match, Soulseek login connected.</td></tr>
+      <tr><td>Jobs sit in Waiting for user</td><td>Score is below Download auto-acquire. Open Wishlist → Pick result… or lower the threshold and Save preferences.</td></tr>
+      <tr><td>Discogs search asks for a token</td><td>Settings → Application → Discogs token, Save preferences, restart VaultSeek.</td></tr>
+      <tr><td>Spotify token error</td><td>Client ID/secret, Web API enabled, app owner has Premium, playlists are public.</td></tr>
+      <tr><td>Orange rows everywhere</td><td>Check Settings → Library quality. Completist/Collector mark lossy files orange if they are below the floor.</td></tr>
+      <tr><td>Dashboard totals never reset</td><td>Totals are cumulative. Use Settings → Clear catalog records only if you want numbers back at zero.</td></tr>
+      <tr><td>Second window closes immediately</td><td>Another VaultSeek is already running.</td></tr>
+      <tr><td>Need more detail</td><td>Settings → Log level DEBUG, Save preferences, reproduce, then System → Logs or File → Open Log Folder.</td></tr>
+      <tr><td>Waterfall never reaches Prowlarr</td><td>Settings → Wishlist &amp; downloads → Search source order. If waterfall is on, a Nicotine+ hit stops later tiers. Reorder or turn waterfall off to search every source.</td></tr>
     </table>
     <p>
-      More documentation:
+      Extra setup notes for developers:
       <a href="https://github.com/oceanmasterza/VaultSeek">github.com/oceanmasterza/VaultSeek</a>
+      (USER_GUIDE, NICOTINE_PLUS, PROWLARR).
     </p>
 
   </main>

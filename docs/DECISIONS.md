@@ -2,6 +2,17 @@
 
 # VaultSeek Architecture Decision Records (ADR)
 
+## 2026-09-14 — Settings vs Plugins: one writer per config key
+
+Settings owns folders, quality, wishlist interval, Nicotine+, search waterfall.
+Plugins owns Last.fm, Spotify, Prowlarr, qBittorrent, SABnzbd. Each page must
+`dataclasses.replace` the existing `AcquisitionConfig` / nested client configs
+so the other page’s credentials survive. Dashboard must not write wishlist
+hours. Nicotine+ Settings save must `replace(existing.nicotine_plus, …)` —
+rebuilding `NicotinePlusConfig(...)` wiped username/password. See ADR-0018.
+
+---
+
 ## 2026-09-14 — Acquisition search waterfall (Nicotine → Usenet → Prowlarr public/private)
 
 Split the former single `prowlarr` acquisition provider into three searchable
@@ -554,6 +565,50 @@ central object is AcquisitionJob with a deterministic state machine.
 ### Consequences
 
 Code and docs use Acquisition Engine / AcquisitionJob terminology.
+
+---
+
+# ADR-0018
+
+## Title
+
+Settings and Plugins each own a disjoint set of config keys
+
+### Status
+
+Approved
+
+### Date
+
+2026-09-14
+
+### Context
+
+`AcquisitionConfig` holds Nicotine+, Prowlarr, qBittorrent, SABnzbd, quality,
+wishlist interval, and search waterfall on one dataclass. Rebuilding that
+object on Settings save wiped plugin credentials. The Dashboard also wrote
+wishlist hours, so two screens raced. The setup wizard sometimes updated the
+wrong library and reset onboarding tips.
+
+### Decision
+
+1. **One writer per key.** Settings writes folders, quality, wishlist interval,
+   Nicotine+, `provider_order`, `search_waterfall`, `provider_search_delay_seconds`,
+   theme, log level, Discogs, AcoustID, fingerprinting, media servers.
+2. **Plugins** writes Last.fm, Spotify, Prowlarr, qBittorrent, SABnzbd and the
+   matching `usenet` / `prowlarr_public` / `prowlarr_private` enable flags.
+3. Both pages persist with `dataclasses.replace` on the existing nested objects.
+   Never construct a fresh `AcquisitionConfig(...)` or `NicotinePlusConfig(...)`
+   when saving.
+4. Dashboard wishlist interval is read-only; Wanted actions live on Wishlist.
+5. Wizard updates the **active** library, preserves Nicotine+ transport/port,
+   writes `acoustid_endpoints`, and does not reset onboarding tips on re-run.
+
+### Consequences
+
+UI fields must not be duplicated across pages. Help / USER_GUIDE / AGENTS.md
+must list the same ownership table. Tests in `tests/unit/gui/test_settings_cleanup.py`
+guard the merge contract.
 
 ---
 

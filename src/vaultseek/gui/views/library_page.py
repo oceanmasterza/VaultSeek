@@ -35,6 +35,7 @@ from vaultseek.gui.widgets.browse import (
 )
 from vaultseek.gui.widgets.desktop import copy_text_to_clipboard, open_path, reveal_in_explorer
 from vaultseek.gui.widgets.empty_state import EmptyState
+from vaultseek.gui.widgets.health_legend import health_legend_label
 from vaultseek.gui.widgets.table_utils import (
     configure_data_table,
 )
@@ -76,7 +77,7 @@ class LibraryPage(QWidget):
         self._search.setClearButtonEnabled(True)
         connect_debounced(self._search.textChanged, self._reload_tracks, parent=self)
         toolbar.addWidget(self._search, stretch=1)
-        scan_btn = QPushButton("Scan incoming")
+        scan_btn = QPushButton("Scan Incoming")
         scan_btn.setProperty("secondary", True)
         scan_btn.setToolTip("Enqueue a scan of this library’s Incoming folder.")
         scan_btn.clicked.connect(self._scan_incoming)
@@ -86,11 +87,7 @@ class LibraryPage(QWidget):
         find_music.clicked.connect(lambda: self.navigate_requested.emit("find"))
         toolbar.addWidget(find_music)
         layout.addLayout(toolbar)
-        legend = QLabel(
-            "Colors: green = meets quality · orange = missing file or below quality prefs"
-        )
-        legend.setProperty("muted", True)
-        layout.addWidget(legend)
+        layout.addWidget(health_legend_label())
 
         self._empty = EmptyState(
             "No tracks yet",

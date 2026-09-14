@@ -63,9 +63,9 @@ class PluginsPage(QWidget):
         heading.setProperty("heading", True)
         layout.addWidget(heading)
         intro = QLabel(
-            "Optional add-ons, all disabled by default. Discovery plugins fill your "
-            "Wishlist with suggestions; download plugins add new sources alongside "
-            "Nicotine+ (configured in Settings). Enable only what you want."
+            "Optional add-ons, all disabled by default. Last.fm and Spotify fill the "
+            "Wishlist with suggestions; Prowlarr / qBittorrent / SABnzbd add indexer "
+            "downloads. Nicotine+, Discogs, AcoustID, and library quality stay in Settings."
         )
         intro.setWordWrap(True)
         intro.setProperty("muted", True)

@@ -9,7 +9,7 @@ See also [ARCHITECTURAL_UPDATE_001.md](ARCHITECTURAL_UPDATE_001.md) (ADR-0017) a
 ## Prerequisites
 
 1. Install and run [Nicotine+](https://nicotine-plus.org/) on the same machine as VaultSeek (Windows today).
-2. Enable the Nicotine+ provider in **Settings → Acquisition** (`enabled: true`).
+2. Enable the Nicotine+ provider in **Settings → Wishlist & downloads** (`enabled: true`).
 3. Choose a transport:
    - **HTTP** (recommended) — uses the community [api-nicotine-plus](https://github.com/sjluke/api-nicotine-plus) plugin
    - **Socket** — uses VaultSeek's NDJSON protocol on a local TCP port (default **22024**)
@@ -20,7 +20,7 @@ See also [ARCHITECTURAL_UPDATE_001.md](ARCHITECTURAL_UPDATE_001.md) (ADR-0017) a
 
 1. Install **api-nicotine-plus** into Nicotine+ (follow that project's README).
 2. Start Nicotine+ and confirm the HTTP API listens on port **12339** (default).
-3. In VaultSeek **Settings → Acquisition**:
+3. In VaultSeek **Settings → Wishlist & downloads**:
    - Transport: **HTTP**
    - API port: `12339`
    - API token: set if your api-nicotine-plus instance requires one
@@ -41,7 +41,7 @@ python scripts/nicotine_plus_ndjson_proxy.py --listen 22024 --api-url http://127
 
 1. Start api-nicotine-plus inside Nicotine+ (port 12339).
 2. Run the proxy script (keep it running while acquiring).
-3. In VaultSeek **Settings → Acquisition**:
+3. In VaultSeek **Settings → Wishlist & downloads**:
    - Transport: **Socket**
    - Socket port: `22024` (must match `--listen`)
 

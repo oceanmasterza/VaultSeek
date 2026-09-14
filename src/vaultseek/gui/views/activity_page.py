@@ -9,6 +9,7 @@ from PySide6.QtWidgets import (
     QComboBox,
     QHBoxLayout,
     QLabel,
+    QMessageBox,
     QPushButton,
     QTableWidget,
     QTableWidgetItem,
@@ -165,8 +166,7 @@ class ActivityPage(QWidget):
     def _open_selected(self, *_args: object) -> None:
         rows = {index.row() for index in self._table.selectedIndexes()}
         if len(rows) != 1:
-            if self._items:
-                self.navigate_requested.emit(self._items[0].navigate_key)
+            QMessageBox.information(self, "Activity", "Select a row to open Jobs or Wishlist.")
             return
         row = next(iter(rows))
         if 0 <= row < len(self._items):

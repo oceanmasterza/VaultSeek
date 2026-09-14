@@ -15,21 +15,33 @@ from vaultseek.gui.widgets.table_utils import (
 class RulesPage(QWidget):
     """Read-only rule list (visual rule builder deferred)."""
 
-    def __init__(self, container: Container, parent: QWidget | None = None) -> None:
+    def __init__(
+        self,
+        container: Container,
+        parent: QWidget | None = None,
+        *,
+        embedded: bool = False,
+    ) -> None:
         super().__init__(parent)
         self._container = container
         self._library_id: UUID | None = None
 
         layout = QVBoxLayout(self)
-        heading = QLabel("Rules")
-        heading.setProperty("heading", True)
+        if embedded:
+            layout.setContentsMargins(0, 8, 0, 0)
+            heading = QLabel("Organize rules")
+            heading.setProperty("panelTitle", True)
+        else:
+            heading = QLabel("Rules")
+            heading.setProperty("heading", True)
         layout.addWidget(heading)
 
         self._hint = QLabel(
-            "Automation rules for this library. Create and edit rules via the "
-            "rules API / config for now — the visual builder ships later."
+            "Automation rules for this library (read-only). "
+            "The visual rule builder is not available yet."
         )
         self._hint.setWordWrap(True)
+        self._hint.setProperty("muted", True)
         layout.addWidget(self._hint)
 
         self._table = QTableWidget(0, 4)

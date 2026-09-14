@@ -40,7 +40,9 @@ Sprint 4
 
 Current Goal
 
-Documentation sync, automation hardening, UX polish (dashboard/reports).
+Keep `gitlab/main` as the shared AI branch. Settings vs Plugins ownership and
+search waterfall must stay merged; next work is live provider testing after
+the user adds plugin credentials.
 ---
 
 # Vision Statement
@@ -715,6 +717,51 @@ Library integrity
 ---
 
 # Session Notes
+
+## 2026-09-14 — GUI cleanup + help merged onto GitLab `main`
+
+Summary
+
+- Other AI on `gitlab/main`: acquisition search waterfall (schema v22, `a1ba7f2`)
+  and `AGENTS.md` onboarding (`e409448`).
+- This session: GUI ownership cleanup, fleshed-out F1 help, then merge onto
+  `main` so both AIs share one branch.
+- Settings vs Plugins one-writer contract (ADR-0018). Nicotine+ save uses
+  `replace()` so username/password survive. Wizard updates the active library.
+- Wishlist interval is Settings-only (Dashboard read-only). Wanted actions
+  moved to Wishlist. Shared widgets: `quality_fields`, `page_header`,
+  `health_legend`. Duplicate unused `services/dto/browse_dto.py` removed.
+- Help: `docs/HELP.html` + `docs/USER_GUIDE.md` include waterfall, ownership
+  table, and download-setup matrix.
+
+Files modified
+
+- `src/vaultseek/gui/views/*` (settings, plugins, dashboard, wizard, pages)
+- `src/vaultseek/gui/widgets/{quality_fields,page_header,health_legend}.py`
+- `docs/HELP.html`, `docs/USER_GUIDE.md`, `AGENTS.md`, `docs/DECISIONS.md`
+- `tests/unit/gui/test_settings_cleanup.py`, `test_user_help.py`
+
+Architectural decisions
+
+- ADR-0018 Settings vs Plugins ownership.
+- Waterfall UI lives under **Settings → Wishlist & downloads**, not a separate
+  Acquisition settings group.
+
+Remaining work
+
+- User will add plugin credentials, then live Nicotine+ / Prowlarr tests.
+- `master` still tracks older `gitlab/master`; do not assume it matches `main`.
+
+Known issues
+
+- Stash `gui-cleanup-and-help-2026-09-14` was used for the merge; drop after
+  this commit is on `gitlab/main`.
+
+Next session goal
+
+Live acquisition tests once credentials are in place. Pull `gitlab/main` first.
+
+---
 
 ## 2026-07-20 — Phase 1 + Acquisition foundation
 

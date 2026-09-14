@@ -12,6 +12,7 @@ from PySide6.QtGui import QPainter
 from PySide6.QtWidgets import (
     QHBoxLayout,
     QLabel,
+    QMessageBox,
     QPushButton,
     QVBoxLayout,
     QWidget,
@@ -159,6 +160,7 @@ class ReportsPage(QWidget):
 
     def _generate_summary(self) -> None:
         if self._library_id is None:
+            QMessageBox.warning(self, "Reports", "Select a library first.")
             return
         result = self._container.report_service.generate(
             ReportRequest(

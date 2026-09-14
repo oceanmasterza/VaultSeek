@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from PySide6.QtCore import Qt
+from PySide6.QtCore import Qt, Signal
+from PySide6.QtGui import QMouseEvent
 from PySide6.QtWidgets import (
     QFrame,
     QHBoxLayout,
@@ -14,9 +15,40 @@ from PySide6.QtWidgets import (
 
 from vaultseek.services.dashboard import PipelineStageStat
 
+# Pipeline stage key → main-window nav key (click-through from Dashboard).
+STAGE_NAV_KEYS: dict[str, str] = {
+    "scan": "jobs",
+    "hash": "jobs",
+    "fingerprint": "jobs",
+    "identify": "jobs",
+    "review": "review",
+    "duplicates": "duplicates",
+    "rules": "settings",
+    "organize": "jobs",
+    "artwork": "artwork",
+    "acquire": "acquisition",
+    "sync": "settings",
+}
+
+
+class _StageCard(QFrame):
+    clicked = Signal(str)
+
+    def __init__(self, stage_key: str, parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+        self._stage_key = stage_key
+        self.setCursor(Qt.CursorShape.PointingHandCursor)
+
+    def mousePressEvent(self, event: QMouseEvent) -> None:  # noqa: N802 — Qt API
+        if event.button() == Qt.MouseButton.LeftButton:
+            self.clicked.emit(self._stage_key)
+        super().mousePressEvent(event)
+
 
 class PipelineFlowWidget(QWidget):
     """Beets/Picard-style left-to-right processing journey."""
+
+    stage_clicked = Signal(str)
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -42,7 +74,7 @@ class PipelineFlowWidget(QWidget):
                 arrow.setProperty("muted", True)
                 self._row.addWidget(arrow)
 
-            card = QFrame()
+            card = _StageCard(stage.key)
             card.setProperty("pipelineStage", True)
             if stage.is_bottleneck:
                 card.setProperty("bottleneck", True)
@@ -81,6 +113,7 @@ class PipelineFlowWidget(QWidget):
             inner.addWidget(count)
             inner.addWidget(bar)
             inner.addWidget(status)
+            card.clicked.connect(self.stage_clicked.emit)
             self._row.addWidget(card, stretch=1)
             self._stage_widgets.append(card)
 
