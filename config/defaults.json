@@ -1,5 +1,5 @@
 {
-  "schema_version": 21,
+  "schema_version": 22,
   "log_level": "INFO",
   "theme": "dark",
   "setup_completed": false,
@@ -51,11 +51,15 @@
       "stub"
     ],
     "provider_order": [
-      "prowlarr",
       "nicotine_plus",
+      "usenet",
+      "prowlarr_public",
+      "prowlarr_private",
       "stub"
     ],
     "search_timeout_seconds": 30.0,
+    "search_waterfall": true,
+    "provider_search_delay_seconds": 15.0,
     "auto_queue_jobs": true,
     "auto_acquire_threshold": 0.45,
     "prefer_lossless": true,

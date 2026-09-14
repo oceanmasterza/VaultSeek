@@ -143,9 +143,21 @@ class _FakeProwlarr:
     def probe(self) -> bool:
         return True
 
-    def search(self, query, *, categories=(3000,), limit=50):
+    def refresh_indexer_privacy(self) -> None:
+        return None
+
+    def search(self, query, *, categories=(3000,), limit=50, protocol=None, privacy=None):
         self.searched.append(query)
-        return self._results
+        hits = self._results
+        if protocol == "usenet":
+            hits = [h for h in hits if h.is_nzb]
+        elif protocol == "torrent":
+            hits = [h for h in hits if h.is_torrent]
+        if privacy == "public":
+            hits = [h for h in hits if not h.is_private]
+        elif privacy == "private":
+            hits = [h for h in hits if h.is_private]
+        return hits
 
 
 class _FakeQbit:

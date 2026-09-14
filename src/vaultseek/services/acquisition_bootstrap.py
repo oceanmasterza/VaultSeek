@@ -10,7 +10,13 @@ from loguru import logger
 from vaultseek.core.config import AcquisitionConfig
 from vaultseek.models.interfaces.acquisition import AcquisitionProviderConfig
 from vaultseek.plugins.builtin.nicotine_plus import NicotinePlusProvider
+from vaultseek.services.acquisition_sources import (
+    DEFAULT_SEARCH_PROVIDER_ORDER,
+    expand_legacy_prowlarr,
+)
 from vaultseek.services.provider_manager import ProviderManager
+
+_PROWLARR_TIER_IDS = frozenset({"usenet", "prowlarr_public", "prowlarr_private", "prowlarr"})
 
 
 @dataclass(frozen=True, slots=True)
@@ -37,18 +43,21 @@ def normalize_nicotine_settings(settings: dict[str, Any]) -> dict[str, Any]:
 
 def resolve_enabled_acquisition_providers(config: AcquisitionConfig) -> set[str]:
     """Enabled provider ids for connect — real providers replace the stub."""
-    enabled = set(config.enabled_providers)
-    # Migrate legacy id still present in some configs.
-    if "prowlarr_qbit" in enabled:
-        enabled.add("prowlarr")
-        enabled.discard("prowlarr_qbit")
+    enabled = set(expand_legacy_prowlarr(list(config.enabled_providers)))
+    enabled.discard("prowlarr")
+    enabled.discard("prowlarr_qbit")
     if config.nicotine_plus.enabled:
         enabled.add("nicotine_plus")
         enabled.discard("stub")
-    # Prowlarr needs search + at least one download client.
-    if config.prowlarr.enabled and (config.qbittorrent.enabled or config.sabnzbd.enabled):
-        enabled.add("prowlarr")
-        enabled.discard("stub")
+    # Prowlarr needs search + the matching download client per tier.
+    if config.prowlarr.enabled:
+        if config.sabnzbd.enabled:
+            enabled.add("usenet")
+            enabled.discard("stub")
+        if config.qbittorrent.enabled:
+            enabled.add("prowlarr_public")
+            enabled.add("prowlarr_private")
+            enabled.discard("stub")
     if not enabled:
         enabled.add("stub")
     return enabled
@@ -143,13 +152,21 @@ def connect_acquisition_providers(
     }
     settings_by_id: dict[str, dict[str, Any]] = {
         "nicotine_plus": nicotine_settings,
+        "usenet": prowlarr_settings,
+        "prowlarr_public": prowlarr_settings,
+        "prowlarr_private": prowlarr_settings,
         "prowlarr": prowlarr_settings,
         "stub": {},
     }
     enabled = resolve_enabled_acquisition_providers(config)
 
-    manager.set_provider_order(
-        ["prowlarr" if p == "prowlarr_qbit" else p for p in config.provider_order]
+    order = expand_legacy_prowlarr(list(config.provider_order))
+    if not order:
+        order = list(DEFAULT_SEARCH_PROVIDER_ORDER)
+    manager.set_provider_order(order)
+    manager.set_search_waterfall(
+        enabled=config.search_waterfall,
+        delay_seconds=config.provider_search_delay_seconds,
     )
 
     # Drop providers that are no longer enabled so stale sessions cannot search.
@@ -157,9 +174,7 @@ def connect_acquisition_providers(
         if connected_id not in enabled:
             manager.disconnect(connected_id)
 
-    for provider_id in config.provider_order:
-        if provider_id == "prowlarr_qbit":
-            provider_id = "prowlarr"
+    for provider_id in order:
         if provider_id not in enabled:
             continue
         if manager.get(provider_id) is None:
@@ -171,13 +186,14 @@ def connect_acquisition_providers(
                 settings=settings_by_id.get(provider_id, {}),
             )
         )
-        if provider_id == "prowlarr":
+        if provider_id in _PROWLARR_TIER_IDS:
             if ok:
-                logger.debug("Prowlarr connected ({})", config.prowlarr.base_url)
+                logger.debug("Acquisition source {} connected", provider_id)
             else:
                 logger.warning(
-                    "Prowlarr enabled but did not connect. Check Prowlarr API key and "
-                    "at least one of qBittorrent / SABnzbd in Plugins."
+                    "Acquisition source {} enabled but did not connect. "
+                    "Check Prowlarr and the matching download client in Plugins.",
+                    provider_id,
                 )
         if provider_id == "nicotine_plus" and config.nicotine_plus.enabled:
             transport = str(nicotine_settings.get("transport") or "socket")

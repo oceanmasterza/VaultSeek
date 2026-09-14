@@ -37,7 +37,23 @@ def test_resolve_enabled_providers_includes_prowlarr_with_client() -> None:
         prowlarr=ProwlarrConfig(enabled=True, api_key="x"),
         qbittorrent=QbittorrentConfig(enabled=True),
     )
-    assert "prowlarr" in resolve_enabled_acquisition_providers(config)
+    enabled = resolve_enabled_acquisition_providers(config)
+    assert "prowlarr_public" in enabled
+    assert "prowlarr_private" in enabled
+    assert "usenet" not in enabled
+
+
+def test_resolve_enabled_providers_includes_usenet_with_sab() -> None:
+    from vaultseek.core.config import ProwlarrConfig, SabnzbdConfig
+
+    config = AcquisitionConfig(
+        enabled_providers=("stub",),
+        prowlarr=ProwlarrConfig(enabled=True, api_key="x"),
+        sabnzbd=SabnzbdConfig(enabled=True, api_key="s"),
+    )
+    enabled = resolve_enabled_acquisition_providers(config)
+    assert "usenet" in enabled
+    assert "prowlarr_public" not in enabled
 
 
 def test_connect_disconnects_disabled_providers() -> None:

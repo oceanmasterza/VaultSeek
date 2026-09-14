@@ -41,6 +41,7 @@ from vaultseek.gui.widgets.scrollable import wrap_scrollable
 from vaultseek.plugins.builtin.prowlarr_qbit import ProwlarrClient, QbittorrentClient
 from vaultseek.plugins.builtin.sabnzbd import SabnzbdClient
 from vaultseek.services.acquisition_bootstrap import connect_acquisition_providers
+from vaultseek.services.acquisition_sources import ensure_search_sources, expand_legacy_prowlarr
 from vaultseek.services.recommendation_service import RecommendationService
 
 
@@ -326,15 +327,26 @@ class PluginsPage(QWidget):
             category=self._sab_category.text().strip() or "vaultseek",
         )
         enabled = [
-            p for p in acq.enabled_providers if p not in ("stub", "prowlarr", "prowlarr_qbit")
+            p
+            for p in acq.enabled_providers
+            if p
+            not in (
+                "stub",
+                "prowlarr",
+                "prowlarr_qbit",
+                "usenet",
+                "prowlarr_public",
+                "prowlarr_private",
+            )
         ]
-        if prowlarr.enabled and (qbittorrent.enabled or sabnzbd.enabled):
-            enabled.append("prowlarr")
+        if prowlarr.enabled and sabnzbd.enabled:
+            enabled.append("usenet")
+        if prowlarr.enabled and qbittorrent.enabled:
+            enabled.append("prowlarr_public")
+            enabled.append("prowlarr_private")
         if not enabled:
             enabled = ["stub"]
-        order = ["prowlarr" if p == "prowlarr_qbit" else p for p in acq.provider_order]
-        if "prowlarr" not in order:
-            order = ["prowlarr", *order]
+        order = ensure_search_sources(expand_legacy_prowlarr(list(acq.provider_order)))
         return replace(
             acq,
             enabled_providers=tuple(dict.fromkeys(enabled)),

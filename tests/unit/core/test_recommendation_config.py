@@ -26,8 +26,12 @@ def test_defaults_include_recommendations_and_torrent_provider() -> None:
     assert config.recommendations.enabled_recommenders == ()
     assert config.acquisition.prowlarr == ProwlarrConfig()
     assert config.acquisition.qbittorrent == QbittorrentConfig()
-    assert "prowlarr" in config.acquisition.provider_order
+    assert "prowlarr_public" in config.acquisition.provider_order
+    assert "prowlarr_private" in config.acquisition.provider_order
+    assert config.acquisition.provider_order[0] == "nicotine_plus"
     assert config.acquisition.sabnzbd.base_url.endswith(":8080")
+    assert config.acquisition.search_waterfall is True
+    assert config.acquisition.provider_search_delay_seconds == 15.0
 
 
 def test_migrating_v19_adds_recommendations_and_torrent(tmp_path: Path) -> None:
@@ -47,8 +51,11 @@ def test_migrating_v19_adds_recommendations_and_torrent(tmp_path: Path) -> None:
     assert config.recommendations == RecommendationConfig()
     assert config.acquisition.prowlarr == ProwlarrConfig()
     assert config.acquisition.qbittorrent.enabled is False
-    assert config.acquisition.provider_order[0] == "prowlarr"
+    assert config.acquisition.provider_order[0] == "nicotine_plus"
+    assert "usenet" in config.acquisition.provider_order
+    assert "prowlarr_public" in config.acquisition.provider_order
     assert config.acquisition.sabnzbd.enabled is False
+    assert config.acquisition.search_waterfall is True
 
 
 def test_recommendation_and_torrent_config_round_trip(tmp_path: Path) -> None:

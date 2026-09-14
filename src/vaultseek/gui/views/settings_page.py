@@ -17,6 +17,8 @@ from PySide6.QtWidgets import (
     QHBoxLayout,
     QLabel,
     QLineEdit,
+    QListWidget,
+    QListWidgetItem,
     QMessageBox,
     QPushButton,
     QSpinBox,
@@ -38,6 +40,12 @@ from vaultseek.models.entities.track import LibraryZone
 from vaultseek.services.acquisition_bootstrap import (
     connect_acquisition_providers,
     probe_nicotine_plus_connection,
+)
+from vaultseek.services.acquisition_sources import (
+    DEFAULT_SEARCH_PROVIDER_ORDER,
+    SEARCH_SOURCE_LABELS,
+    ensure_search_sources,
+    label_for,
 )
 from vaultseek.services.library_reset import reset_library_processing
 from vaultseek.services.quality_presets import (
@@ -281,6 +289,51 @@ class SettingsPage(QWidget):
         self._prefer_lossless.toggled.connect(self._on_quality_fields_edited)
         self._preferred_codec.textEdited.connect(self._on_quality_fields_edited)
         self._min_bitrate.valueChanged.connect(self._on_quality_fields_edited)
+
+        order_box = QGroupBox("Search source order (waterfall)")
+        order_layout = QVBoxLayout(order_box)
+        order_help = QLabel(
+            "VaultSeek tries sources top-to-bottom. When waterfall is on, the first "
+            "source that returns results wins and later sources are skipped. "
+            "Enable Prowlarr / SABnzbd / qBittorrent under Plugins; Nicotine+ below."
+        )
+        order_help.setWordWrap(True)
+        order_help.setProperty("muted", True)
+        order_layout.addWidget(order_help)
+        self._search_waterfall = QCheckBox("Stop after the first source that finds results")
+        self._search_waterfall.setChecked(True)
+        self._search_delay = QDoubleSpinBox()
+        self._search_delay.setRange(0.0, 300.0)
+        self._search_delay.setSingleStep(1.0)
+        self._search_delay.setDecimals(1)
+        self._search_delay.setSuffix(" s")
+        self._search_delay.setValue(15.0)
+        self._search_delay.setToolTip(
+            "Wait this long after an empty source before trying the next one, "
+            "so a slow Nicotine / Prowlarr response can still win before falling through."
+        )
+        order_layout.addWidget(self._search_waterfall)
+        delay_row = QHBoxLayout()
+        delay_row.addWidget(QLabel("Delay between empty sources"))
+        delay_row.addWidget(self._search_delay)
+        delay_row.addStretch(1)
+        order_layout.addLayout(delay_row)
+        self._source_order = QListWidget()
+        self._source_order.setMinimumHeight(120)
+        order_layout.addWidget(self._source_order)
+        move_row = QHBoxLayout()
+        move_up = QPushButton("Move up")
+        move_down = QPushButton("Move down")
+        move_up.setProperty("secondary", True)
+        move_down.setProperty("secondary", True)
+        move_up.clicked.connect(lambda: self._move_source_order(-1))
+        move_down.clicked.connect(lambda: self._move_source_order(1))
+        move_row.addWidget(move_up)
+        move_row.addWidget(move_down)
+        move_row.addStretch(1)
+        order_layout.addLayout(move_row)
+        acq_form.addRow(order_box)
+
         acq_form.addRow(self._nicotine_enabled)
         acq_form.addRow("Nicotine+ transport", self._nicotine_transport)
         acq_form.addRow("Nicotine+ host", self._nicotine_host)
@@ -505,6 +558,9 @@ class SettingsPage(QWidget):
         self._update_quality_preset_hint()
         self._download_whole_album.setChecked(config.acquisition.download_whole_album_on_upgrade)
         self._wishlist_hours.setValue(float(config.acquisition.wishlist_search_interval_hours))
+        self._search_waterfall.setChecked(bool(config.acquisition.search_waterfall))
+        self._search_delay.setValue(float(config.acquisition.provider_search_delay_seconds))
+        self._populate_source_order(config.acquisition.provider_order)
         nicotine = config.acquisition.nicotine_plus
         self._nicotine_enabled.setChecked(nicotine.enabled)
         transport_index = self._nicotine_transport.findData(nicotine.transport)
@@ -850,7 +906,9 @@ class SettingsPage(QWidget):
         acquisition = dc_replace(
             self._container.config.acquisition,
             enabled_providers=tuple(dict.fromkeys(enabled)),
-            provider_order=self._container.config.acquisition.provider_order,
+            provider_order=tuple(self._current_source_order()),
+            search_waterfall=self._search_waterfall.isChecked(),
+            provider_search_delay_seconds=float(self._search_delay.value()),
             search_timeout_seconds=self._container.config.acquisition.search_timeout_seconds,
             auto_queue_jobs=self._auto_queue_jobs.isChecked(),
             auto_acquire_threshold=float(self._acq_threshold.value()),
@@ -892,6 +950,37 @@ class SettingsPage(QWidget):
             "Preferences saved. Restart VaultSeek so Discogs, fingerprinting, AcoustID, "
             "and Shazamio settings take effect.",
         )
+
+    def _populate_source_order(self, order: tuple[str, ...] | list[str]) -> None:
+        self._source_order.clear()
+        for provider_id in ensure_search_sources(order or DEFAULT_SEARCH_PROVIDER_ORDER):
+            if provider_id == "stub" or provider_id not in SEARCH_SOURCE_LABELS:
+                continue
+            item = QListWidgetItem(label_for(provider_id))
+            item.setData(Qt.ItemDataRole.UserRole, provider_id)
+            self._source_order.addItem(item)
+
+    def _current_source_order(self) -> list[str]:
+        ids: list[str] = []
+        for index in range(self._source_order.count()):
+            item = self._source_order.item(index)
+            if item is None:
+                continue
+            provider_id = str(item.data(Qt.ItemDataRole.UserRole) or "")
+            if provider_id:
+                ids.append(provider_id)
+        return ensure_search_sources(ids)
+
+    def _move_source_order(self, delta: int) -> None:
+        row = self._source_order.currentRow()
+        if row < 0:
+            return
+        target = row + delta
+        if target < 0 or target >= self._source_order.count():
+            return
+        item = self._source_order.takeItem(row)
+        self._source_order.insertItem(target, item)
+        self._source_order.setCurrentRow(target)
 
     def _test_nicotine_connection(self) -> None:
         result = probe_nicotine_plus_connection(

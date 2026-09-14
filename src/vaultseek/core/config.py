@@ -18,7 +18,7 @@ from typing import Any
 
 from vaultseek.core.exceptions import ConfigError, ConfigMigrationError, ConfigVersionError
 
-CURRENT_SCHEMA_VERSION = 21
+CURRENT_SCHEMA_VERSION = 22
 
 
 @dataclass(frozen=True)
@@ -94,8 +94,19 @@ class AcquisitionConfig:
     """Acquisition Engine provider enablement and dispatch tunables."""
 
     enabled_providers: tuple[str, ...] = ("stub",)
-    provider_order: tuple[str, ...] = ("prowlarr", "nicotine_plus", "stub")
+    # Waterfall order: Nicotine → Usenet → Prowlarr public → Prowlarr private.
+    provider_order: tuple[str, ...] = (
+        "nicotine_plus",
+        "usenet",
+        "prowlarr_public",
+        "prowlarr_private",
+        "stub",
+    )
     search_timeout_seconds: float = 30.0
+    # When True, stop after the first provider in order returns hits.
+    search_waterfall: bool = True
+    # Pause after an empty tier before trying the next (lets slow sources finish).
+    provider_search_delay_seconds: float = 15.0
     auto_queue_jobs: bool = True
     auto_acquire_threshold: float = 0.45
     prefer_lossless: bool = True
@@ -561,6 +572,44 @@ def _migrate_v20_to_v21(raw: dict[str, Any]) -> dict[str, Any]:
     return migrated
 
 
+def _migrate_v21_to_v22(raw: dict[str, Any]) -> dict[str, Any]:
+    """Split Prowlarr into usenet / public / private tiers; add search waterfall."""
+    migrated = dict(raw)
+    migrated["schema_version"] = 22
+    acq = dict(migrated.get("acquisition") or asdict(AcquisitionConfig()))
+    acq.setdefault("search_waterfall", True)
+    acq.setdefault("provider_search_delay_seconds", 15.0)
+    split = ("usenet", "prowlarr_public", "prowlarr_private")
+    legacy = {"prowlarr", "prowlarr_qbit"}
+
+    def _expand(ids: list[str]) -> list[str]:
+        out: list[str] = []
+        for pid in ids:
+            if pid in legacy:
+                for part in split:
+                    if part not in out:
+                        out.append(part)
+            elif pid not in out:
+                out.append(pid)
+        return out
+
+    order = _expand(list(acq.get("provider_order") or []))
+    for pid in ("nicotine_plus", *split, "stub"):
+        if pid not in order:
+            if pid == "stub":
+                order.append(pid)
+            else:
+                stub_at = order.index("stub") if "stub" in order else len(order)
+                order.insert(stub_at, pid)
+    # Prefer Nicotine first when migrating from the old Prowlarr-first default.
+    if order and order[0] in {*split, "prowlarr"} and "nicotine_plus" in order:
+        order = ["nicotine_plus", *[p for p in order if p != "nicotine_plus"]]
+    acq["provider_order"] = order
+    acq["enabled_providers"] = _expand(list(acq.get("enabled_providers") or [])) or ["stub"]
+    migrated["acquisition"] = acq
+    return migrated
+
+
 _MIGRATIONS: dict[int, Callable[[dict[str, Any]], dict[str, Any]]] = {
     1: _migrate_v1_to_v2,
     2: _migrate_v2_to_v3,
@@ -582,6 +631,7 @@ _MIGRATIONS: dict[int, Callable[[dict[str, Any]], dict[str, Any]]] = {
     18: _migrate_v18_to_v19,
     19: _migrate_v19_to_v20,
     20: _migrate_v20_to_v21,
+    21: _migrate_v21_to_v22,
 }
 
 

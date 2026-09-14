@@ -39,20 +39,29 @@ _SAB_PREFIX = "sab:"
 
 
 class ProwlarrProvider:
-    """Search via Prowlarr; download via qBittorrent and/or SABnzbd."""
+    """Search via Prowlarr; download via qBittorrent and/or SABnzbd.
 
-    provider_id = "prowlarr"
-    display_name = "Prowlarr (qBittorrent / SABnzbd)"
+    Optional ``protocol_filter`` / ``privacy_filter`` create waterfall tiers
+    (usenet vs public torrents vs private torrents) from the same Prowlarr API.
+    """
 
     def __init__(
         self,
         *,
+        provider_id: str = "prowlarr",
+        display_name: str = "Prowlarr (qBittorrent / SABnzbd)",
+        protocol_filter: str | None = None,
+        privacy_filter: str | None = None,
         prowlarr: ProwlarrClient | None = None,
         qbittorrent: QbittorrentClient | None = None,
         sabnzbd: SabnzbdClient | None = None,
         hash_resolve_attempts: int = _HASH_RESOLVE_ATTEMPTS,
         hash_resolve_delay_seconds: float = _HASH_RESOLVE_DELAY_SECONDS,
     ) -> None:
+        self.provider_id = provider_id
+        self.display_name = display_name
+        self._protocol_filter = (protocol_filter or "").casefold() or None
+        self._privacy_filter = (privacy_filter or "").casefold() or None
         self._prowlarr = prowlarr
         self._qbit = qbittorrent
         self._sab = sabnzbd
@@ -86,6 +95,11 @@ class ProwlarrProvider:
         self._sab_category = str(settings.get("sab_category") or "vaultseek")
         self._qbit_enabled = bool(settings.get("qbit_enabled"))
         self._sab_enabled = bool(settings.get("sab_enabled"))
+        # Tier constraints: usenet needs SAB only; torrent tiers need qBit only.
+        if self._protocol_filter == "usenet":
+            self._qbit_enabled = False
+        elif self._protocol_filter == "torrent":
+            self._sab_enabled = False
 
         if not self._injected:
             self._prowlarr = ProwlarrClient(
@@ -153,6 +167,8 @@ class ProwlarrProvider:
                 logger.warning("SABnzbd did not respond — check URL and API key")
         if not prowlarr_ok:
             logger.warning("Prowlarr did not respond — check base URL and API key")
+        elif self._prowlarr is not None:
+            self._prowlarr.refresh_indexer_privacy()
 
         clients_ok = (not self._qbit_enabled or qbit_ok) and (not self._sab_enabled or sab_ok)
         # Need at least one working download client.
@@ -173,7 +189,12 @@ class ProwlarrProvider:
         if not query:
             return []
         try:
-            hits = self._prowlarr.search(query, categories=self._categories)
+            hits = self._prowlarr.search(
+                query,
+                categories=self._categories,
+                protocol=self._protocol_filter,
+                privacy=self._privacy_filter,
+            )
         except ConnectionError as exc:
             logger.warning("Prowlarr search failed: {}", exc)
             return []
@@ -191,7 +212,10 @@ class ProwlarrProvider:
                 continue
             results.append(self._to_search_result(hit))
         logger.info(
-            "Prowlarr returned {} usable result(s) for {}", len(results), query or "(empty)"
+            "{} returned {} usable result(s) for {}",
+            self.provider_id,
+            len(results),
+            query or "(empty)",
         )
         return results
 

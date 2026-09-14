@@ -596,10 +596,28 @@ def _build_media_server_plugins() -> list[MediaServerPlugin]:
 
 
 def _build_acquisition_providers() -> list[AcquisitionProvider]:
-    """Construct acquisition providers (stub + Nicotine+ + Prowlarr)."""
+    """Construct acquisition providers (stub + Nicotine+ + Prowlarr tiers)."""
     return [
         StubAcquisitionProvider(),
         NicotinePlusProvider(),
+        ProwlarrProvider(
+            provider_id="usenet",
+            display_name="Usenet / news (Prowlarr → SABnzbd)",
+            protocol_filter="usenet",
+        ),
+        ProwlarrProvider(
+            provider_id="prowlarr_public",
+            display_name="Prowlarr public trackers",
+            protocol_filter="torrent",
+            privacy_filter="public",
+        ),
+        ProwlarrProvider(
+            provider_id="prowlarr_private",
+            display_name="Prowlarr private trackers",
+            protocol_filter="torrent",
+            privacy_filter="private",
+        ),
+        # Legacy combined id kept for older configs that still reference it.
         ProwlarrProvider(),
     ]
 
