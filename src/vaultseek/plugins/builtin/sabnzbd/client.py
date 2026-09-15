@@ -60,7 +60,9 @@ class SabnzbdClient:
             response = self._session.get(url, params=params, timeout=self._timeout)
         except requests.RequestException as exc:
             # Requests exceptions may include the URL query containing the API key.
-            raise ConnectionError("SABnzbd request failed. Check its address and availability.") from exc
+            raise ConnectionError(
+                "SABnzbd request failed. Check its address and availability."
+            ) from exc
         if response.status_code != 200:
             raise ConnectionError(f"SABnzbd returned HTTP {response.status_code}")
         try:

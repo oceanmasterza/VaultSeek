@@ -79,6 +79,25 @@ def test_sab_configobj_global_keys_and_nested_sections(tmp_path):
     assert item.values["url"] == "http://127.0.0.1:8090/sabnzbd"
 
 
+def test_sab_vaultseek_category_and_qbit_save_path(tmp_path):
+    write(
+        tmp_path,
+        "sabnzbd/sabnzbd.ini",
+        "[misc]\nport=8090\napi_key=secret\n[categories]\n[[vaultseek]]\ndir=complete\n",
+    )
+    write(
+        tmp_path,
+        "qBittorrent/qBittorrent.ini",
+        "[Preferences]\nWebUI\\Enabled=true\nWebUI\\Port=8085\n"
+        "WebUI\\Username=listener\nDownloads\\SavePath=D:\\\\Downloads\\qbit\n",
+    )
+    results = service(tmp_path).discover()
+    assert results[1].values["save_path"].endswith("qbit")
+    assert results[2].values["category"] == "vaultseek"
+    assert "secret" not in results[2].field_summary()
+    assert "API key found" in results[2].field_summary()
+
+
 def test_nicotine_preserves_bound_host_and_masks_token(tmp_path):
     write(
         tmp_path,

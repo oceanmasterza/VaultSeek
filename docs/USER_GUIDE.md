@@ -43,7 +43,7 @@ Use the page that owns the field, then click **that page’s** Save button.
 | Incoming / Library folders, watch, identify auto-approve | Settings → Library | **Save library** |
 | Quality preset, lossless / bitrate, whole-album upgrades | Settings → Library quality | **Save preferences** |
 | Wishlist interval, auto-acquire score, Nicotine+, search source order | Settings → Wishlist & downloads | **Save preferences** |
-| Theme, log level, Discogs, AcoustID, fingerprinting | Settings → Application | **Save preferences** |
+| Theme, log level, Discogs, AcoustID, fingerprinting, pipeline workers | Settings → Application | **Save preferences** |
 | Navidrome / Jellyfin / Plex / other servers | Settings → Media servers | **Save media server** |
 | Last.fm, Spotify, Prowlarr, qBittorrent, SABnzbd | System → Plugins | **Save plugin settings** |
 
@@ -62,8 +62,10 @@ Theme and log level apply immediately. Discogs, AcoustID, Shazamio, and
 fingerprint mode need a **restart**. Prowlarr / download clients reconnect
 when you save Plugins.
 
-The Dashboard **shows** the wishlist search interval. Change it only in
-Settings (use **Change in Settings** on the Dashboard).
+The Dashboard **Music tools** panel shows whether Nicotine+, Usenet, Prowlarr
+torrent tiers, AcoustID, Discogs and a media server are connected. Use its
+Settings / Plugins / Setup instructions buttons. The wishlist search interval
+is also shown as read-only (**Change in Settings**).
 
 ---
 

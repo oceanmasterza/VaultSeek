@@ -93,7 +93,7 @@ Key modules: `acquisition_sources.py`, `acquisition_bootstrap.py`, `provider_man
 | Folders, watch, identify auto-approve | Settings → Library | **Save library** |
 | Quality preset / lossless / bitrate / whole-album | Settings → Library quality | **Save preferences** |
 | Wishlist interval, auto-acquire, Nicotine+, **search waterfall** | Settings → Wishlist & downloads | **Save preferences** |
-| Theme, log level, Discogs, AcoustID, fingerprinting | Settings → Application | **Save preferences** |
+| Theme, log level, Discogs, AcoustID, fingerprinting, pipeline workers | Settings → Application | **Save preferences** |
 | Media servers | Settings → Media servers | **Save media server** |
 | Last.fm, Spotify, Prowlarr, qBittorrent, SABnzbd | System → Plugins | **Save plugin settings** |
 

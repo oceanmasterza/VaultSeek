@@ -2,7 +2,7 @@
 
 Public-facing roadmap for GitHub visitors. For day-to-day engineering progress, see [DEVELOPMENT_ROADMAP.md](DEVELOPMENT_ROADMAP.md) (internal AI development notebook).
 
-**Last updated:** 2026-07-21
+**Last updated:** 2026-09-15
 
 ---
 
@@ -34,7 +34,8 @@ Public-facing roadmap for GitHub visitors. For day-to-day engineering progress, 
 
 **Status: Complete**
 
-- `AcquisitionConfig` (schema v9) — enabled providers, order, auto-acquire threshold, Nicotine+ settings
+- `AcquisitionConfig` (schema v22) — enabled providers, source order, waterfall,
+  auto-acquire threshold, and Nicotine+ / Prowlarr / qBittorrent / SABnzbd settings
 - Bootstrap-time provider connect from `config.json`
 
 ---

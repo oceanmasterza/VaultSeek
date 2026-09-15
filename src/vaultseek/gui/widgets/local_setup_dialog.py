@@ -5,6 +5,7 @@ from PySide6.QtWidgets import (
     QDialog,
     QLabel,
     QPushButton,
+    QScrollArea,
     QVBoxLayout,
     QWidget,
 )
@@ -18,7 +19,7 @@ class LocalSetupDialog(QDialog):
     def __init__(self, connections: list[LocalConnection], parent: QWidget) -> None:
         super().__init__(parent)
         self.setWindowTitle("Local connection suggestions")
-        self.resize(680, 420)
+        self.resize(720, 480)
         layout = QVBoxLayout(self)
         intro = QLabel(
             "Select the connections to copy into the form. Selected fields will replace "
@@ -28,17 +29,29 @@ class LocalSetupDialog(QDialog):
         )
         intro.setWordWrap(True)
         layout.addWidget(intro)
+        scroll = QScrollArea()
+        scroll.setWidgetResizable(True)
+        body = QWidget()
+        body_layout = QVBoxLayout(body)
         self._choices: list[tuple[QCheckBox, LocalConnection]] = []
         for connection in connections:
             status = " — listening" if connection.listening else ""
             checkbox = QCheckBox(f"{connection.name}{status}")
             checkbox.setEnabled(bool(connection.values))
             checkbox.setChecked(bool(connection.values))
-            layout.addWidget(checkbox)
-            description = QLabel(f"{connection.source}\n{connection.note}")
+            body_layout.addWidget(checkbox)
+            lines = [str(connection.source), connection.note]
+            summary = connection.field_summary()
+            if summary:
+                lines.append(summary)
+            description = QLabel("\n".join(lines))
             description.setWordWrap(True)
-            layout.addWidget(description)
+            description.setProperty("muted", True)
+            body_layout.addWidget(description)
             self._choices.append((checkbox, connection))
+        body_layout.addStretch(1)
+        scroll.setWidget(body)
+        layout.addWidget(scroll, 1)
         apply_button = QPushButton("Copy selected into form")
         apply_button.clicked.connect(self.accept)
         layout.addWidget(apply_button)

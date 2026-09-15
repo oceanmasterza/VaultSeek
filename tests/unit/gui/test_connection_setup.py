@@ -38,6 +38,52 @@ def test_all_acoustid_rows_survive_save(qtbot, container, monkeypatch):
     assert saved.acquisition.prowlarr == container.config.acquisition.prowlarr
 
 
+def test_pipeline_worker_counts_survive_save(qtbot, container, monkeypatch):
+    page = SettingsPage(container)
+    qtbot.addWidget(page)
+    page.refresh()
+    page._hash_processes.setValue(4)
+    page._metadata_threads.setValue(6)
+    page._scanner_threads.setValue(2)
+    monkeypatch.setattr(QMessageBox, "information", lambda *a: None)
+    monkeypatch.setattr(
+        "vaultseek.gui.views.settings_page.connect_acquisition_providers", lambda *a: None
+    )
+    page._save_preferences()
+    saved = load_config(container.paths.config_file)
+    assert saved.pipeline.hash_worker_processes == 4
+    assert saved.pipeline.metadata_worker_threads == 6
+    assert saved.pipeline.scanner_worker_threads == 2
+    assert saved.acquisition.prowlarr == container.config.acquisition.prowlarr
+
+
+def test_dashboard_music_tools_uses_waterfall_ids(qtbot, container, monkeypatch):
+    from vaultseek.gui.views.dashboard_page import DashboardPage
+
+    container.config = replace(
+        container.config,
+        acquisition=replace(
+            container.config.acquisition,
+            nicotine_plus=replace(container.config.acquisition.nicotine_plus, enabled=True),
+            prowlarr=replace(container.config.acquisition.prowlarr, enabled=True),
+            sabnzbd=replace(container.config.acquisition.sabnzbd, enabled=True),
+        ),
+        metadata=replace(container.config.metadata, discogs_user_token="discogs-secret-xyz"),
+    )
+    monkeypatch.setattr(
+        container.provider_manager,
+        "connected_provider_ids",
+        lambda: ("usenet", "nicotine_plus"),
+    )
+    page = DashboardPage(container)
+    qtbot.addWidget(page)
+    page.refresh()
+    text = page._music_tools_body.text()
+    assert "Connected — Nicotine+" in text
+    assert "Connected — Usenet" in text
+    assert "discogs-secret-xyz" not in text
+
+
 def test_download_test_keeps_ui_event_loop_running(qtbot, container, monkeypatch):
     page = PluginsPage(container)
     qtbot.addWidget(page)

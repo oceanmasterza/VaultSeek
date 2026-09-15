@@ -365,7 +365,8 @@ class SettingsPage(QWidget):
         add_account.clicked.connect(self._add_acoustid_row)
         acoustid_form.addRow(add_account)
         acoustid_help = QLabel(
-            "Register an application key at https://acoustid.org/new-application "
+            'Register an application key at <a href="https://acoustid.org/new-application">'
+            "acoustid.org/new-application</a> "
             "(not a user submission key). Label each authorized key separately; "
             "leave proxy blank for a direct connection. Extra keys do not guarantee "
             "extra quota. See Setup instructions for registration and troubleshooting. "
@@ -404,6 +405,33 @@ class SettingsPage(QWidget):
         fingerprint_help.setWordWrap(True)
         fingerprint_help.setProperty("muted", True)
         prefs_form.addRow(fingerprint_help)
+
+        self._hash_processes = QSpinBox()
+        self._hash_processes.setRange(0, 32)
+        self._hash_processes.setSpecialValueText("Auto (CPU cores)")
+        self._hash_processes.setToolTip(
+            "Process-pool size for hashing. 0 lets VaultSeek match CPU cores. Restart required."
+        )
+        self._metadata_threads = QSpinBox()
+        self._metadata_threads.setRange(1, 16)
+        self._metadata_threads.setValue(3)
+        self._metadata_threads.setToolTip(
+            "Identify/metadata worker threads. Higher is not faster if AcoustID is rate-limited."
+        )
+        self._scanner_threads = QSpinBox()
+        self._scanner_threads.setRange(1, 8)
+        self._scanner_threads.setValue(1)
+        prefs_form.addRow("Hash worker processes", self._hash_processes)
+        prefs_form.addRow("Metadata worker threads", self._metadata_threads)
+        prefs_form.addRow("Scanner threads", self._scanner_threads)
+        pipeline_help = QLabel(
+            "These apply after a restart. Sampling fingerprints (above) is usually the "
+            "largest speed win on already-tagged album folders. Extra metadata threads "
+            "will not bypass AcoustID or Discogs rate limits."
+        )
+        pipeline_help.setWordWrap(True)
+        pipeline_help.setProperty("muted", True)
+        prefs_form.addRow(pipeline_help)
 
         prefs_actions = QHBoxLayout()
         save_prefs = QPushButton("Save preferences")
@@ -592,6 +620,10 @@ class SettingsPage(QWidget):
         self._fingerprint_mode.setCurrentIndex(mode_index if mode_index >= 0 else 0)
         self._fingerprint_sample_min.setValue(config.metadata.fingerprint_sample_min)
         self._sync_fingerprint_sample_enabled()
+        hash_procs = config.pipeline.hash_worker_processes
+        self._hash_processes.setValue(0 if hash_procs is None else int(hash_procs))
+        self._metadata_threads.setValue(int(config.pipeline.metadata_worker_threads))
+        self._scanner_threads.setValue(int(config.pipeline.scanner_worker_threads))
         self._acq_threshold.setValue(config.acquisition.auto_acquire_threshold)
         self._auto_queue_jobs.setChecked(config.acquisition.auto_queue_jobs)
         self._quality.load(config.acquisition)
@@ -936,12 +968,20 @@ class SettingsPage(QWidget):
                 search_max_per_minute=int(self._nicotine_search_max_per_min.value()),
             ),
         )
+        hash_value = int(self._hash_processes.value())
+        pipeline = dc_replace(
+            self._container.config.pipeline,
+            hash_worker_processes=None if hash_value == 0 else hash_value,
+            metadata_worker_threads=int(self._metadata_threads.value()),
+            scanner_worker_threads=int(self._scanner_threads.value()),
+        )
         updated = replace(
             self._container.config,
             log_level=self._log_level.currentText(),
             theme=self._theme.currentText(),
             metadata=metadata,
             acquisition=acquisition,
+            pipeline=pipeline,
         )
         save_config(updated, self._container.paths.config_file)
         self._container.config = updated
@@ -956,8 +996,8 @@ class SettingsPage(QWidget):
             self,
             "Settings",
             "Preferences saved. Theme, log level, Nicotine+, and quality apply now. "
-            "Restart VaultSeek so Discogs, fingerprinting, AcoustID, and Shazamio "
-            "settings take effect.",
+            "Restart VaultSeek so Discogs, fingerprinting, AcoustID, Shazamio, "
+            "and pipeline worker counts take effect.",
         )
 
     def _populate_source_order(self, order: tuple[str, ...] | list[str]) -> None:

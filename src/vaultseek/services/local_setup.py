@@ -9,8 +9,21 @@ import socket
 import tomllib
 import xml.etree.ElementTree as ET
 from collections.abc import Callable
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field
 from pathlib import Path
+
+_SECRET_FIELDS = frozenset({"key", "api_token", "password", "token"})
+_FIELD_LABELS = {
+    "url": "URL",
+    "key": "API key",
+    "host": "Host",
+    "api_port": "API port",
+    "api_token": "API token",
+    "username": "Username",
+    "category": "Category",
+    "save_path": "Save path",
+}
 
 
 @dataclass(frozen=True)
@@ -22,6 +35,20 @@ class LocalConnection:
     values: dict[str, str] = field(repr=False)
     note: str = "Review these settings, then test and save."
     listening: bool = False
+
+    def field_summary(self) -> str:
+        """Describe copyable fields without printing secret values."""
+        if not self.values:
+            return ""
+        parts: list[str] = []
+        for name, value in self.values.items():
+            label = _FIELD_LABELS.get(name, name)
+            if name in _SECRET_FIELDS:
+                if value:
+                    parts.append(f"{label} found (hidden)")
+            elif value:
+                parts.append(f"{label}: {value}")
+        return " · ".join(parts)
 
 
 class LocalSetupService:
@@ -101,14 +128,16 @@ class LocalSetupService:
                 8096,
             ),
         ]
-        return [self._read_first(name, paths, reader, port) for name, paths, reader, port in specs]
+        parsed = [
+            (self._read_first(name, paths, reader), port) for name, paths, reader, port in specs
+        ]
+        return self._apply_listening(parsed)
 
     def _read_first(
         self,
         name: str,
         paths: tuple[Path, ...],
         reader: Callable[[str], tuple[dict[str, str], str]],
-        default_port: int,
     ) -> LocalConnection:
         last_unreadable: Path | None = None
         for path in paths:
@@ -116,17 +145,13 @@ class LocalSetupService:
                 if path.stat().st_size > 2_000_000:
                     raise ValueError("Configuration is too large")
                 values, note = reader(path.read_text(encoding="utf-8-sig"))
-                listening = self._listening_from_values(values, default_port)
-                if listening:
-                    note = f"{note} A service is listening on this PC."
-                return LocalConnection(name, path, values, note, listening)
+                return LocalConnection(name, path, values, note, False)
             except FileNotFoundError:
                 continue
             except (OSError, ValueError, SyntaxError, KeyError, configparser.Error, ET.ParseError):
                 last_unreadable = path
                 continue
         source = last_unreadable or paths[0]
-        listening = self._port_probe("127.0.0.1", default_port)
         if last_unreadable is not None:
             note = (
                 "Configuration could not be read. "
@@ -137,11 +162,40 @@ class LocalSetupService:
                 "No standard local configuration found. "
                 "Use manual setup for portable or remote installs."
             )
-        if listening:
-            note += f" Port {default_port} is open on this PC — enter URL and credentials manually."
-        return LocalConnection(name, source, {}, note, listening)
+        return LocalConnection(name, source, {}, note, False)
 
-    def _listening_from_values(self, values: dict[str, str], default_port: int) -> bool:
+    def _apply_listening(self, rows: list[tuple[LocalConnection, int]]) -> list[LocalConnection]:
+        targets = [self._listen_target(item.values, default_port) for item, default_port in rows]
+        unique = list(dict.fromkeys(targets))
+        found: dict[tuple[str, int], bool] = {}
+        workers = min(8, max(1, len(unique)))
+        with ThreadPoolExecutor(max_workers=workers) as pool:
+            futures = {
+                pool.submit(self._port_probe, host, port): (host, port) for host, port in unique
+            }
+            for future in as_completed(futures):
+                host, port = futures[future]
+                try:
+                    found[(host, port)] = bool(future.result())
+                except (OSError, ValueError, TypeError, RuntimeError):
+                    found[(host, port)] = False
+        out: list[LocalConnection] = []
+        for (item, default_port), target in zip(rows, targets, strict=True):
+            listening = found.get(target, False)
+            note = item.note
+            if listening:
+                if item.values:
+                    note = f"{note} A service is listening on this PC."
+                else:
+                    note += (
+                        f" Port {target[1] if target[1] else default_port} is open "
+                        "on this PC — enter URL and credentials manually."
+                    )
+            out.append(LocalConnection(item.name, item.source, item.values, note, listening))
+        return out
+
+    @staticmethod
+    def _listen_target(values: dict[str, str], default_port: int) -> tuple[str, int]:
         url = values.get("url") or ""
         port = default_port
         host = "127.0.0.1"
@@ -161,7 +215,7 @@ class LocalSetupService:
             host = values.get("host") or host
         if host in ("0.0.0.0", "::", ""):
             host = "127.0.0.1"
-        return self._port_probe(host, port)
+        return host, port
 
     @staticmethod
     def _ini(text: str) -> configparser.ConfigParser:
@@ -195,17 +249,26 @@ class LocalSetupService:
         }, "Local URL and API key found. Test before enabling search."
 
     def _qbit(self, text: str) -> tuple[dict[str, str], str]:
-        prefs = self._ini(text)["Preferences"]
+        parser = self._ini(text)
+        prefs = parser["Preferences"]
         if prefs.get("WebUI\\Enabled", "false").lower() != "true":
             return {}, "Enable Tools → Options → Web UI in qBittorrent, then detect again."
         url = self._url(
             prefs.get("WebUI\\Port", "8080"),
             prefs.get("WebUI\\HTTPS\\Enabled", "false").lower() == "true",
         )
-        return {
+        values = {
             "url": url,
             "username": prefs.get("WebUI\\Username", "admin"),
-        }, "Enter the Web UI password manually; stored password hashes cannot be imported."
+        }
+        save_path = prefs.get("Downloads\\SavePath", "").strip()
+        if not save_path and parser.has_section("BitTorrent"):
+            save_path = parser["BitTorrent"].get("Session\\DefaultSavePath", "").strip()
+        if save_path:
+            values["save_path"] = save_path
+        return values, (
+            "Enter the Web UI password manually; stored password hashes cannot be imported."
+        )
 
     def _sab(self, text: str) -> tuple[dict[str, str], str]:
         # SAB uses ConfigObj: global keys may precede sections, and category
@@ -222,9 +285,10 @@ class LocalSetupService:
         https = prefs.get("enable_https", "0").strip('"') == "1"
         port = prefs.get("https_port" if https else "port", "8080").strip('"')
         url = self._url(port, https, prefs.get("url_base", "").strip('"'))
-        return {"url": url, "key": prefs.get("api_key", "").strip('"')}, (
-            "Local URL and full API key found. Test before enabling downloads."
-        )
+        values = {"url": url, "key": prefs.get("api_key", "").strip('"')}
+        if "[[vaultseek]]" in text.lower():
+            values["category"] = "vaultseek"
+        return values, ("Local URL and full API key found. Test before enabling downloads.")
 
     def _nicotine(self, text: str) -> tuple[dict[str, str], str]:
         plugins = self._ini(text)["plugins"]

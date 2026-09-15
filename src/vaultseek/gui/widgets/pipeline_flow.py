@@ -118,6 +118,6 @@ class PipelineFlowWidget(QWidget):
             self._stage_widgets.append(card)
 
         # Force style re-polish for dynamic properties.
-        for card in self._stage_widgets:
-            card.style().unpolish(card)
-            card.style().polish(card)
+        for stage_card in self._stage_widgets:
+            stage_card.style().unpolish(stage_card)
+            stage_card.style().polish(stage_card)

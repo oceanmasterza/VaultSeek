@@ -18,7 +18,10 @@ See also [ARCHITECTURAL_UPDATE_001.md](ARCHITECTURAL_UPDATE_001.md) (ADR-0017) a
 
 ## Option A — HTTP transport (recommended)
 
-1. Install **api-nicotine-plus** into Nicotine+ (follow that project's README).
+1. Install **api-nicotine-plus** into Nicotine+ (follow that project's README),
+   then enable it in Nicotine+ → Plugins. Configure the plugin host, port and
+   optional API token there. The default is a loopback HTTP listener on 12339;
+   a running Nicotine+ process without this plugin does not expose an API.
 2. Start Nicotine+ and confirm the HTTP API listens on port **12339** (default).
 3. In VaultSeek **Settings → Wishlist & downloads**:
    - Transport: **HTTP**
@@ -26,6 +29,12 @@ See also [ARCHITECTURAL_UPDATE_001.md](ARCHITECTURAL_UPDATE_001.md) (ADR-0017) a
    - API token: set if your api-nicotine-plus instance requires one
 
 VaultSeek's `HttpApiRpcClient` maps search/download/status calls to the HTTP API.
+
+In VaultSeek **Settings**, **Detect local Nicotine+ and media-server settings**
+can read enabled api-nicotine-plus settings and copy them into the form for
+review. It does not alter Nicotine+ or enable VaultSeek's provider. Keep a
+non-loopback address only when that is intentionally how VaultSeek reaches the
+API.
 
 **Limitation:** HTTP cancel may return `false` — cancelling an in-flight Nicotine+ download from VaultSeek may not work over HTTP until the API supports it.
 
@@ -64,15 +73,15 @@ Acquisition jobs and states are visible on the **Acquisition** page. Background 
 
 ---
 
-## Configuration reference (schema v9)
+## Configuration reference (schema v22)
 
-In `%APPDATA%\VaultSeek\config.json` under `acquisition.providers.nicotine_plus`:
+In `%APPDATA%\VaultSeek\config.json` under `acquisition.nicotine_plus`:
 
 | Key | Default | Purpose |
 |-----|---------|---------|
 | `enabled` | `false` | Connect provider at startup |
 | `transport` | `socket` | `socket` or `http` |
-| `socket_port` | `22024` | NDJSON listen port (socket transport) |
+| `port` | `22024` | NDJSON listen port (socket transport) |
 | `api_port` | `12339` | HTTP API port (http transport or proxy target) |
 | `api_token` | `""` | Optional bearer token for HTTP API |
 
@@ -80,5 +89,5 @@ Global acquisition settings:
 
 | Key | Default | Purpose |
 |-----|---------|---------|
-| `auto_acquire_threshold` | `0.90` | Auto-download when best score ≥ threshold |
+| `auto_acquire_threshold` | `0.45` | Auto-download when best score ≥ threshold |
 | `auto_queue_jobs` | `true` | Queue jobs created by missing-media scan |

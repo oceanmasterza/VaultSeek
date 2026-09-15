@@ -718,6 +718,14 @@ Library integrity
 
 # Session Notes
 
+## 2026-09-14 — Connection status, faster local detect, pipeline workers
+
+- Dashboard **Music tools** uses waterfall ids (`usenet` / `prowlarr_public` /
+  `prowlarr_private`), not the legacy `prowlarr` id.
+- Local detection probes ports in parallel; SAB `vaultseek` category and
+  qBittorrent save path can be copied when present.
+- Settings → Application exposes hash/metadata/scanner worker counts (restart).
+
 ## 2026-09-14 — GUI cleanup + help merged onto GitLab `main`
 
 Summary

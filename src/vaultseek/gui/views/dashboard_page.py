@@ -23,12 +23,18 @@ from PySide6.QtWidgets import (
 from vaultseek.core.config import save_config
 from vaultseek.core.container import Container
 from vaultseek.core.logging import get_live_log_buffer
+from vaultseek.gui.user_help import HelpDialog
 from vaultseek.gui.widgets.pipeline_flow import STAGE_NAV_KEYS, PipelineFlowWidget
 from vaultseek.gui.widgets.table_utils import (
     configure_data_table,
 )
 from vaultseek.models.entities.job import Job
 from vaultseek.models.entities.track import LibraryZone
+from vaultseek.services.connection_status import (
+    format_tool_status_lines,
+    has_connected_download_source,
+    summarize_music_tools,
+)
 from vaultseek.services.dashboard import DashboardSnapshot, build_dashboard_snapshot
 
 _TEXT_SELECT = (
@@ -140,6 +146,31 @@ class DashboardPage(QWidget):
         gs_actions.addStretch(1)
         gs_layout.addLayout(gs_actions)
         layout.addWidget(self._getting_started)
+
+        self._music_tools = QFrame()
+        self._music_tools.setProperty("dashPanel", True)
+        tools_layout = QVBoxLayout(self._music_tools)
+        tools_title = QLabel("Music tools")
+        tools_title.setProperty("panelTitle", True)
+        tools_layout.addWidget(tools_title)
+        self._music_tools_body = _selectable_label()
+        tools_layout.addWidget(self._music_tools_body)
+        tools_actions = QHBoxLayout()
+        btn_settings = QPushButton("Settings")
+        btn_settings.setProperty("secondary", True)
+        btn_settings.clicked.connect(lambda: self.navigate_requested.emit("settings"))
+        btn_plugins = QPushButton("Plugins")
+        btn_plugins.setProperty("secondary", True)
+        btn_plugins.clicked.connect(lambda: self.navigate_requested.emit("plugins"))
+        btn_help = QPushButton("Setup instructions")
+        btn_help.setProperty("secondary", True)
+        btn_help.clicked.connect(lambda: HelpDialog(self, topic="connection-setup").exec())
+        tools_actions.addWidget(btn_settings)
+        tools_actions.addWidget(btn_plugins)
+        tools_actions.addWidget(btn_help)
+        tools_actions.addStretch(1)
+        tools_layout.addLayout(tools_actions)
+        layout.addWidget(self._music_tools)
 
         def _section_title(text: str) -> QLabel:
             label = QLabel(text)
@@ -485,26 +516,29 @@ class DashboardPage(QWidget):
             steps.append("1. Library folders — done.")
 
         acq = self._container.config.acquisition
-        nicotine_on = acq.nicotine_plus.enabled
-        prowlarr_on = acq.prowlarr.enabled and (acq.qbittorrent.enabled or acq.sabnzbd.enabled)
-        connected_ids = set(self._container.provider_manager.connected_provider_ids())
-        nicotine_ok = nicotine_on and "nicotine_plus" in connected_ids
-        prowlarr_ok = prowlarr_on and "prowlarr" in connected_ids
-        if not nicotine_on and not prowlarr_on:
+        download_on = acq.nicotine_plus.enabled or (
+            acq.prowlarr.enabled and (acq.qbittorrent.enabled or acq.sabnzbd.enabled)
+        )
+        connected_ids = self._container.provider_manager.connected_provider_ids()
+        if not download_on:
             steps.append(
                 "2. Enable a download source: Settings → Wishlist & downloads (Nicotine+) "
                 "or System → Plugins (Prowlarr)."
             )
-        elif not (nicotine_ok or prowlarr_ok):
+        elif not has_connected_download_source(connected_ids):
             steps.append(
                 "2. Start the enabled download client, then Test connection in Settings "
                 "(Nicotine+) or Plugins (Prowlarr)."
             )
         else:
             names = [
-                name
-                for name, ok in (("Nicotine+", nicotine_ok), ("Prowlarr", prowlarr_ok))
-                if ok
+                row.name
+                for row in summarize_music_tools(
+                    acquisition=acq,
+                    metadata=self._container.config.metadata,
+                    connected_ids=connected_ids,
+                )
+                if row.state == "connected"
             ]
             steps.append(f"2. Download source connected — {', '.join(names)}.")
 
@@ -542,8 +576,25 @@ class DashboardPage(QWidget):
         if at_bottom or not text:
             self._live_log.moveCursor(QTextCursor.MoveOperation.End)
 
+    def _refresh_music_tools(self) -> None:
+        media_plugins: tuple[str, ...] = ()
+        if self._library_id is not None:
+            media_plugins = tuple(
+                state.plugin_id
+                for state in self._container.media_server_repo.list_by_library(self._library_id)
+                if state.server_url
+            )
+        rows = summarize_music_tools(
+            acquisition=self._container.config.acquisition,
+            metadata=self._container.config.metadata,
+            connected_ids=self._container.provider_manager.connected_provider_ids(),
+            media_plugins=media_plugins,
+        )
+        self._music_tools_body.setText(format_tool_status_lines(rows))
+
     def _apply(self, snap: DashboardSnapshot) -> None:
         self._refresh_getting_started(snap)
+        self._refresh_music_tools()
         if not snap.has_library:
             self._heading.setText("Dashboard")
             self._insight.setText(snap.insight)

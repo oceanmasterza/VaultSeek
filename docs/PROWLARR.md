@@ -30,6 +30,19 @@ VaultSeek will talk to SABnzbd by mistake. Change qBittorrent:
 2. Restart qBittorrent
 3. Set the same URL in VaultSeek Plugins
 
+## Local setup detection
+
+In **Plugins**, choose **Detect local download clients**. VaultSeek reads the
+standard Windows configuration files for Prowlarr, qBittorrent and SABnzbd,
+then shows each detected connection for review. Select the values you want to
+copy, test them, enable the relevant providers, then save plugin settings.
+
+Detection never edits third-party configuration, enables a provider, or changes
+saved settings until you select an item and save. It preserves a configured
+SABnzbd URL base such as `/sabnzbd`. It can read Prowlarr and SABnzbd API keys
+but cannot recover qBittorrent's password because qBittorrent stores a hash.
+Portable, Docker and remote installations need manual URLs and credentials.
+
 ## Prowlarr
 
 1. Add audio indexers (Torznab / Newznab as you prefer). Tag Cloudflare-blocked public indexers for FlareSolverr if you use it.
@@ -52,9 +65,14 @@ Privacy for public vs private tiers comes from each indexer’s Prowlarr `privac
 
 ## SABnzbd
 
-1. Enable API; copy API key.
-2. Optional: category `vaultseek`.
-3. In Plugins: enable SABnzbd, URL, API key, category.
+1. In **Config → Servers**, add and test your Usenet provider. This account is
+   separate from a Prowlarr indexer account.
+2. In **Config → General**, copy the full **API Key** (not the NZB-only key).
+3. Optional: category `vaultseek`.
+4. In Plugins: enable SABnzbd, URL, API key, category.
+
+The VaultSeek check verifies authenticated queue access. A server version page
+can be public, so a successful browser page alone does not confirm the key works.
 
 ## Search waterfall
 

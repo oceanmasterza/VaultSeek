@@ -485,12 +485,23 @@ class PluginsPage(QWidget):
             return
         fields = {
             "Prowlarr": {"url": self._prowlarr_url, "key": self._prowlarr_key},
-            "qBittorrent": {"url": self._qbit_url, "username": self._qbit_username},
-            "SABnzbd": {"url": self._sab_url, "key": self._sab_key},
+            "qBittorrent": {
+                "url": self._qbit_url,
+                "username": self._qbit_username,
+                "save_path": self._qbit_save_path,
+            },
+            "SABnzbd": {
+                "url": self._sab_url,
+                "key": self._sab_key,
+                "category": self._sab_category,
+            },
         }
         for connection in dialog.selected():
+            widgets = fields.get(connection.name, {})
             for name, value in connection.values.items():
-                fields[connection.name][name].setText(value)
+                widget = widgets.get(name)
+                if widget is not None:
+                    widget.setText(value)
 
     def _test_connection(self, name: str, probe: Callable[[], bool], help_text: str) -> None:
         for button in self._test_buttons:
