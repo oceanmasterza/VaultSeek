@@ -606,7 +606,7 @@ class MainWindow(QMainWindow):
             self._status_label.setText("No library — create one in Settings")
             return
         stats = self._container.job_queue.get_stats(self._library_id)
-        review = self._container.review_queue.count_pending(self._library_id)
+        review = self._review_page.pending_count()
         self._status_label.setText(
             f"Jobs: {stats.running} running · {stats.pending} pending · "
             f"{stats.failed} failed · Review: {review}"

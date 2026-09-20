@@ -4,7 +4,9 @@ from __future__ import annotations
 
 from uuid import UUID
 
+from PySide6.QtCore import QUrl
 from PySide6.QtGui import QKeySequence, QShortcut
+from PySide6.QtMultimedia import QAudioOutput, QMediaPlayer
 from PySide6.QtWidgets import (
     QHBoxLayout,
     QMessageBox,
@@ -20,8 +22,11 @@ from vaultseek.core.exceptions import ReviewError
 from vaultseek.gui.widgets.empty_state import EmptyState
 from vaultseek.gui.widgets.page_header import add_page_header
 from vaultseek.gui.widgets.table_utils import (
+    begin_table_update,
     configure_data_table,
+    end_table_update,
 )
+from vaultseek.services.review_display import PlayableReview, select_playable_reviews
 
 
 class ReviewPage(QWidget):
@@ -31,19 +36,26 @@ class ReviewPage(QWidget):
         super().__init__(parent)
         self._container = container
         self._library_id: UUID | None = None
-        self._item_ids: list[UUID] = []
+        self._rows: list[PlayableReview] = []
+        self._player = QMediaPlayer(self)
+        self._audio = QAudioOutput(self)
+        self._audio.setVolume(1.0)
+        self._player.setAudioOutput(self._audio)
 
         layout = QVBoxLayout(self)
         self._heading = add_page_header(
             layout,
             "Review Queue",
             "Approve, reject, or defer uncertain identifications. "
-            "High-confidence matches auto-approve using Settings → Identify auto-approve.",
+            "Play the selected file, then decide. Songs with no local audio file "
+            "are left off this list. High-confidence matches auto-approve using "
+            "Settings → Identify auto-approve.",
         )
 
         self._empty = EmptyState(
             "Nothing to review",
-            "Uncertain identifications land here. Scan Incoming or wait for the pipeline.",
+            "Uncertain identifications with a playable file land here. "
+            "Scan Incoming or wait for the pipeline.",
         )
         layout.addWidget(self._empty)
 
@@ -55,6 +67,8 @@ class ReviewPage(QWidget):
         layout.addWidget(self._table)
 
         buttons = QHBoxLayout()
+        self._play_btn = QPushButton("Play")
+        self._play_btn.setToolTip("Play the selected song so you can identify it")
         self._approve_btn = QPushButton("Approve")
         self._approve_btn.setDefault(True)
         self._approve_btn.setToolTip("Approve selected items (Ctrl+Enter)")
@@ -65,10 +79,12 @@ class ReviewPage(QWidget):
         self._reject_btn.setProperty("secondary", True)
         self._defer_btn.setProperty("secondary", True)
         self._refresh_btn.setProperty("secondary", True)
+        self._play_btn.clicked.connect(self._toggle_play)
         self._approve_btn.clicked.connect(self._approve_selected)
         self._reject_btn.clicked.connect(self._reject_selected)
         self._defer_btn.clicked.connect(self._defer_selected)
         self._refresh_btn.clicked.connect(self.refresh)
+        buttons.addWidget(self._play_btn)
         buttons.addWidget(self._approve_btn)
         buttons.addWidget(self._reject_btn)
         buttons.addWidget(self._defer_btn)
@@ -88,38 +104,83 @@ class ReviewPage(QWidget):
         self.refresh()
 
     def refresh(self) -> None:
+        self._stop_playback()
+        self._rows = []
+        sorting = begin_table_update(self._table)
         self._table.setRowCount(0)
-        self._item_ids = []
-        if self._library_id is None:
-            self._heading.setText("Review Queue")
-            self._empty.setVisible(True)
-            self._table.setVisible(False)
-            return
+        try:
+            if self._library_id is None:
+                self._heading.setText("Review Queue")
+                self._empty.setVisible(True)
+                self._table.setVisible(False)
+                return
 
-        items = list(self._container.review_queue.get_pending(self._library_id))
-        self._heading.setText(f"Review Queue ({len(items)} pending)")
-        empty = len(items) == 0
-        self._empty.setVisible(empty)
-        self._table.setVisible(not empty)
-        if empty:
-            return
-        self._table.setRowCount(len(items))
-        for row, item in enumerate(items):
-            self._item_ids.append(item.id)
-            self._table.setItem(row, 0, QTableWidgetItem(item.review_type.value))
-            self._table.setItem(row, 1, QTableWidgetItem(item.title))
-            conf = f"{item.confidence:.0%}" if item.confidence is not None else "—"
-            self._table.setItem(row, 2, QTableWidgetItem(conf))
-            self._table.setItem(row, 3, QTableWidgetItem(item.description or ""))
+            self._rows = self._playable_rows()
+            self._heading.setText(f"Review Queue ({len(self._rows)} pending)")
+            empty = len(self._rows) == 0
+            self._empty.setVisible(empty)
+            self._table.setVisible(not empty)
+            if empty:
+                return
+            self._table.setRowCount(len(self._rows))
+            for row, item in enumerate(self._rows):
+                self._table.setItem(row, 0, QTableWidgetItem(item.review_type))
+                self._table.setItem(row, 1, QTableWidgetItem(item.label))
+                conf = f"{item.confidence:.0%}" if item.confidence is not None else "—"
+                self._table.setItem(row, 2, QTableWidgetItem(conf))
+                self._table.setItem(row, 3, QTableWidgetItem(item.reason))
+        finally:
+            end_table_update(self._table, sorting=sorting)
 
     def pending_count(self) -> int:
         if self._library_id is None:
             return 0
-        return self._container.review_queue.count_pending(self._library_id)
+        return len(self._playable_rows())
 
-    def _selected_ids(self) -> list[UUID]:
-        rows = {index.row() for index in self._table.selectedIndexes()}
-        return [self._item_ids[row] for row in sorted(rows) if 0 <= row < len(self._item_ids)]
+    def _playable_rows(self) -> list[PlayableReview]:
+        if self._library_id is None:
+            return []
+        items = self._container.review_queue.get_pending(self._library_id)
+
+        def artist_name(artist_id: UUID) -> str | None:
+            artist = self._container.artist_repo.get(artist_id)
+            return artist.name if artist is not None else None
+
+        def duplicate_track_ids(group_id: UUID) -> list[UUID]:
+            members = self._container.duplicate_repo.get_members(group_id)
+            return [member.track_id for member in members]
+
+        return select_playable_reviews(
+            items,
+            track_for=self._container.track_repo.get_by_id,
+            artist_name=artist_name,
+            duplicate_track_ids=duplicate_track_ids,
+        )
+
+    def _selected_rows(self) -> list[PlayableReview]:
+        indexes = {index.row() for index in self._table.selectedIndexes()}
+        return [self._rows[row] for row in sorted(indexes) if 0 <= row < len(self._rows)]
+
+    def _toggle_play(self) -> None:
+        selected = self._selected_rows()
+        if len(selected) != 1:
+            QMessageBox.information(self, "Review", "Select one song to play.")
+            return
+        path = selected[0].audio_path
+        current = self._player.source().toLocalFile()
+        if (
+            current == path
+            and self._player.playbackState() == QMediaPlayer.PlaybackState.PlayingState
+        ):
+            self._stop_playback()
+            return
+        self._player.setSource(QUrl.fromLocalFile(path))
+        self._player.play()
+        self._play_btn.setText("Stop")
+
+    def _stop_playback(self) -> None:
+        self._player.stop()
+        self._play_btn.setText("Play")
 
     def _approve_selected(self) -> None:
         self._act(self._container.review_queue.approve)
@@ -131,7 +192,7 @@ class ReviewPage(QWidget):
         self._act(self._container.review_queue.defer)
 
     def _act(self, action: object) -> None:
-        ids = self._selected_ids()
+        ids = [row.item_id for row in self._selected_rows()]
         if not ids:
             QMessageBox.information(self, "Review", "Select one or more items first.")
             return

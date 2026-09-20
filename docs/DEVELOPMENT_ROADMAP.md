@@ -718,6 +718,13 @@ Library integrity
 
 # Session Notes
 
+## 2026-09-20 — Review names, playback, artwork covers
+
+- Review fills the table with sorting off, so Track / confidence / reason stay on the same row.
+- A UUID or missing fingerprint title falls back to the embedded tag, then the filename.
+- Rows with no local audio file (including exhausted wishlist searches) stay off Review. Play uses the selected file.
+- Artwork shows those same cached cover files as thumbnails and a preview.
+
 ## 2026-09-20 — Album deletion and music-note icon
 
 - Added confirmed album deletion through AlbumDeletionService and a locked repository transaction. Recycles registered files in configured zones, removes related records, preserves other libraries and unrelated files. Busy libraries and unfinished album acquisitions must be cleared first.

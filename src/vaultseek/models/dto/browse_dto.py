@@ -44,6 +44,7 @@ class ArtworkBrowseRow:
     width: int | None
     height: int | None
     status: str  # "ok" | "missing" | "low_res"
+    cover_path: str | None = None
 
 
 @dataclass(frozen=True, slots=True)

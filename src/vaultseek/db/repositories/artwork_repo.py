@@ -150,6 +150,7 @@ class ArtworkRepository:
                 artwork_table.c.source,
                 artwork_table.c.width,
                 artwork_table.c.height,
+                artwork_table.c.file_path,
             )
             .select_from(tracks_table)
             .join(albums, albums.c.id == tracks_table.c.album_id)
@@ -157,6 +158,12 @@ class ArtworkRepository:
             .outerjoin(album_artwork, album_artwork.c.album_id == albums.c.id)
             .outerjoin(artwork_table, artwork_table.c.id == album_artwork.c.artwork_id)
             .where(tracks_table.c.library_id == lib)
+            .where(
+                or_(
+                    album_artwork.c.is_primary.is_(True),
+                    album_artwork.c.artwork_id.is_(None),
+                )
+            )
             .group_by(
                 albums.c.id,
                 albums.c.title,
@@ -164,6 +171,7 @@ class ArtworkRepository:
                 artwork_table.c.source,
                 artwork_table.c.width,
                 artwork_table.c.height,
+                artwork_table.c.file_path,
             )
             .order_by(artists.c.name, albums.c.title)
             .offset(offset)
@@ -198,6 +206,7 @@ class ArtworkRepository:
                     width=width,
                     height=height,
                     status=status,
+                    cover_path=row.file_path,
                 )
             )
         return results

@@ -14,6 +14,7 @@ from vaultseek.gui.main_window import MainWindow
 from vaultseek.gui.theme import apply_theme
 from vaultseek.models.entities.library import Library
 from vaultseek.models.entities.review_item import ReviewType
+from vaultseek.models.entities.track import LibraryZone, Track
 from vaultseek.services.dto.review_dto import ReviewItemCreate
 
 pytest.importorskip("pytestqt")
@@ -57,16 +58,36 @@ def test_review_badge_updates_via_bridge(qtbot, container: Container, gui_librar
     qtbot.addWidget(window)
     assert isinstance(window._bridge, QtEventBridge)  # noqa: SLF001
 
+    now = datetime.now(UTC)
+    audio = Path(gui_library.incoming_path) / "06 - Point Of Know Return.mp3"
+    audio.write_bytes(b"not-audio")
+    track_id = uuid7()
+    container.track_repo.upsert(
+        Track(
+            id=track_id,
+            library_id=gui_library.id,
+            zone=LibraryZone.INCOMING,
+            file_path=str(audio),
+            file_name=audio.name,
+            file_size=audio.stat().st_size,
+            file_modified=now,
+            created_at=now,
+            updated_at=now,
+            title="01a090ad",
+        )
+    )
     container.review_queue.create_item(
         ReviewItemCreate(
             library_id=gui_library.id,
             review_type=ReviewType.UNKNOWN_ARTIST,
-            title="Unknown artist",
+            title="01a090ad",
+            track_id=track_id,
             description="test",
             confidence=0.5,
         )
     )
-    qtbot.waitUntil(lambda: window._review_page.pending_count() >= 1, timeout=2000)  # noqa: SLF001
+    qtbot.waitUntil(lambda: len(window._review_page._rows) >= 1, timeout=2000)  # noqa: SLF001
+    assert window._review_page._rows[0].label == "Point Of Know Return"  # noqa: SLF001
 
 
 def test_apply_theme_dark(qapp) -> None:

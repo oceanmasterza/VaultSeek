@@ -202,3 +202,4 @@ def test_list_by_path_prefix_and_artwork_browse(
     browse2 = artwork.list_browse_for_library(library_id)
     assert browse2[0].status == "ok"
     assert browse2[0].cover_source == "embedded_art"
+    assert browse2[0].cover_path == "C:/cache/ab.jpg"

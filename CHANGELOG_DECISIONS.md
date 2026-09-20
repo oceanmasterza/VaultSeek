@@ -10,4 +10,4 @@
 
 - 2026-09-20: Inno removes obsolete `_internal/icuuc.dll` and `_internal/icudt78.dll` during upgrades; excluding them from a new payload alone does not repair existing installations. Archive actions resolve selection from sortable item data.
 
-- 2026-09-20: Album deletion is distinct from Archive: confirm, recycle registered files within configured library zones, then remove database records and empty directories. Windows may permanently delete files when recycling is unavailable; confirmation warns about this. No recursive directory removal. Failed filesystem removal retains database records for retry; shared album records remain for other libraries.
+- 2026-09-20: Review lists only songs with a local audio file and names them from an embedded tag or the filename when fingerprinting stored an id. Artwork shows the same album cover files as Albums.
