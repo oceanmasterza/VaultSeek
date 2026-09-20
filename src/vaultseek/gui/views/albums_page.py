@@ -9,7 +9,6 @@ from PySide6.QtCore import QPoint, Qt, Signal
 from PySide6.QtGui import QPixmap, QResizeEvent
 from PySide6.QtWidgets import (
     QFrame,
-    QHBoxLayout,
     QLabel,
     QLineEdit,
     QMenu,
@@ -34,6 +33,7 @@ from vaultseek.gui.widgets.browse import (
 )
 from vaultseek.gui.widgets.desktop import reveal_in_explorer
 from vaultseek.gui.widgets.empty_state import EmptyState
+from vaultseek.gui.widgets.flow_host import FlowHost, add_labeled_field, ensure_control_labels
 from vaultseek.gui.widgets.health_legend import health_legend_label
 from vaultseek.gui.widgets.table_utils import (
     begin_table_update,
@@ -84,38 +84,37 @@ class AlbumsPage(QWidget):
         help_lbl.setProperty("muted", True)
         layout.addWidget(help_lbl)
 
-        toolbar = QHBoxLayout()
-        toolbar.addWidget(QLabel("Search:"))
+        toolbar = FlowHost(spacing=6)
         self._search = QLineEdit()
         self._search.setPlaceholderText("Filter by album or artist…")
         self._search.setClearButtonEnabled(True)
         connect_debounced(self._search.textChanged, self.refresh, parent=self)
-        toolbar.addWidget(self._search, stretch=1)
+        add_labeled_field(toolbar, "Search", self._search, expand=True)
         self._filter_label = QLabel("")
         self._filter_label.setProperty("muted", True)
-        toolbar.addWidget(self._filter_label)
+        toolbar.add_widget(self._filter_label)
         self._clear_filter = QPushButton("Clear filter")
         self._clear_filter.setProperty("secondary", True)
         self._clear_filter.setVisible(False)
         self._clear_filter.clicked.connect(lambda: self.set_artist_filter(None))
-        toolbar.addWidget(self._clear_filter)
+        toolbar.add_widget(self._clear_filter)
         find_music = QPushButton("Find music…")
         find_music.setProperty("secondary", True)
         find_music.setToolTip("Open Find & get → Find music (gap scans + Discogs).")
         find_music.clicked.connect(lambda: self.navigate_requested.emit("find"))
-        toolbar.addWidget(find_music)
+        toolbar.add_widget(find_music)
         archive_album = QPushButton("Archive selected…")
         archive_album.setProperty("secondary", True)
         archive_album.setToolTip("Move all present songs on the selected album(s) to Archive.")
         archive_album.clicked.connect(self._archive_selected_albums)
-        toolbar.addWidget(archive_album)
+        toolbar.add_widget(archive_album)
         self._delete_album = QPushButton("Delete album…")
         self._delete_album.setToolTip(
             "Remove the album from VaultSeek and recycle its music files."
         )
         self._delete_album.clicked.connect(self._delete_selected_albums)
-        toolbar.addWidget(self._delete_album)
-        layout.addLayout(toolbar)
+        toolbar.add_widget(self._delete_album)
+        layout.addWidget(toolbar)
         layout.addWidget(health_legend_label())
 
         self._empty = EmptyState(
@@ -201,23 +200,26 @@ class AlbumsPage(QWidget):
         wanted_box = QFrame()
         wanted_box.setProperty("dashPanel", True)
         self._wanted_box = wanted_box
-        wanted_layout = QHBoxLayout(wanted_box)
+        wanted_layout = QVBoxLayout(wanted_box)
         wanted_layout.setContentsMargins(12, 8, 12, 8)
         self._wanted_status = QLabel("Wanted items are managed on Wishlist.")
         self._wanted_status.setProperty("muted", True)
         self._wanted_status.setWordWrap(True)
+        wanted_layout.addWidget(self._wanted_status)
+        wanted_actions = FlowHost(spacing=6)
         open_wanted = QPushButton("Open Wishlist")
         open_wanted.setProperty("secondary", True)
         open_wanted.setToolTip("Parked Discogs picks live on Wishlist → Show Wanted.")
         open_wanted.clicked.connect(lambda: self.navigate_requested.emit("acquisition"))
-        wanted_layout.addWidget(self._wanted_status, stretch=1)
-        wanted_layout.addWidget(open_wanted)
+        wanted_actions.add_widget(open_wanted)
+        wanted_layout.addWidget(wanted_actions)
         layout.addWidget(wanted_box)
 
         self._status = QLabel("")
         layout.addWidget(self._status)
         self._clear_cover()
         self._empty.setVisible(False)
+        ensure_control_labels(self)
 
     def set_library(self, library_id: UUID | None) -> None:
         self._library_id = library_id

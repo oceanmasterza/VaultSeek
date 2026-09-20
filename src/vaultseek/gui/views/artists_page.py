@@ -6,7 +6,6 @@ from uuid import UUID
 
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtWidgets import (
-    QHBoxLayout,
     QLabel,
     QLineEdit,
     QSplitter,
@@ -20,6 +19,7 @@ from vaultseek.core.container import Container
 from vaultseek.gui.debounce import connect_debounced
 from vaultseek.gui.widgets.browse import fill_track_table
 from vaultseek.gui.widgets.desktop import reveal_in_explorer
+from vaultseek.gui.widgets.flow_host import FlowHost, add_labeled_field, ensure_control_labels
 from vaultseek.gui.widgets.table_utils import (
     configure_data_table,
 )
@@ -49,14 +49,13 @@ class ArtistsPage(QWidget):
         help_lbl.setProperty("muted", True)
         layout.addWidget(help_lbl)
 
-        toolbar = QHBoxLayout()
-        toolbar.addWidget(QLabel("Search:"))
+        toolbar = FlowHost(spacing=6)
         self._search = QLineEdit()
         self._search.setPlaceholderText("Filter by artist name…")
         self._search.setClearButtonEnabled(True)
         connect_debounced(self._search.textChanged, self.refresh, parent=self)
-        toolbar.addWidget(self._search, stretch=1)
-        layout.addLayout(toolbar)
+        add_labeled_field(toolbar, "Search", self._search, expand=True)
+        layout.addWidget(toolbar)
 
         splitter = QSplitter(Qt.Orientation.Vertical)
         self._table = QTableWidget(0, 4)
@@ -88,6 +87,7 @@ class ArtistsPage(QWidget):
 
         self._status = QLabel("")
         layout.addWidget(self._status)
+        ensure_control_labels(self)
 
     def set_library(self, library_id: UUID | None) -> None:
         self._library_id = library_id

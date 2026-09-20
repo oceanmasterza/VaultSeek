@@ -4,7 +4,7 @@ VaultSeek searches Prowlarr once per **tier**, then routes downloads:
 
 | Provider id | What it searches | Download client |
 |-------------|------------------|-----------------|
-| `usenet` | Usenet / NZB results | **SABnzbd** |
+| `usenet` | Usenet / NZB results | **SABnzbd by default, or NZBGet** |
 | `prowlarr_public` | Torrents from **public** indexers | **qBittorrent** |
 | `prowlarr_private` | Torrents from **private** indexers | **qBittorrent** |
 
@@ -12,7 +12,7 @@ These ids are separate acquisition providers so the **search waterfall** can try
 
 Enable **Prowlarr** plus the matching download client(s) under **System → Plugins**:
 
-- Prowlarr + SABnzbd → enables `usenet`
+- Prowlarr + the selected Usenet client (SABnzbd by default, or NZBGet) → enables `usenet`
 - Prowlarr + qBittorrent → enables `prowlarr_public` and `prowlarr_private`
 
 ## Ports (avoid clashes)
@@ -21,6 +21,7 @@ Enable **Prowlarr** plus the matching download client(s) under **System → Plug
 |-----|-------------|--------|
 | Prowlarr | `http://127.0.0.1:9696` | API key: Settings → General |
 | SABnzbd | `http://127.0.0.1:8080` | API key: Config → General |
+| NZBGet | `http://127.0.0.1:6789` | Control username and password (not an add-only user) |
 | qBittorrent | `http://127.0.0.1:8081` | VaultSeek default — **do not** share 8080 with SABnzbd |
 
 If qBittorrent WebUI is still on 8080 while SABnzbd owns `127.0.0.1:8080`,
@@ -33,7 +34,7 @@ VaultSeek will talk to SABnzbd by mistake. Change qBittorrent:
 ## Local setup detection
 
 In **Plugins**, choose **Detect local download clients**. VaultSeek reads the
-standard Windows configuration files for Prowlarr, qBittorrent and SABnzbd,
+standard Windows configuration files for Prowlarr, qBittorrent, SABnzbd and NZBGet,
 then shows each detected connection for review. Select the values you want to
 copy, test them, enable the relevant providers, then save plugin settings.
 
@@ -73,6 +74,23 @@ Privacy for public vs private tiers comes from each indexer’s Prowlarr `privac
 
 The VaultSeek check verifies authenticated queue access. A server version page
 can be public, so a successful browser page alone does not confirm the key works.
+
+## NZBGet
+
+NZBGet is an optional client for the same Usenet search tier. It is not a
+second search source. SABnzbd remains the default.
+
+1. In NZBGet Settings → News-servers, add and test the Usenet provider.
+2. In Settings → Security, use the **control** username and password in
+   VaultSeek. A restricted add-only login can append an NZB but cannot report
+   queue or history, so the connection test fails it on purpose.
+3. Optional: category `vaultseek`.
+4. In Plugins, choose NZBGet as the Usenet downloader, enable NZBGet, test, and save.
+
+New NZBs go only to the selected client. A download already sent to SABnzbd
+keeps a `sab:` handle and is not submitted again to NZBGet. VaultSeek does not
+edit `nzbget.conf` or the active queue during detection.
+See [the NZBGet API](https://nzbget.com/documentation/api/).
 
 ## Search waterfall
 

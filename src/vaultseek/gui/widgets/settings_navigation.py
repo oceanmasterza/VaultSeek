@@ -3,23 +3,25 @@
 from PySide6.QtWidgets import (
     QComboBox,
     QGroupBox,
-    QHBoxLayout,
     QLabel,
     QPushButton,
     QScrollArea,
+    QSizePolicy,
     QVBoxLayout,
     QWidget,
 )
 
 from vaultseek.gui.user_help import HelpDialog
+from vaultseek.gui.widgets.flow_host import FlowHost
 
 
 def add_settings_navigation(page: QWidget, scroll: QScrollArea, topic: str) -> None:
     """Keep section selection and setup help visible above the scrolling form."""
-    bar = QWidget(page)
-    row = QHBoxLayout(bar)
+    bar = FlowHost(page, spacing=6)
+    bar.flow().setContentsMargins(8, 8, 8, 4)
     sections = QComboBox()
     sections.setAccessibleName("Jump to settings section")
+    sections.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
     sections.addItem("Jump to a section…", None)
     body = scroll.widget()
     assert body is not None
@@ -34,9 +36,11 @@ def add_settings_navigation(page: QWidget, scroll: QScrollArea, topic: str) -> N
     )
     help_button = QPushButton("Setup instructions")
     help_button.clicked.connect(lambda: HelpDialog(page, topic=topic).exec())
-    row.addWidget(QLabel("Go to"))
-    row.addWidget(sections, 1)
-    row.addWidget(help_button)
+    go = QLabel("Go to")
+    go.setBuddy(sections)
+    bar.add_widget(go, accessible_name="Go to")
+    bar.add_widget(sections, accessible_name="Jump to settings section")
+    bar.add_widget(help_button)
     layout = page.layout()
     if isinstance(layout, QVBoxLayout):
         layout.insertWidget(0, bar)

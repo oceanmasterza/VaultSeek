@@ -8,7 +8,6 @@ from PySide6.QtCore import QUrl
 from PySide6.QtGui import QKeySequence, QShortcut
 from PySide6.QtMultimedia import QAudioOutput, QMediaPlayer
 from PySide6.QtWidgets import (
-    QHBoxLayout,
     QMessageBox,
     QPushButton,
     QTableWidget,
@@ -20,6 +19,7 @@ from PySide6.QtWidgets import (
 from vaultseek.core.container import Container
 from vaultseek.core.exceptions import ReviewError
 from vaultseek.gui.widgets.empty_state import EmptyState
+from vaultseek.gui.widgets.flow_host import FlowHost, ensure_control_labels
 from vaultseek.gui.widgets.page_header import add_page_header
 from vaultseek.gui.widgets.table_utils import (
     begin_table_update,
@@ -66,7 +66,7 @@ class ReviewPage(QWidget):
         configure_data_table(self._table)
         layout.addWidget(self._table)
 
-        buttons = QHBoxLayout()
+        buttons = FlowHost(spacing=6)
         self._play_btn = QPushButton("Play")
         self._play_btn.setToolTip("Play the selected song so you can identify it")
         self._approve_btn = QPushButton("Approve")
@@ -84,13 +84,13 @@ class ReviewPage(QWidget):
         self._reject_btn.clicked.connect(self._reject_selected)
         self._defer_btn.clicked.connect(self._defer_selected)
         self._refresh_btn.clicked.connect(self.refresh)
-        buttons.addWidget(self._play_btn)
-        buttons.addWidget(self._approve_btn)
-        buttons.addWidget(self._reject_btn)
-        buttons.addWidget(self._defer_btn)
-        buttons.addWidget(self._refresh_btn)
-        buttons.addStretch(1)
-        layout.addLayout(buttons)
+        buttons.add_widget(self._play_btn)
+        buttons.add_widget(self._approve_btn)
+        buttons.add_widget(self._reject_btn)
+        buttons.add_widget(self._defer_btn)
+        buttons.add_widget(self._refresh_btn)
+        layout.addWidget(buttons)
+        ensure_control_labels(self)
 
         _approve_a = QShortcut(QKeySequence("Ctrl+Return"), self)
         _approve_a.activated.connect(self._approve_selected)

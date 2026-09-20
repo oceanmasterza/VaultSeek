@@ -127,6 +127,12 @@ class LocalSetupService:
                 self._emby,
                 8096,
             ),
+            (
+                "NZBGet",
+                (self.program_data / "NZBGet/nzbget.conf",),
+                self._nzbget,
+                6789,
+            ),
         ]
         parsed = [
             (self._read_first(name, paths, reader), port) for name, paths, reader, port in specs
@@ -347,6 +353,45 @@ class LocalSetupService:
         https = root.findtext("EnableHttps", "false").lower() == "true"
         port = root.findtext("PublicHttpsPort" if https else "PublicPort", "8096")
         return {"url": self._url(port, https)}, "Create an API key in Emby Dashboard → API Keys."
+
+    def _nzbget(self, text: str) -> tuple[dict[str, str], str]:
+        # nzbget.conf is key=value. Read control credentials only; do not write the file.
+        pairs: dict[str, str] = {}
+        for line in text.splitlines():
+            stripped = line.strip()
+            if not stripped or stripped.startswith("#") or stripped.startswith(";"):
+                continue
+            if "=" not in stripped:
+                continue
+            key, _, raw = stripped.partition("=")
+            pairs[key.strip()] = raw.strip().strip('"')
+        secure = pairs.get("SecureControl", "no").casefold() in {"yes", "true", "1"}
+        port = pairs.get("SecurePort", "6791") if secure else pairs.get("ControlPort", "6789")
+        url = self._url(port, secure)
+        host = pairs.get("ControlIP", "127.0.0.1")
+        if host not in {"0.0.0.0", "::", "*", ""}:
+            url = url.replace("127.0.0.1", host, 1)
+        values = {
+            "url": url,
+            "username": pairs.get("ControlUsername", ""),
+            "password": pairs.get("ControlPassword", ""),
+        }
+        for key, value in pairs.items():
+            if key.casefold().endswith(".name") and value.casefold() == "vaultseek":
+                values["category"] = "vaultseek"
+                break
+        if values["password"]:
+            note = (
+                "Control URL and password found. Review them, then test. "
+                "An add-only login cannot report queue progress. "
+                "VaultSeek does not change NZBGet."
+            )
+        else:
+            note = (
+                "Control URL found. Enter the control password manually. "
+                "An add-only login cannot report queue progress."
+            )
+        return values, note
 
 
 def _parse_port(raw: str) -> int | None:

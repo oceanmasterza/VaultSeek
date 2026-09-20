@@ -20,6 +20,7 @@ from PySide6.QtWidgets import (
 
 from vaultseek.core.container import Container
 from vaultseek.gui.widgets.desktop import open_path
+from vaultseek.gui.widgets.flow_host import FlowHost, ensure_control_labels
 from vaultseek.models.entities.acquisition_job import (
     AcquisitionJobState,
     AcquisitionJobType,
@@ -86,7 +87,7 @@ class ReportsPage(QWidget):
         charts2.addLayout(self._track_state_host, stretch=1)
         layout.addLayout(charts2)
 
-        actions = QHBoxLayout()
+        actions = FlowHost(spacing=6)
         refresh = QPushButton("Refresh")
         refresh.setProperty("secondary", True)
         refresh.clicked.connect(self.refresh)
@@ -96,12 +97,12 @@ class ReportsPage(QWidget):
         gen = QPushButton("Generate library summary file")
         gen.setToolTip("Write a library summary JSON under the reports folder.")
         gen.clicked.connect(self._generate_summary)
-        actions.addWidget(refresh)
-        actions.addWidget(open_reports)
-        actions.addWidget(gen)
-        actions.addStretch(1)
-        layout.addLayout(actions)
+        actions.add_widget(refresh)
+        actions.add_widget(open_reports)
+        actions.add_widget(gen)
+        layout.addWidget(actions)
         layout.addStretch(1)
+        ensure_control_labels(self)
 
         self._chart_views: list[QChartView] = []
 

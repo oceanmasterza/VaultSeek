@@ -611,7 +611,7 @@ def _build_acquisition_providers() -> list[AcquisitionProvider]:
         NicotinePlusProvider(),
         ProwlarrProvider(
             provider_id="usenet",
-            display_name="Usenet / news (Prowlarr → SABnzbd)",
+            display_name="Usenet / news (Prowlarr → SABnzbd or NZBGet)",
             protocol_filter="usenet",
         ),
         ProwlarrProvider(

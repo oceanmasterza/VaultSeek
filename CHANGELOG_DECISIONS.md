@@ -9,5 +9,8 @@
 - 2026-09-19: Exclude ambient versioned ICU DLLs from frozen builds. Qt 6.11 requires Windows' unversioned ICU ABI; collecting Codex runtime Poppler ICU files caused QtWidgets to fail at load time.
 
 - 2026-09-20: Inno removes obsolete `_internal/icuuc.dll` and `_internal/icudt78.dll` during upgrades; excluding them from a new payload alone does not repair existing installations. Archive actions resolve selection from sortable item data.
+- 2026-09-20: Schema 23 adds optional NZBGet for the existing Usenet tier. SABnzbd stays the default. Plugins owns NZBGet and `usenet_download_client`. NZBGet is not a second search source.
+- 2026-09-20: Shared `FlowLayout` wraps toolbars and dashboard tiles so controls stay fully visible when the window is narrow.
+- 2026-09-20: Dashboard client probes run off the UI thread and independently. One client failure does not cancel the others. A settings change drops stale probe results.
 
 - 2026-09-20: Review lists only songs with a local audio file and names them from an embedded tag or the filename when fingerprinting stored an id. Artwork shows the same album cover files as Albums.

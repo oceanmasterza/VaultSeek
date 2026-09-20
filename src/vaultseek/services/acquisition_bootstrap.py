@@ -7,7 +7,7 @@ from typing import Any
 
 from loguru import logger
 
-from vaultseek.core.config import AcquisitionConfig
+from vaultseek.core.config import AcquisitionConfig, normalize_usenet_download_client
 from vaultseek.models.interfaces.acquisition import AcquisitionProviderConfig
 from vaultseek.plugins.builtin.nicotine_plus import NicotinePlusProvider
 from vaultseek.services.acquisition_sources import (
@@ -51,7 +51,9 @@ def resolve_enabled_acquisition_providers(config: AcquisitionConfig) -> set[str]
         enabled.discard("stub")
     # Prowlarr needs search + the matching download client per tier.
     if config.prowlarr.enabled:
-        if config.sabnzbd.enabled:
+        client = normalize_usenet_download_client(config.usenet_download_client)
+        usenet_ready = config.nzbget.enabled if client == "nzbget" else config.sabnzbd.enabled
+        if usenet_ready:
             enabled.add("usenet")
             enabled.discard("stub")
         if config.qbittorrent.enabled:
@@ -149,6 +151,12 @@ def connect_acquisition_providers(
         "sab_base_url": config.sabnzbd.base_url,
         "sab_api_key": config.sabnzbd.api_key,
         "sab_category": config.sabnzbd.category,
+        "nzb_enabled": config.nzbget.enabled,
+        "nzb_base_url": config.nzbget.base_url,
+        "nzb_username": config.nzbget.username,
+        "nzb_password": config.nzbget.password,
+        "nzb_category": config.nzbget.category,
+        "usenet_download_client": normalize_usenet_download_client(config.usenet_download_client),
     }
     settings_by_id: dict[str, dict[str, Any]] = {
         "nicotine_plus": nicotine_settings,

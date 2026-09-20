@@ -122,13 +122,14 @@ Enable only what you actually run.
 |------------|---------------------|
 | Soulseek only | Settings → Wishlist & downloads → Enable Nicotine+ |
 | Torrents only | Plugins → Prowlarr + qBittorrent |
-| Usenet only | Plugins → Prowlarr + SABnzbd |
-| Torrents and Usenet | Plugins → Prowlarr + qBittorrent + SABnzbd |
+| Usenet only | Plugins → Prowlarr + SABnzbd (or NZBGet) |
+| Torrents and Usenet | Plugins → Prowlarr + qBittorrent + SABnzbd or NZBGet |
 | Soulseek plus indexers | Nicotine+ in Settings, and Prowlarr plus at least one download client on Plugins |
 | Suggestions only | Plugins → Last.fm and/or Spotify (they never download files) |
 
 Prowlarr by itself cannot download. Enable Prowlarr **and** qBittorrent
-(torrents) and/or SABnzbd (NZBs). Hits that need a client you left off are skipped.
+(torrents) and/or one Usenet client (SABnzbd by default, or NZBGet). Hits that
+need a client you left off are skipped. NZBGet does not add another waterfall step.
 
 ### How a download works
 
@@ -174,7 +175,7 @@ in [NICOTINE_PLUS.md](NICOTINE_PLUS.md).
 
 ---
 
-## Prowlarr, qBittorrent, SABnzbd
+## Prowlarr, qBittorrent, SABnzbd, NZBGet
 
 Configure on **System → Plugins**. Details: [PROWLARR.md](PROWLARR.md).
 
@@ -182,17 +183,21 @@ Configure on **System → Plugins**. Details: [PROWLARR.md](PROWLARR.md).
 |-----|-------------|------------|
 | Prowlarr | `http://127.0.0.1:9696` | Settings → General → API Key |
 | SABnzbd | `http://127.0.0.1:8080` | Config → General → API Key |
+| NZBGet | `http://127.0.0.1:6789` | Settings → Security → control user/password |
 | qBittorrent | `http://127.0.0.1:8081` | Web UI user / password |
 
 If SABnzbd uses 8080, put qBittorrent on **8081** (VaultSeek’s default) so
 the two do not collide.
 
 1. Add audio indexers in Prowlarr. Enable Prowlarr in Plugins; **Test Prowlarr**.
-2. Enable qBittorrent and/or SABnzbd; use the matching Test button.
+2. Enable qBittorrent and one Usenet client (SABnzbd or NZBGet); use the matching Test button.
 3. **Save plugin settings**.
 4. Queue one album on Find music, then Wishlist → Auto-acquire.
 
-Torrents go to qBittorrent; NZBs go to SABnzbd.
+Torrents go to qBittorrent. New NZBs go only to the selected Usenet client.
+SABnzbd stays the default. Switching to NZBGet does not resend downloads that
+already have a SABnzbd handle. NZBGet’s add-only login is not enough: the test
+requires queue access. Details: [PROWLARR.md](PROWLARR.md).
 
 ---
 

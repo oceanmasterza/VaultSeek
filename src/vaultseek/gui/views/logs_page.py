@@ -6,7 +6,6 @@ from pathlib import Path
 
 from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
-    QHBoxLayout,
     QLabel,
     QPlainTextEdit,
     QPushButton,
@@ -16,6 +15,7 @@ from PySide6.QtWidgets import (
 
 from vaultseek.core.container import Container
 from vaultseek.gui.widgets.desktop import open_path
+from vaultseek.gui.widgets.flow_host import FlowHost, ensure_control_labels
 
 _MAX_LINES = 1000
 
@@ -45,7 +45,7 @@ class LogsPage(QWidget):
         self._path_label.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
         layout.addWidget(self._path_label)
 
-        buttons = QHBoxLayout()
+        buttons = FlowHost(spacing=6)
         refresh = QPushButton("Refresh")
         open_folder = QPushButton("Open log folder")
         open_app = QPushButton("Open vaultseek.log")
@@ -58,13 +58,13 @@ class LogsPage(QWidget):
         open_app.clicked.connect(lambda: self._open_file(paths.logs_dir / "vaultseek.log"))
         open_debug.clicked.connect(lambda: self._open_file(paths.logs_dir / "debug.log"))
         open_crashes.clicked.connect(lambda: open_path(paths.crashes_dir))
-        buttons.addWidget(refresh)
-        buttons.addWidget(open_folder)
-        buttons.addWidget(open_app)
-        buttons.addWidget(open_debug)
-        buttons.addWidget(open_crashes)
-        buttons.addStretch(1)
-        layout.addLayout(buttons)
+        buttons.add_widget(refresh)
+        buttons.add_widget(open_folder)
+        buttons.add_widget(open_app)
+        buttons.add_widget(open_debug)
+        buttons.add_widget(open_crashes)
+        layout.addWidget(buttons)
+        ensure_control_labels(self)
 
         self._preview = QPlainTextEdit()
         self._preview.setReadOnly(True)

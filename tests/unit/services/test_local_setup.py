@@ -141,3 +141,41 @@ def test_sab_roaming_fallback(tmp_path):
     item = service(tmp_path).discover()[2]
     assert item.values["url"] == "http://127.0.0.1:8088"
     assert item.values["key"] == "from-roaming"
+
+
+def test_nzbget_conf_reads_control_credentials_without_repr(tmp_path):
+    write(
+        tmp_path,
+        "NZBGet/nzbget.conf",
+        "\n".join(
+            [
+                "# comment",
+                "ControlIP=0.0.0.0",
+                "ControlPort=6790",
+                "SecureControl=no",
+                "ControlUsername=control-user",
+                "ControlPassword=control-secret",
+                "Category1.Name=movies",
+                "Category2.Name=vaultseek",
+            ]
+        ),
+    )
+    item = next(row for row in service(tmp_path).discover() if row.name == "NZBGet")
+    assert item.values["url"] == "http://127.0.0.1:6790"
+    assert item.values["username"] == "control-user"
+    assert item.values["password"] == "control-secret"
+    assert item.values["category"] == "vaultseek"
+    assert "control-secret" not in repr(item)
+    assert "control-secret" not in item.field_summary()
+    assert "found (hidden)" in item.field_summary()
+
+
+def test_nzbget_secure_port(tmp_path):
+    write(
+        tmp_path,
+        "NZBGet/nzbget.conf",
+        "SecureControl=yes\nSecurePort=6791\nControlPort=6789\nControlUsername=u\n",
+    )
+    item = next(row for row in service(tmp_path).discover() if row.name == "NZBGet")
+    assert item.values["url"] == "https://127.0.0.1:6791"
+    assert item.values["password"] == ""

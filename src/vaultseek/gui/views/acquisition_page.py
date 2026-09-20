@@ -23,6 +23,7 @@ from vaultseek.core.container import Container
 from vaultseek.gui.async_task import run_in_background
 from vaultseek.gui.datetime_format import format_local_datetime
 from vaultseek.gui.widgets.empty_state import EmptyState
+from vaultseek.gui.widgets.flow_host import FlowHost, ensure_control_labels
 from vaultseek.gui.widgets.table_utils import (
     begin_table_update,
     configure_data_table,
@@ -60,7 +61,7 @@ class AcquisitionPage(QWidget):
         self._summary.setWordWrap(True)
         layout.addWidget(self._summary)
 
-        wanted_row = QHBoxLayout()
+        wanted_row = FlowHost(spacing=6)
         self._show_wanted = QCheckBox("Show Wanted (parked)")
         self._show_wanted.setToolTip(
             "Wanted items are parked Discogs picks that do not search until you start them. "
@@ -74,11 +75,10 @@ class AcquisitionPage(QWidget):
         remove_wanted_btn = QPushButton("Remove Wanted")
         remove_wanted_btn.setProperty("secondary", True)
         remove_wanted_btn.clicked.connect(self._remove_wanted_selected)
-        wanted_row.addWidget(self._show_wanted)
-        wanted_row.addWidget(start_wanted)
-        wanted_row.addWidget(remove_wanted_btn)
-        wanted_row.addStretch(1)
-        layout.addLayout(wanted_row)
+        wanted_row.add_widget(self._show_wanted)
+        wanted_row.add_widget(start_wanted)
+        wanted_row.add_widget(remove_wanted_btn)
+        layout.addWidget(wanted_row)
 
         self._empty = EmptyState(
             "Wishlist is empty",
@@ -100,7 +100,7 @@ class AcquisitionPage(QWidget):
         configure_data_table(self._table)
         layout.addWidget(self._table)
 
-        row1 = QHBoxLayout()
+        row1 = FlowHost(spacing=6)
         scan_btn = QPushButton("Scan for missing")
         run_btn = QPushButton("Auto-acquire selected")
         acquire_btn = QPushButton("Acquire top result")
@@ -130,16 +130,16 @@ class AcquisitionPage(QWidget):
         cancel_btn.clicked.connect(self._cancel_selected)
         refresh_btn.clicked.connect(self.refresh)
         find_btn.clicked.connect(lambda: self.navigate_requested.emit("find"))
-        row1.addWidget(scan_btn)
-        row1.addWidget(run_btn)
-        row1.addWidget(acquire_btn)
-        row1.addWidget(pick_btn)
-        row1.addWidget(cancel_btn)
-        row1.addWidget(refresh_btn)
-        row1.addWidget(find_btn)
-        row1.addStretch(1)
-        layout.addLayout(row1)
+        row1.add_widget(scan_btn)
+        row1.add_widget(run_btn)
+        row1.add_widget(acquire_btn)
+        row1.add_widget(pick_btn)
+        row1.add_widget(cancel_btn)
+        row1.add_widget(refresh_btn)
+        row1.add_widget(find_btn)
+        layout.addWidget(row1)
         self._empty.setVisible(False)
+        ensure_control_labels(self)
 
     def set_library(self, library_id: UUID | None) -> None:
         self._library_id = library_id

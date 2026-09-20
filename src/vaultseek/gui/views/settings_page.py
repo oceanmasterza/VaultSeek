@@ -16,7 +16,6 @@ from PySide6.QtWidgets import (
     QDoubleSpinBox,
     QFormLayout,
     QGroupBox,
-    QHBoxLayout,
     QLabel,
     QLineEdit,
     QListWidget,
@@ -35,6 +34,7 @@ from vaultseek.core.uuid_utils import generate_uuid7
 from vaultseek.gui.async_task import run_in_background
 from vaultseek.gui.views.rules_page import RulesPage
 from vaultseek.gui.widgets.desktop import open_path
+from vaultseek.gui.widgets.flow_host import FlowHost, add_labeled_field, ensure_control_labels
 from vaultseek.gui.widgets.local_setup_dialog import LocalSetupDialog
 from vaultseek.gui.widgets.path_picker import PathPickerRow
 from vaultseek.gui.widgets.quality_fields import QualityFields
@@ -131,7 +131,7 @@ class SettingsPage(QWidget):
         self._incoming.path_changed.connect(self._maybe_suggest_siblings)
         layout.addWidget(lib_box)
 
-        lib_buttons = QHBoxLayout()
+        lib_buttons = FlowHost(spacing=6)
         save_lib = QPushButton("Save library")
         save_lib.setDefault(True)
         new_lib = QPushButton("New library")
@@ -142,11 +142,10 @@ class SettingsPage(QWidget):
         save_lib.clicked.connect(self._save_library)
         new_lib.clicked.connect(self._new_library)
         scan_btn.clicked.connect(self._scan_incoming)
-        lib_buttons.addWidget(save_lib)
-        lib_buttons.addWidget(new_lib)
-        lib_buttons.addWidget(scan_btn)
-        lib_buttons.addStretch(1)
-        layout.addLayout(lib_buttons)
+        lib_buttons.add_widget(save_lib)
+        lib_buttons.add_widget(new_lib)
+        lib_buttons.add_widget(scan_btn)
+        layout.addWidget(lib_buttons)
 
         reset_box = QGroupBox("Reset processing")
         reset_layout = QVBoxLayout(reset_box)
@@ -158,7 +157,7 @@ class SettingsPage(QWidget):
         reset_help.setWordWrap(True)
         reset_help.setProperty("muted", True)
         reset_layout.addWidget(reset_help)
-        reset_btns = QHBoxLayout()
+        reset_btns = FlowHost(spacing=6)
         clear_queues = QPushButton("Clear job & review queues")
         clear_queues.setProperty("secondary", True)
         clear_queues.setToolTip(
@@ -172,10 +171,9 @@ class SettingsPage(QWidget):
         )
         clear_queues.clicked.connect(self._reset_queues)
         clear_catalog.clicked.connect(self._reset_catalog)
-        reset_btns.addWidget(clear_queues)
-        reset_btns.addWidget(clear_catalog)
-        reset_btns.addStretch(1)
-        reset_layout.addLayout(reset_btns)
+        reset_btns.add_widget(clear_queues)
+        reset_btns.add_widget(clear_catalog)
+        reset_layout.addWidget(reset_btns)
         layout.addWidget(reset_box)
 
         quality_box = QGroupBox("Library quality")
@@ -281,25 +279,22 @@ class SettingsPage(QWidget):
             "so a slow Nicotine / Prowlarr response can still win before falling through."
         )
         order_layout.addWidget(self._search_waterfall)
-        delay_row = QHBoxLayout()
-        delay_row.addWidget(QLabel("Delay between empty sources"))
-        delay_row.addWidget(self._search_delay)
-        delay_row.addStretch(1)
-        order_layout.addLayout(delay_row)
+        delay_row = FlowHost(spacing=6)
+        add_labeled_field(delay_row, "Delay between empty sources", self._search_delay)
+        order_layout.addWidget(delay_row)
         self._source_order = QListWidget()
         self._source_order.setMinimumHeight(120)
         order_layout.addWidget(self._source_order)
-        move_row = QHBoxLayout()
+        move_row = FlowHost(spacing=6)
         move_up = QPushButton("Move up")
         move_down = QPushButton("Move down")
         move_up.setProperty("secondary", True)
         move_down.setProperty("secondary", True)
         move_up.clicked.connect(lambda: self._move_source_order(-1))
         move_down.clicked.connect(lambda: self._move_source_order(1))
-        move_row.addWidget(move_up)
-        move_row.addWidget(move_down)
-        move_row.addStretch(1)
-        order_layout.addLayout(move_row)
+        move_row.add_widget(move_up)
+        move_row.add_widget(move_down)
+        order_layout.addWidget(move_row)
         acq_form.addRow(order_box)
 
         acq_form.addRow(self._nicotine_enabled)
@@ -433,7 +428,7 @@ class SettingsPage(QWidget):
         pipeline_help.setProperty("muted", True)
         prefs_form.addRow(pipeline_help)
 
-        prefs_actions = QHBoxLayout()
+        prefs_actions = FlowHost(spacing=6)
         save_prefs = QPushButton("Save preferences")
         open_logs = QPushButton("Open log folder")
         open_data = QPushButton("Open data folder")
@@ -444,10 +439,9 @@ class SettingsPage(QWidget):
         save_prefs.clicked.connect(self._save_preferences)
         open_logs.clicked.connect(lambda: open_path(self._container.paths.logs_dir))
         open_data.clicked.connect(lambda: open_path(self._container.paths.root))
-        prefs_actions.addWidget(save_prefs)
-        prefs_actions.addWidget(open_logs)
-        prefs_actions.addWidget(open_data)
-        prefs_actions.addStretch(1)
+        prefs_actions.add_widget(save_prefs)
+        prefs_actions.add_widget(open_logs)
+        prefs_actions.add_widget(open_data)
         prefs_form.addRow(prefs_actions)
         layout.addWidget(prefs)
 
@@ -501,6 +495,7 @@ class SettingsPage(QWidget):
 
         layout.addStretch(1)
         add_settings_navigation(self, scroll, "connection-setup")
+        ensure_control_labels(self)
 
     def set_library(self, library_id: UUID | None) -> None:
         self._editing_id = library_id
@@ -520,6 +515,7 @@ class SettingsPage(QWidget):
         self._acoustid_form.addRow(f"Label {index}", label)
         self._acoustid_form.addRow(f"API key {index}", key)
         self._acoustid_form.addRow(f"Proxy {index}", proxy)
+        ensure_control_labels(self)
 
     def _detect_local(self) -> None:
         self._detect_button.setEnabled(False)

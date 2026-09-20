@@ -56,6 +56,29 @@ def test_resolve_enabled_providers_includes_usenet_with_sab() -> None:
     assert "prowlarr_public" not in enabled
 
 
+def test_resolve_enabled_providers_uses_nzbget_when_selected() -> None:
+    from vaultseek.core.config import NzbgetConfig, ProwlarrConfig, SabnzbdConfig
+
+    config = AcquisitionConfig(
+        enabled_providers=("stub",),
+        prowlarr=ProwlarrConfig(enabled=True, api_key="x"),
+        sabnzbd=SabnzbdConfig(enabled=True, api_key="s"),
+        nzbget=NzbgetConfig(enabled=True, username="control", password="hidden"),
+        usenet_download_client="nzbget",
+    )
+    enabled = resolve_enabled_acquisition_providers(config)
+    assert "usenet" in enabled
+
+    sab_only = AcquisitionConfig(
+        enabled_providers=("stub",),
+        prowlarr=ProwlarrConfig(enabled=True, api_key="x"),
+        sabnzbd=SabnzbdConfig(enabled=False),
+        nzbget=NzbgetConfig(enabled=True),
+        usenet_download_client="sabnzbd",
+    )
+    assert "usenet" not in resolve_enabled_acquisition_providers(sab_only)
+
+
 def test_connect_disconnects_disabled_providers() -> None:
     manager = ProviderManager([StubAcquisitionProvider()])
     manager.connect(

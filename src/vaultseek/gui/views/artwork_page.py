@@ -10,7 +10,6 @@ from PySide6.QtGui import QIcon, QImageReader, QPixmap, QResizeEvent
 from PySide6.QtWidgets import (
     QCheckBox,
     QFrame,
-    QHBoxLayout,
     QLabel,
     QLineEdit,
     QSizePolicy,
@@ -23,6 +22,7 @@ from PySide6.QtWidgets import (
 
 from vaultseek.core.container import Container
 from vaultseek.gui.debounce import connect_debounced
+from vaultseek.gui.widgets.flow_host import FlowHost, add_labeled_field, ensure_control_labels
 from vaultseek.gui.widgets.table_utils import (
     begin_table_update,
     configure_data_table,
@@ -56,18 +56,17 @@ class ArtworkPage(QWidget):
         help_lbl.setProperty("muted", True)
         layout.addWidget(help_lbl)
 
-        toolbar = QHBoxLayout()
-        toolbar.addWidget(QLabel("Search:"))
+        toolbar = FlowHost(spacing=6)
         self._search = QLineEdit()
         self._search.setPlaceholderText("Filter by album or artist…")
         self._search.setClearButtonEnabled(True)
         connect_debounced(self._search.textChanged, self.refresh, parent=self)
-        toolbar.addWidget(self._search, stretch=1)
+        add_labeled_field(toolbar, "Search", self._search, expand=True)
         self._missing_only = QCheckBox("Problems only")
         self._missing_only.setToolTip("Show missing and low-resolution covers only.")
         self._missing_only.toggled.connect(self.refresh)
-        toolbar.addWidget(self._missing_only)
-        layout.addLayout(toolbar)
+        toolbar.add_widget(self._missing_only)
+        layout.addWidget(toolbar)
 
         split = QSplitter()
         self._table = QTableWidget(0, 7)
@@ -106,6 +105,7 @@ class ArtworkPage(QWidget):
 
         self._status = QLabel("")
         layout.addWidget(self._status)
+        ensure_control_labels(self)
 
     def set_library(self, library_id: UUID | None) -> None:
         self._library_id = library_id

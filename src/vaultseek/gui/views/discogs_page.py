@@ -10,12 +10,12 @@ from PySide6.QtCore import Qt
 from PySide6.QtGui import QBrush, QColor
 from PySide6.QtWidgets import (
     QAbstractItemView,
-    QHBoxLayout,
     QHeaderView,
     QLabel,
     QLineEdit,
     QMessageBox,
     QPushButton,
+    QSizePolicy,
     QSplitter,
     QTableWidget,
     QTableWidgetItem,
@@ -31,6 +31,7 @@ from vaultseek.gui.widgets.discogs_widgets import (
     release_subtitle,
     release_tooltip,
 )
+from vaultseek.gui.widgets.flow_host import FlowHost, ensure_control_labels
 from vaultseek.gui.widgets.table_utils import (
     begin_table_update,
     configure_data_table,
@@ -91,15 +92,17 @@ class DiscogsPage(QWidget):
             help_lbl.setProperty("muted", True)
             layout.addWidget(help_lbl)
 
-        search_row = QHBoxLayout()
+        search_row = FlowHost(spacing=6)
         self._query = QLineEdit()
         self._query.setPlaceholderText("Artist name…")
+        self._query.setAccessibleName("Artist name")
+        self._query.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
         self._query.returnPressed.connect(self._search_artist)
         search_btn = QPushButton("Search Discogs")
         search_btn.clicked.connect(self._search_artist)
-        search_row.addWidget(self._query, stretch=1)
-        search_row.addWidget(search_btn)
-        layout.addLayout(search_row)
+        search_row.add_widget(self._query, accessible_name="Artist name")
+        search_row.add_widget(search_btn)
+        layout.addWidget(search_row)
 
         self._status = QLabel("Enter an artist name and press Search.")
         self._status.setWordWrap(True)
@@ -161,7 +164,7 @@ class DiscogsPage(QWidget):
         split.setStretchFactor(1, 2)
         layout.addWidget(split, stretch=1)
 
-        actions = QHBoxLayout()
+        actions = FlowHost(spacing=6)
         queue_btn = QPushButton("Queue selected for download")
         queue_btn.setToolTip("Create missing-album jobs and search/download now (Wishlist).")
         queue_btn.clicked.connect(self._queue_selected)
@@ -178,12 +181,12 @@ class DiscogsPage(QWidget):
         clear_sel = QPushButton("Clear selection")
         clear_sel.setProperty("secondary", True)
         clear_sel.clicked.connect(self._table.clearSelection)
-        actions.addWidget(queue_btn)
-        actions.addWidget(wanted_btn)
-        actions.addWidget(select_all)
-        actions.addWidget(clear_sel)
-        actions.addStretch(1)
-        layout.addLayout(actions)
+        actions.add_widget(queue_btn)
+        actions.add_widget(wanted_btn)
+        actions.add_widget(select_all)
+        actions.add_widget(clear_sel)
+        layout.addWidget(actions)
+        ensure_control_labels(self)
 
         self._artist_hits: list[tuple[str, int]] = []
 

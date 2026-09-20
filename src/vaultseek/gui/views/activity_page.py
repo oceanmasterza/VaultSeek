@@ -7,7 +7,6 @@ from uuid import UUID
 from PySide6.QtCore import Signal
 from PySide6.QtWidgets import (
     QComboBox,
-    QHBoxLayout,
     QLabel,
     QMessageBox,
     QPushButton,
@@ -20,6 +19,7 @@ from PySide6.QtWidgets import (
 from vaultseek.core.container import Container
 from vaultseek.gui.datetime_format import format_local_datetime
 from vaultseek.gui.widgets.empty_state import EmptyState
+from vaultseek.gui.widgets.flow_host import FlowHost, add_labeled_field, ensure_control_labels
 from vaultseek.gui.widgets.table_utils import (
     configure_data_table,
 )
@@ -53,15 +53,13 @@ class ActivityPage(QWidget):
         help_lbl.setProperty("muted", True)
         layout.addWidget(help_lbl)
 
-        toolbar = QHBoxLayout()
-        toolbar.addWidget(QLabel("Show:"))
+        toolbar = FlowHost(spacing=6)
         self._filter = QComboBox()
         self._filter.addItem("All", None)
         self._filter.addItem("Pipeline", ActivitySource.PIPELINE)
         self._filter.addItem("Wishlist", ActivitySource.WISHLIST)
         self._filter.currentIndexChanged.connect(self.refresh)
-        toolbar.addWidget(self._filter)
-        toolbar.addStretch(1)
+        add_labeled_field(toolbar, "Show", self._filter)
         open_jobs = QPushButton("Open Jobs")
         open_jobs.setProperty("secondary", True)
         open_jobs.clicked.connect(lambda: self.navigate_requested.emit("jobs"))
@@ -74,11 +72,11 @@ class ActivityPage(QWidget):
         refresh_btn = QPushButton("Refresh")
         refresh_btn.setProperty("secondary", True)
         refresh_btn.clicked.connect(self.refresh)
-        toolbar.addWidget(open_jobs)
-        toolbar.addWidget(open_wishlist)
-        toolbar.addWidget(find_music)
-        toolbar.addWidget(refresh_btn)
-        layout.addLayout(toolbar)
+        toolbar.add_widget(open_jobs)
+        toolbar.add_widget(open_wishlist)
+        toolbar.add_widget(find_music)
+        toolbar.add_widget(refresh_btn)
+        layout.addWidget(toolbar)
 
         self._summary = QLabel("")
         self._summary.setProperty("muted", True)
@@ -104,15 +102,15 @@ class ActivityPage(QWidget):
         self._table.doubleClicked.connect(self._open_selected)
         layout.addWidget(self._table, stretch=1)
 
-        open_row = QHBoxLayout()
+        open_row = FlowHost(spacing=6)
         open_btn = QPushButton("Open…")
         open_btn.setToolTip("Open Jobs or Wishlist for the selected row.")
         open_btn.clicked.connect(self._open_selected)
-        open_row.addWidget(open_btn)
-        open_row.addStretch(1)
-        layout.addLayout(open_row)
+        open_row.add_widget(open_btn)
+        layout.addWidget(open_row)
 
         self._empty.setVisible(False)
+        ensure_control_labels(self)
 
     def set_library(self, library_id: UUID | None) -> None:
         self._library_id = library_id

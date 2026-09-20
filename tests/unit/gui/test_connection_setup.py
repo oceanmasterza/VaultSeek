@@ -75,13 +75,18 @@ def test_dashboard_music_tools_uses_waterfall_ids(qtbot, container, monkeypatch)
         "connected_provider_ids",
         lambda: ("usenet", "nicotine_plus"),
     )
+    monkeypatch.setattr(container.connection_checks, "probe_dashboard_clients", lambda _config: {})
     page = DashboardPage(container)
     qtbot.addWidget(page)
     page.refresh()
-    text = page._music_tools_body.text()
-    assert "Connected — Nicotine+" in text
-    assert "Connected — Usenet" in text
-    assert "discogs-secret-xyz" not in text
+    tiles = page._status_tiles
+    assert tiles["Nicotine+"].status().state == "connected"
+    assert tiles["Prowlarr"].status().state == "connected"
+    assert tiles["SABnzbd"].status().state == "configured"
+    assert tiles["NZBGet"].status().state == "off"
+    blob = " ".join(tile.toolTip() for tile in tiles.values())
+    assert "discogs-secret-xyz" not in blob
+    assert "Connected — Usenet" not in blob
 
 
 def test_download_test_keeps_ui_event_loop_running(qtbot, container, monkeypatch):

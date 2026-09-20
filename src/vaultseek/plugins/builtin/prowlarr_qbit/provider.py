@@ -1,8 +1,9 @@
-"""Prowlarr acquisition provider with qBittorrent and/or SABnzbd download clients.
+"""Prowlarr acquisition provider with qBittorrent and a Usenet download client.
 
 Search is always Prowlarr. Downloads route by result protocol:
-torrent / magnet → qBittorrent; usenet / NZB → SABnzbd. At least one download
-client must be enabled and reachable for ``connect`` to succeed.
+torrent / magnet → qBittorrent; usenet / NZB → the selected client
+(SABnzbd by default, or NZBGet). NZBGet is not a separate search source.
+Existing ``sab:`` and ``nzb:`` handles stay on the client that accepted them.
 """
 
 from __future__ import annotations
@@ -12,6 +13,7 @@ from pathlib import Path, PurePosixPath, PureWindowsPath
 
 from loguru import logger
 
+from vaultseek.core.config import normalize_usenet_download_client
 from vaultseek.models.interfaces.acquisition import (
     AcquisitionProviderConfig,
     DownloadHandle,
@@ -20,6 +22,7 @@ from vaultseek.models.interfaces.acquisition import (
     SearchRequest,
     SearchResult,
 )
+from vaultseek.plugins.builtin.nzbget import NzbgetClient
 from vaultseek.plugins.builtin.prowlarr_qbit.prowlarr_client import (
     ProwlarrClient,
     ProwlarrResult,
@@ -36,6 +39,7 @@ _AUDIO_EXTENSIONS = frozenset(
 _HASH_RESOLVE_ATTEMPTS = 8
 _HASH_RESOLVE_DELAY_SECONDS = 0.5
 _SAB_PREFIX = "sab:"
+_NZB_PREFIX = "nzb:"
 
 
 class ProwlarrProvider:
@@ -55,6 +59,7 @@ class ProwlarrProvider:
         prowlarr: ProwlarrClient | None = None,
         qbittorrent: QbittorrentClient | None = None,
         sabnzbd: SabnzbdClient | None = None,
+        nzbget: NzbgetClient | None = None,
         hash_resolve_attempts: int = _HASH_RESOLVE_ATTEMPTS,
         hash_resolve_delay_seconds: float = _HASH_RESOLVE_DELAY_SECONDS,
     ) -> None:
@@ -65,15 +70,19 @@ class ProwlarrProvider:
         self._prowlarr = prowlarr
         self._qbit = qbittorrent
         self._sab = sabnzbd
-        self._injected = any(x is not None for x in (prowlarr, qbittorrent, sabnzbd))
+        self._nzb = nzbget
+        self._injected = any(x is not None for x in (prowlarr, qbittorrent, sabnzbd, nzbget))
         self._connected = False
         self._qbit_enabled = False
         self._sab_enabled = False
+        self._nzb_enabled = False
+        self._usenet_client = "sabnzbd"
         self._categories: tuple[int, ...] = (3000,)
         self._min_seeders = 0
         self._qbit_category = "vaultseek"
         self._qbit_save_path = ""
         self._sab_category = "vaultseek"
+        self._nzb_category = "vaultseek"
         self._hash_attempts = max(1, hash_resolve_attempts)
         self._hash_delay = max(0.0, hash_resolve_delay_seconds)
 
@@ -93,13 +102,19 @@ class ProwlarrProvider:
         self._qbit_category = str(settings.get("qbit_category") or "vaultseek")
         self._qbit_save_path = str(settings.get("qbit_save_path") or "")
         self._sab_category = str(settings.get("sab_category") or "vaultseek")
+        self._nzb_category = str(settings.get("nzb_category") or "vaultseek")
         self._qbit_enabled = bool(settings.get("qbit_enabled"))
         self._sab_enabled = bool(settings.get("sab_enabled"))
-        # Tier constraints: usenet needs SAB only; torrent tiers need qBit only.
+        self._nzb_enabled = bool(settings.get("nzb_enabled"))
+        self._usenet_client = normalize_usenet_download_client(
+            settings.get("usenet_download_client")
+        )
+        # Tier constraints: usenet uses one NZB client; torrent tiers need qBit only.
         if self._protocol_filter == "usenet":
             self._qbit_enabled = False
         elif self._protocol_filter == "torrent":
             self._sab_enabled = False
+            self._nzb_enabled = False
 
         if not self._injected:
             self._prowlarr = ProwlarrClient(
@@ -121,6 +136,15 @@ class ProwlarrProvider:
                     api_key=str(settings.get("sab_api_key") or ""),
                 )
                 if self._sab_enabled
+                else None
+            )
+            self._nzb = (
+                NzbgetClient(
+                    base_url=str(settings.get("nzb_base_url") or ""),
+                    username=str(settings.get("nzb_username") or ""),
+                    password=str(settings.get("nzb_password") or ""),
+                )
+                if self._nzb_enabled
                 else None
             )
         else:
@@ -145,36 +169,64 @@ class ProwlarrProvider:
                 )
             if not self._sab_enabled:
                 self._sab = None
+            if self._nzb_enabled and self._nzb is None:
+                self._nzb = NzbgetClient(
+                    base_url=str(settings.get("nzb_base_url") or ""),
+                    username=str(settings.get("nzb_username") or ""),
+                    password=str(settings.get("nzb_password") or ""),
+                )
+            if not self._nzb_enabled:
+                self._nzb = None
 
         if self._prowlarr is None:
             self._connected = False
             return False
-        if not self._qbit_enabled and not self._sab_enabled:
-            logger.warning("Prowlarr enabled but neither qBittorrent nor SABnzbd is on")
+        sab_required = self._sab_enabled and not self._nzb_is_selected()
+        nzb_required = self._nzb_enabled and self._nzb_is_selected()
+        if not self._qbit_enabled and not sab_required and not nzb_required:
+            logger.warning("Prowlarr enabled but no download client is on")
             self._connected = False
             return False
 
         prowlarr_ok = self._prowlarr.probe()
         qbit_ok = True
         sab_ok = True
+        nzb_ok = True
         if self._qbit_enabled:
             qbit_ok = self._qbit is not None and self._qbit.probe()
             if not qbit_ok:
                 logger.warning("qBittorrent login failed — check WebUI URL and credentials")
-        if self._sab_enabled:
+        if sab_required:
             sab_ok = self._sab is not None and self._sab.probe()
             if not sab_ok:
                 logger.warning("SABnzbd did not respond — check URL and API key")
+        elif self._sab_enabled and (self._sab is None or not self._sab.probe()):
+            logger.warning("SABnzbd is enabled but did not respond; sab: downloads stay pending")
+        if nzb_required:
+            nzb_ok = self._nzb is not None and self._nzb.probe()
+            if not nzb_ok:
+                logger.warning(
+                    "NZBGet cannot be polled — check the URL and control username/password. "
+                    "An add-only login is not enough."
+                )
+        elif self._nzb_enabled and (self._nzb is None or not self._nzb.probe()):
+            logger.warning("NZBGet is enabled but did not respond; nzb: downloads stay pending")
         if not prowlarr_ok:
             logger.warning("Prowlarr did not respond — check base URL and API key")
         elif self._prowlarr is not None:
             self._prowlarr.refresh_indexer_privacy()
 
-        clients_ok = (not self._qbit_enabled or qbit_ok) and (not self._sab_enabled or sab_ok)
-        # Need at least one working download client.
-        any_client = (self._qbit_enabled and qbit_ok) or (self._sab_enabled and sab_ok)
+        clients_ok = qbit_ok and sab_ok and nzb_ok
+        any_client = (
+            (self._qbit_enabled and qbit_ok)
+            or (sab_required and sab_ok)
+            or (nzb_required and nzb_ok)
+        )
         self._connected = prowlarr_ok and clients_ok and any_client
         return self._connected
+
+    def _nzb_is_selected(self) -> bool:
+        return self._usenet_client == "nzbget" and self._protocol_filter != "torrent"
 
     def disconnect(self) -> None:
         self._connected = False
@@ -204,7 +256,7 @@ class ProwlarrProvider:
                 continue
             if hit.is_torrent and not self._qbit_enabled:
                 continue
-            if hit.is_nzb and not self._sab_enabled:
+            if hit.is_nzb and not self._usenet_ready():
                 continue
             if not hit.is_torrent and not hit.is_nzb:
                 continue
@@ -221,7 +273,10 @@ class ProwlarrProvider:
 
     def _to_search_result(self, hit: ProwlarrResult) -> SearchResult:
         result_id = hit.info_hash or hit.guid or hit.link
-        download_client = "sabnzbd" if hit.is_nzb else "qbittorrent"
+        if hit.is_nzb:
+            download_client = "nzbget" if self._usenet_client == "nzbget" else "sabnzbd"
+        else:
+            download_client = "qbittorrent"
         return SearchResult(
             provider_id=self.provider_id,
             result_id=result_id,
@@ -248,7 +303,11 @@ class ProwlarrProvider:
         if not link:
             raise ValueError("Prowlarr result has no download link")
 
-        if client == "sabnzbd" or (not client and self._looks_nzb(raw)):
+        # New NZBs follow the current Usenet client only. Never submit to the other
+        # client when this one rejects or returns an ambiguous id.
+        if client in {"sabnzbd", "nzbget"} or self._looks_nzb(raw):
+            if self._usenet_client == "nzbget":
+                return self._download_nzb(result, link)
             return self._download_sab(result, link)
         return self._download_qbit(result, raw, link)
 
@@ -265,6 +324,17 @@ class ProwlarrProvider:
         return DownloadHandle(
             provider_id=self.provider_id,
             download_id=f"{_SAB_PREFIX}{nzo_id}",
+            result_id=result.result_id,
+        )
+
+    def _download_nzb(self, result: SearchResult, link: str) -> DownloadHandle:
+        if self._nzb is None:
+            raise ConnectionError("NZBGet is not connected")
+        # Do not fall back to SABnzbd if this call is ambiguous or rejected.
+        nzb_id = self._nzb.append_url(link, category=self._nzb_category)
+        return DownloadHandle(
+            provider_id=self.provider_id,
+            download_id=f"{_NZB_PREFIX}{nzb_id}",
             result_id=result.result_id,
         )
 
@@ -307,6 +377,13 @@ class ProwlarrProvider:
         return known_hash
 
     def cancel(self, handle: DownloadHandle) -> bool:
+        if handle.download_id.startswith(_NZB_PREFIX):
+            if self._nzb is None:
+                return False
+            nzb_id = _parse_nzb_id(handle.download_id)
+            if nzb_id is None:
+                return False
+            return self._nzb.delete(nzb_id)
         if handle.download_id.startswith(_SAB_PREFIX):
             if self._sab is None:
                 return False
@@ -316,14 +393,16 @@ class ProwlarrProvider:
         return self._qbit.delete(handle.download_id, delete_files=False)
 
     def get_status(self, handle: DownloadHandle) -> DownloadStatus:
+        if handle.download_id.startswith(_SAB_PREFIX):
+            return self._status_sab(handle)
+        if handle.download_id.startswith(_NZB_PREFIX):
+            return self._status_nzb(handle)
         if not self._connected:
             return DownloadStatus(
                 download_id=handle.download_id,
                 state="failed",
                 message="Prowlarr download clients are not connected.",
             )
-        if handle.download_id.startswith(_SAB_PREFIX):
-            return self._status_sab(handle)
         return self._status_qbit(handle)
 
     def _status_sab(self, handle: DownloadHandle) -> DownloadStatus:
@@ -350,6 +429,51 @@ class ProwlarrProvider:
             message=mapped.message,
             local_paths=mapped.local_paths,
         )
+
+    def _status_nzb(self, handle: DownloadHandle) -> DownloadStatus:
+        if self._nzb is None:
+            return DownloadStatus(
+                download_id=handle.download_id,
+                state="failed",
+                message="NZBGet is not connected.",
+            )
+        nzb_id = _parse_nzb_id(handle.download_id)
+        if nzb_id is None:
+            return DownloadStatus(
+                download_id=handle.download_id,
+                state="queued",
+                progress=0.0,
+                message="NZBGet id is not valid.",
+            )
+        try:
+            item = self._nzb.find(nzb_id)
+        except (ConnectionError, PermissionError):
+            return DownloadStatus(
+                download_id=handle.download_id,
+                state="queued",
+                progress=0.0,
+                message="Waiting for NZBGet to answer.",
+            )
+        if item is None:
+            return DownloadStatus(
+                download_id=handle.download_id,
+                state="queued",
+                progress=0.0,
+                message="NZBGet has not registered this NZB.",
+            )
+        mapped = self._nzb.map_status(item)
+        return DownloadStatus(
+            download_id=handle.download_id,
+            state=mapped.state,
+            progress=mapped.progress,
+            message=mapped.message,
+            local_paths=mapped.local_paths,
+        )
+
+    def _usenet_ready(self) -> bool:
+        if self._usenet_client == "nzbget":
+            return self._nzb_enabled
+        return self._sab_enabled
 
     def _status_qbit(self, handle: DownloadHandle) -> DownloadStatus:
         if self._qbit is None:
@@ -381,6 +505,17 @@ class ProwlarrProvider:
 
 # Backward-compatible alias used by older imports/tests.
 ProwlarrQbittorrentProvider = ProwlarrProvider
+
+
+def _parse_nzb_id(download_id: str) -> int | None:
+    raw = download_id[len(_NZB_PREFIX) :]
+    try:
+        value = int(raw)
+    except ValueError:
+        return None
+    if value <= 0:
+        return None
+    return value
 
 
 def _guess_format(title: str) -> str | None:

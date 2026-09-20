@@ -7,7 +7,7 @@ from collections.abc import Iterable, Sequence
 # User-facing search waterfall tiers (reorderable in Settings).
 SEARCH_SOURCE_LABELS: dict[str, str] = {
     "nicotine_plus": "1. Nicotine+ (Soulseek)",
-    "usenet": "2. Usenet / news servers (Prowlarr → SABnzbd)",
+    "usenet": "2. Usenet / news servers (Prowlarr → SABnzbd or NZBGet)",
     "prowlarr_public": "3a. Prowlarr public trackers (→ qBittorrent)",
     "prowlarr_private": "3b. Prowlarr private trackers (→ qBittorrent)",
 }

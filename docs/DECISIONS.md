@@ -2,10 +2,14 @@
 
 # VaultSeek Architecture Decision Records (ADR)
 
+- 2026-09-20: NZBGet is an optional Usenet download client for the existing Prowlarr `usenet` tier, not a new search source. SABnzbd stays the default (`usenet_download_client`). New NZBs go to the selected client only; `sab:` and `nzb:` handles keep polling the client that accepted them. Schema version **23**. Plugins owns NZBGet. An add-only NZBGet login cannot poll queue or history.
+
+---
+
 ## 2026-09-14 — Settings vs Plugins: one writer per config key
 
 Settings owns folders, quality, wishlist interval, Nicotine+, search waterfall.
-Plugins owns Last.fm, Spotify, Prowlarr, qBittorrent, SABnzbd. Each page must
+Plugins owns Last.fm, Spotify, Prowlarr, qBittorrent, SABnzbd, NZBGet. Each page must
 `dataclasses.replace` the existing `AcquisitionConfig` / nested client configs
 so the other page’s credentials survive. Dashboard must not write wishlist
 hours. Nicotine+ Settings save must `replace(existing.nicotine_plus, …)` —

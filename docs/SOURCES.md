@@ -8,7 +8,7 @@ This is for operators and third-party AI. Product behaviour lives in
 | Order (default) | Source | Typical quality | Notes |
 |-----------------|--------|-----------------|-------|
 | 1 | Nicotine+ / Soulseek | FLAC to low-bitrate MP3, peer-dependent | Rate-limited; best for obscure / old rips |
-| 2 | Usenet via Prowlarr → SABnzbd | Often scene lossless or 320 | Needs a Usenet provider + NZB indexers |
+| 2 | Usenet via Prowlarr → SABnzbd or NZBGet | Often scene lossless or 320 | One Usenet downloader; SABnzbd is the default |
 | 3 | Prowlarr **public** torrents → qBittorrent | Mixed; seeders matter | Set a seeder floor in Plugins |
 | 4 | Prowlarr **private** torrents → qBittorrent | Often the cleanest digital copies | Last by default; respect ratio/API caps |
 

@@ -14,16 +14,20 @@ from PySide6.QtWidgets import (
     QProgressBar,
     QPushButton,
     QScrollArea,
+    QSizePolicy,
     QTableWidget,
     QTableWidgetItem,
     QVBoxLayout,
     QWidget,
 )
 
-from vaultseek.core.config import save_config
+from vaultseek.core.config import AcquisitionConfig, save_config
 from vaultseek.core.container import Container
 from vaultseek.core.logging import get_live_log_buffer
+from vaultseek.gui.async_task import run_in_background
 from vaultseek.gui.user_help import HelpDialog
+from vaultseek.gui.widgets.flow_host import FlowHost
+from vaultseek.gui.widgets.integration_status import IntegrationStatusTile
 from vaultseek.gui.widgets.pipeline_flow import STAGE_NAV_KEYS, PipelineFlowWidget
 from vaultseek.gui.widgets.table_utils import (
     configure_data_table,
@@ -31,8 +35,9 @@ from vaultseek.gui.widgets.table_utils import (
 from vaultseek.models.entities.job import Job
 from vaultseek.models.entities.track import LibraryZone
 from vaultseek.services.connection_status import (
-    format_tool_status_lines,
+    dashboard_probe_fingerprint,
     has_connected_download_source,
+    nzbget_enabled,
     summarize_music_tools,
 )
 from vaultseek.services.dashboard import DashboardSnapshot, build_dashboard_snapshot
@@ -40,6 +45,17 @@ from vaultseek.services.dashboard import DashboardSnapshot, build_dashboard_snap
 _TEXT_SELECT = (
     Qt.TextInteractionFlag.TextSelectableByMouse | Qt.TextInteractionFlag.TextSelectableByKeyboard
 )
+
+
+def _probe_map(result: object) -> dict[str, bool]:
+    """Keep only string keys. A failed batch stays empty so tiles stay unverified."""
+    if not isinstance(result, dict):
+        return {}
+    cleaned: dict[str, bool] = {}
+    for key, value in result.items():
+        if isinstance(key, str):
+            cleaned[key] = bool(value)
+    return cleaned
 
 
 def _selectable_label(text: str = "", *, muted: bool = False, insight: bool = False) -> QLabel:
@@ -54,16 +70,26 @@ def _selectable_label(text: str = "", *, muted: bool = False, insight: bool = Fa
     return label
 
 
+def _text_button(text: str) -> QPushButton:
+    """Button that keeps its label visible instead of shrinking in a wrapping row."""
+    button = QPushButton(text)
+    button.setSizePolicy(QSizePolicy.Policy.Minimum, QSizePolicy.Policy.Fixed)
+    return button
+
+
 class _KpiCard(QFrame):
     def __init__(self, title: str, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self.setProperty("kpiCard", True)
+        self.setMinimumWidth(120)
+        self.setSizePolicy(QSizePolicy.Policy.Minimum, QSizePolicy.Policy.Minimum)
         layout = QVBoxLayout(self)
         layout.setContentsMargins(14, 12, 14, 12)
         layout.setSpacing(4)
         self._value = QLabel("—")
         self._value.setProperty("kpiValue", True)
         self._title = QLabel(title)
+        self._title.setWordWrap(True)
         self._title.setProperty("muted", True)
         self._title.setTextInteractionFlags(_TEXT_SELECT)
         self._value.setTextInteractionFlags(_TEXT_SELECT)
@@ -84,6 +110,12 @@ class DashboardPage(QWidget):
         super().__init__(parent)
         self._container = container
         self._library_id: UUID | None = None
+        self._client_probes: dict[str, bool] | None = None
+        self._probe_token = 0
+        self._probe_inflight = False
+        self._probe_again = False
+        self._probe_fingerprint = ""
+        self._probe_applied_fingerprint = ""
 
         root = QVBoxLayout(self)
         root.setContentsMargins(0, 0, 0, 0)
@@ -91,32 +123,60 @@ class DashboardPage(QWidget):
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
         scroll.setFrameShape(QFrame.Shape.NoFrame)
+        scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
         root.addWidget(scroll)
+        self._scroll = scroll
 
         body = QWidget()
+        body.setMinimumWidth(0)
         scroll.setWidget(body)
+        self._body = body
         layout = QVBoxLayout(body)
         layout.setContentsMargins(16, 12, 16, 16)
         layout.setSpacing(14)
 
-        header = QHBoxLayout()
+        header = FlowHost(spacing=8)
         self._heading = QLabel("Dashboard")
         self._heading.setProperty("heading", True)
-        header.addWidget(self._heading)
-        header.addStretch(1)
-        self._btn_setup_wizard = QPushButton("Setup wizard")
+        header.flow().addWidget(self._heading)
+        self._btn_setup_wizard = _text_button("Setup wizard")
         self._btn_setup_wizard.setToolTip(
             "Folders, Nicotine+, and optional tokens. Opens anytime — never forced "
             "again after first run."
         )
         self._btn_setup_wizard.setProperty("secondary", True)
         self._btn_setup_wizard.clicked.connect(lambda: self.navigate_requested.emit("setup_wizard"))
-        header.addWidget(self._btn_setup_wizard)
-        refresh = QPushButton("Refresh")
+        header.flow().addWidget(self._btn_setup_wizard)
+        refresh = _text_button("Refresh")
         refresh.setProperty("secondary", True)
-        refresh.clicked.connect(self.refresh)
-        header.addWidget(refresh)
-        layout.addLayout(header)
+        refresh.clicked.connect(lambda: self.refresh(reprobe=True))
+        header.flow().addWidget(refresh)
+        layout.addWidget(header)
+
+        self._music_tools = QFrame()
+        self._music_tools.setProperty("dashPanel", True)
+        tools_layout = QVBoxLayout(self._music_tools)
+        tools_title = QLabel("Music tools")
+        tools_title.setProperty("panelTitle", True)
+        tools_layout.addWidget(tools_title)
+        self._tools_host = FlowHost(spacing=8)
+        self._status_tiles: dict[str, IntegrationStatusTile] = {}
+        tools_layout.addWidget(self._tools_host)
+        tools_actions = FlowHost(spacing=6)
+        btn_settings = _text_button("Settings")
+        btn_settings.setProperty("secondary", True)
+        btn_settings.clicked.connect(lambda: self.navigate_requested.emit("settings"))
+        btn_plugins = _text_button("Plugins")
+        btn_plugins.setProperty("secondary", True)
+        btn_plugins.clicked.connect(lambda: self.navigate_requested.emit("plugins"))
+        btn_help = _text_button("Setup instructions")
+        btn_help.setProperty("secondary", True)
+        btn_help.clicked.connect(lambda: HelpDialog(self, topic="connection-setup").exec())
+        tools_actions.flow().addWidget(btn_settings)
+        tools_actions.flow().addWidget(btn_plugins)
+        tools_actions.flow().addWidget(btn_help)
+        tools_layout.addWidget(tools_actions)
+        layout.addWidget(self._music_tools)
 
         self._insight = _selectable_label(insight=True)
         layout.addWidget(self._insight)
@@ -130,47 +190,21 @@ class DashboardPage(QWidget):
         gs_layout.addWidget(gs_title)
         self._getting_started_body = _selectable_label()
         gs_layout.addWidget(self._getting_started_body)
-        gs_actions = QHBoxLayout()
-        self._btn_gs_scan = QPushButton("Scan Incoming")
+        gs_actions = FlowHost(spacing=6)
+        self._btn_gs_scan = _text_button("Scan Incoming")
         self._btn_gs_scan.setProperty("secondary", True)
         self._btn_gs_scan.clicked.connect(lambda: self.navigate_requested.emit("scan"))
-        self._btn_gs_missing = QPushButton("Find music")
+        self._btn_gs_missing = _text_button("Find music")
         self._btn_gs_missing.setProperty("secondary", True)
         self._btn_gs_missing.clicked.connect(lambda: self.navigate_requested.emit("find"))
-        self._btn_gs_dismiss = QPushButton("Dismiss tips")
+        self._btn_gs_dismiss = _text_button("Dismiss tips")
         self._btn_gs_dismiss.setProperty("secondary", True)
         self._btn_gs_dismiss.clicked.connect(self._dismiss_onboarding_tips)
-        gs_actions.addWidget(self._btn_gs_scan)
-        gs_actions.addWidget(self._btn_gs_missing)
-        gs_actions.addWidget(self._btn_gs_dismiss)
-        gs_actions.addStretch(1)
-        gs_layout.addLayout(gs_actions)
+        gs_actions.flow().addWidget(self._btn_gs_scan)
+        gs_actions.flow().addWidget(self._btn_gs_missing)
+        gs_actions.flow().addWidget(self._btn_gs_dismiss)
+        gs_layout.addWidget(gs_actions)
         layout.addWidget(self._getting_started)
-
-        self._music_tools = QFrame()
-        self._music_tools.setProperty("dashPanel", True)
-        tools_layout = QVBoxLayout(self._music_tools)
-        tools_title = QLabel("Music tools")
-        tools_title.setProperty("panelTitle", True)
-        tools_layout.addWidget(tools_title)
-        self._music_tools_body = _selectable_label()
-        tools_layout.addWidget(self._music_tools_body)
-        tools_actions = QHBoxLayout()
-        btn_settings = QPushButton("Settings")
-        btn_settings.setProperty("secondary", True)
-        btn_settings.clicked.connect(lambda: self.navigate_requested.emit("settings"))
-        btn_plugins = QPushButton("Plugins")
-        btn_plugins.setProperty("secondary", True)
-        btn_plugins.clicked.connect(lambda: self.navigate_requested.emit("plugins"))
-        btn_help = QPushButton("Setup instructions")
-        btn_help.setProperty("secondary", True)
-        btn_help.clicked.connect(lambda: HelpDialog(self, topic="connection-setup").exec())
-        tools_actions.addWidget(btn_settings)
-        tools_actions.addWidget(btn_plugins)
-        tools_actions.addWidget(btn_help)
-        tools_actions.addStretch(1)
-        tools_layout.addLayout(tools_actions)
-        layout.addWidget(self._music_tools)
 
         def _section_title(text: str) -> QLabel:
             label = QLabel(text)
@@ -181,8 +215,7 @@ class DashboardPage(QWidget):
 
         # Pipeline queue — work waiting/running in the library job queue *right now*
         layout.addWidget(_section_title("Library pipeline — queue right now"))
-        pipeline_kpi = QHBoxLayout()
-        pipeline_kpi.setSpacing(10)
+        self._pipeline_kpi_host = FlowHost(spacing=10)
         self._kpi_pending = _KpiCard("Pending")
         self._kpi_pending.setToolTip(
             "Library pipeline jobs waiting to start (scan, hash, fingerprint, identify, …)."
@@ -192,13 +225,12 @@ class DashboardPage(QWidget):
         self._kpi_failed = _KpiCard("Failed")
         self._kpi_failed.setToolTip("Library pipeline jobs that failed and need retry or cleanup.")
         for card in (self._kpi_pending, self._kpi_running, self._kpi_failed):
-            pipeline_kpi.addWidget(card)
-        layout.addLayout(pipeline_kpi)
+            self._pipeline_kpi_host.flow().addWidget(card)
+        layout.addWidget(self._pipeline_kpi_host)
 
         # Totals — collection size and throughput (not the live queue)
         layout.addWidget(_section_title("Totals"))
-        totals_kpi = QHBoxLayout()
-        totals_kpi.setSpacing(10)
+        totals_kpi = FlowHost(spacing=10)
         self._kpi_tracks = _KpiCard("Tracks in collection")
         self._kpi_tracks.setToolTip(
             "Cumulative catalog size for this library. New scans add tracks; "
@@ -211,13 +243,12 @@ class DashboardPage(QWidget):
         self._kpi_review = _KpiCard("Awaiting review")
         self._kpi_review.setToolTip("Review items waiting for your decision.")
         for card in (self._kpi_tracks, self._kpi_done, self._kpi_review):
-            totals_kpi.addWidget(card)
-        layout.addLayout(totals_kpi)
+            totals_kpi.flow().addWidget(card)
+        layout.addWidget(totals_kpi)
 
         # Wishlist — separate from library pipeline (Soulseek downloads)
         layout.addWidget(_section_title("Wishlist — downloads in progress"))
-        acq_kpi = QHBoxLayout()
-        acq_kpi.setSpacing(10)
+        acq_kpi = FlowHost(spacing=10)
         self._kpi_missing = _KpiCard("Missing tracks")
         self._kpi_missing.setToolTip(
             "Tracks missing vs MusicBrainz release tracklists (detected gaps, not yet queued)."
@@ -236,31 +267,30 @@ class DashboardPage(QWidget):
             self._kpi_acq_today,
             self._kpi_acq_total,
         ):
-            acq_kpi.addWidget(card)
-        layout.addLayout(acq_kpi)
+            acq_kpi.flow().addWidget(card)
+        layout.addWidget(acq_kpi)
 
-        wishlist_row = QHBoxLayout()
         self._wishlist_hint = QLabel("")
         self._wishlist_hint.setProperty("muted", True)
         self._wishlist_hint.setWordWrap(True)
-        wishlist_row.addWidget(self._wishlist_hint, stretch=1)
-        change_interval = QPushButton("Change in Settings")
+        layout.addWidget(self._wishlist_hint)
+        wishlist_actions = FlowHost(spacing=6)
+        change_interval = _text_button("Change in Settings")
         change_interval.setProperty("secondary", True)
         change_interval.setToolTip(
             "Wishlist search interval is saved with Settings → Wishlist & downloads."
         )
         change_interval.clicked.connect(lambda: self.navigate_requested.emit("settings"))
-        wishlist_row.addWidget(change_interval)
-        layout.addLayout(wishlist_row)
+        wishlist_actions.flow().addWidget(change_interval)
+        layout.addWidget(wishlist_actions)
 
-        # Quick actions
-        actions = QHBoxLayout()
-        self._btn_review = QPushButton("Open Review")
-        self._btn_jobs = QPushButton("Open Jobs")
-        self._btn_acquisition = QPushButton("Open Wishlist")
-        self._btn_library = QPushButton("Open Library")
-        self._btn_scan = QPushButton("Scan Incoming")
-        self._btn_force_scan = QPushButton("Force rescan")
+        actions = FlowHost(spacing=6)
+        self._btn_review = _text_button("Open Review")
+        self._btn_jobs = _text_button("Open Jobs")
+        self._btn_acquisition = _text_button("Open Wishlist")
+        self._btn_library = _text_button("Open Library")
+        self._btn_scan = _text_button("Scan Incoming")
+        self._btn_force_scan = _text_button("Force rescan")
         for btn in (
             self._btn_jobs,
             self._btn_acquisition,
@@ -282,14 +312,13 @@ class DashboardPage(QWidget):
         self._btn_library.clicked.connect(lambda: self.navigate_requested.emit("library"))
         self._btn_scan.clicked.connect(lambda: self.navigate_requested.emit("scan"))
         self._btn_force_scan.clicked.connect(lambda: self.navigate_requested.emit("force_scan"))
-        actions.addWidget(self._btn_review)
-        actions.addWidget(self._btn_jobs)
-        actions.addWidget(self._btn_acquisition)
-        actions.addWidget(self._btn_library)
-        actions.addWidget(self._btn_scan)
-        actions.addWidget(self._btn_force_scan)
-        actions.addStretch(1)
-        layout.addLayout(actions)
+        actions.flow().addWidget(self._btn_review)
+        actions.flow().addWidget(self._btn_jobs)
+        actions.flow().addWidget(self._btn_acquisition)
+        actions.flow().addWidget(self._btn_library)
+        actions.flow().addWidget(self._btn_scan)
+        actions.flow().addWidget(self._btn_force_scan)
+        layout.addWidget(actions)
 
         self._last_scan = _selectable_label(muted=True)
         layout.addWidget(self._last_scan)
@@ -326,17 +355,24 @@ class DashboardPage(QWidget):
         )
         self._pipeline = PipelineFlowWidget()
         self._pipeline.stage_clicked.connect(self._on_pipeline_stage_clicked)
+        pipe_scroll = QScrollArea()
+        pipe_scroll.setWidget(self._pipeline)
+        pipe_scroll.setWidgetResizable(False)
+        pipe_scroll.setFrameShape(QFrame.Shape.NoFrame)
+        pipe_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
+        pipe_scroll.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        pipe_scroll.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Fixed)
+        pipe_scroll.setMinimumHeight(160)
         pipe_layout.addWidget(pipe_title)
         pipe_layout.addWidget(pipe_help)
-        pipe_layout.addWidget(self._pipeline)
+        pipe_layout.addWidget(pipe_scroll)
         layout.addWidget(pipe_box)
 
         # Collection + confidence side by side
-        mid = QHBoxLayout()
-        mid.setSpacing(12)
-
+        mid = FlowHost(spacing=12)
         zone_box = QFrame()
         zone_box.setProperty("dashPanel", True)
+        zone_box.setMinimumWidth(280)
         zone_layout = QVBoxLayout(zone_box)
         zone_layout.addWidget(self._panel_title("Collection by zone"))
         zone_help = _selectable_label(
@@ -350,7 +386,7 @@ class DashboardPage(QWidget):
         for zone in LibraryZone:
             row = QHBoxLayout()
             label = QLabel(zone.value.title())
-            label.setMinimumWidth(80)
+            label.setWordWrap(True)
             bar = QProgressBar()
             bar.setTextVisible(False)
             count = QLabel("0")
@@ -361,10 +397,11 @@ class DashboardPage(QWidget):
             row.addWidget(count)
             zone_layout.addLayout(row)
             self._zone_bars[zone.value] = (label, bar, count)
-        mid.addWidget(zone_box, stretch=1)
+        mid.flow().addWidget(zone_box)
 
         conf_box = QFrame()
         conf_box.setProperty("dashPanel", True)
+        conf_box.setMinimumWidth(280)
         conf_layout = QVBoxLayout(conf_box)
         conf_layout.addWidget(self._panel_title("Identification confidence"))
         self._avg_conf = _selectable_label("Average: —", muted=True)
@@ -379,7 +416,7 @@ class DashboardPage(QWidget):
         ):
             row = QHBoxLayout()
             label = QLabel(title)
-            label.setMinimumWidth(140)
+            label.setWordWrap(True)
             bar = QProgressBar()
             bar.setTextVisible(False)
             count = QLabel("0")
@@ -396,8 +433,8 @@ class DashboardPage(QWidget):
             muted=True,
         )
         conf_layout.addWidget(conf_note)
-        mid.addWidget(conf_box, stretch=1)
-        layout.addLayout(mid)
+        mid.flow().addWidget(conf_box)
+        layout.addWidget(mid)
 
         # Review breakdown + duplicates
         review_box = QFrame()
@@ -422,11 +459,10 @@ class DashboardPage(QWidget):
         layout.addWidget(fail_box)
 
         # Recent failures + live activity log
-        live = QHBoxLayout()
-        live.setSpacing(12)
-
+        live = FlowHost(spacing=12)
         failed_box = QFrame()
         failed_box.setProperty("dashPanel", True)
+        failed_box.setMinimumWidth(280)
         failed_layout = QVBoxLayout(failed_box)
         failed_layout.addWidget(self._panel_title("Recent failures"))
         self._failed_table = QTableWidget(0, 3)
@@ -435,11 +471,14 @@ class DashboardPage(QWidget):
         self._failed_table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
         configure_data_table(self._failed_table)
         self._failed_table.setMaximumHeight(180)
+        self._failed_table.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
+        self._failed_table.horizontalHeader().setMinimumSectionSize(48)
         failed_layout.addWidget(self._failed_table)
-        live.addWidget(failed_box, stretch=1)
+        live.flow().addWidget(failed_box)
 
         log_box = QFrame()
         log_box.setProperty("dashPanel", True)
+        log_box.setMinimumWidth(280)
         log_layout = QVBoxLayout(log_box)
         log_layout.addWidget(self._panel_title("Live activity"))
         log_help = _selectable_label(
@@ -458,8 +497,8 @@ class DashboardPage(QWidget):
         self._live_log.setFont(mono)
         self._live_log.setPlaceholderText("Waiting for activity…")
         log_layout.addWidget(self._live_log)
-        live.addWidget(log_box, stretch=2)
-        layout.addLayout(live)
+        live.flow().addWidget(log_box)
+        layout.addWidget(live)
 
         layout.addStretch(1)
 
@@ -475,7 +514,7 @@ class DashboardPage(QWidget):
         self._library_id = library_id
         self.refresh()
 
-    def refresh(self) -> None:
+    def refresh(self, *, reprobe: bool = False) -> None:
         hours = float(self._container.config.acquisition.wishlist_search_interval_hours or 0.0)
         interval = (
             "Wishlist search: continuous (rate-limited)"
@@ -483,9 +522,11 @@ class DashboardPage(QWidget):
             else f"Wishlist search: at most every {hours:g} hour(s)"
         )
         self._wishlist_hint.setText(interval + " — change under Settings → Wishlist & downloads.")
+        self._drop_stale_client_probes()
         snap = build_dashboard_snapshot(self._container, self._library_id)
         self._apply(snap)
         self._refresh_live_log()
+        self._schedule_client_probes(force=reprobe)
 
     def _on_pipeline_stage_clicked(self, stage_key: str) -> None:
         nav_key = STAGE_NAV_KEYS.get(stage_key)
@@ -517,13 +558,14 @@ class DashboardPage(QWidget):
 
         acq = self._container.config.acquisition
         download_on = acq.nicotine_plus.enabled or (
-            acq.prowlarr.enabled and (acq.qbittorrent.enabled or acq.sabnzbd.enabled)
+            acq.prowlarr.enabled
+            and (acq.qbittorrent.enabled or acq.sabnzbd.enabled or nzbget_enabled(acq))
         )
         connected_ids = self._container.provider_manager.connected_provider_ids()
         if not download_on:
             steps.append(
                 "2. Enable a download source: Settings → Wishlist & downloads (Nicotine+) "
-                "or System → Plugins (Prowlarr)."
+                "or System → Plugins (Prowlarr, SABnzbd, or NZBGet)."
             )
         elif not has_connected_download_source(connected_ids):
             steps.append(
@@ -591,8 +633,84 @@ class DashboardPage(QWidget):
             recommendations=self._container.config.recommendations,
             connected_ids=self._container.provider_manager.connected_provider_ids(),
             media_plugins=media_plugins,
+            client_probes=self._client_probes,
         )
-        self._music_tools_body.setText(format_tool_status_lines(rows))
+        for row in rows:
+            key = row.short_name or row.name
+            tile = self._status_tiles.get(key)
+            if tile is None:
+                tile = IntegrationStatusTile(row)
+                tile.activated.connect(self.navigate_requested.emit)
+                self._tools_host.flow().addWidget(tile)
+                tile.show()
+                self._status_tiles[key] = tile
+            else:
+                tile.apply_status(row)
+        self._tools_host.flow().invalidate()
+        self._tools_host.updateGeometry()
+
+    def _drop_stale_client_probes(self) -> None:
+        """Hide probe results that belong to different connection settings."""
+        fingerprint = dashboard_probe_fingerprint(self._container.config.acquisition)
+        if fingerprint != self._probe_applied_fingerprint:
+            self._client_probes = None
+
+    def _schedule_client_probes(self, *, force: bool) -> None:
+        """Start one background probe. Skip duplicates; drop results after edits."""
+        acquisition = self._container.config.acquisition
+        fingerprint = dashboard_probe_fingerprint(acquisition)
+        if self._probe_inflight:
+            if force or fingerprint != self._probe_fingerprint:
+                self._probe_token += 1
+                self._probe_again = True
+                self._probe_fingerprint = fingerprint
+                self._client_probes = None
+            return
+        if (
+            not force
+            and fingerprint == self._probe_applied_fingerprint
+            and self._client_probes is not None
+        ):
+            return
+        self._start_client_probes(acquisition, fingerprint)
+
+    def _start_client_probes(self, acquisition: AcquisitionConfig, fingerprint: str) -> None:
+        self._probe_token += 1
+        token = self._probe_token
+        self._probe_inflight = True
+        self._probe_again = False
+        self._probe_fingerprint = fingerprint
+        checks = self._container.connection_checks
+
+        def work() -> dict[str, bool]:
+            return checks.probe_dashboard_clients(acquisition)
+
+        def finish(result: object) -> None:
+            self._probe_inflight = False
+            if not self._page_alive():
+                return
+            live = dashboard_probe_fingerprint(self._container.config.acquisition)
+            stale = token != self._probe_token or live != fingerprint
+            if stale:
+                self._client_probes = None
+                self._probe_applied_fingerprint = ""
+                self._refresh_music_tools()
+                if self._probe_again or live != fingerprint:
+                    self._probe_again = False
+                    self._schedule_client_probes(force=True)
+                return
+            self._client_probes = _probe_map(result)
+            self._probe_applied_fingerprint = fingerprint
+            self._refresh_music_tools()
+
+        run_in_background(work, on_finished=finish, on_failed=lambda _message: finish(None))
+
+    def _page_alive(self) -> bool:
+        try:
+            self.objectName()
+        except RuntimeError:
+            return False
+        return True
 
     def _apply(self, snap: DashboardSnapshot) -> None:
         self._refresh_getting_started(snap)

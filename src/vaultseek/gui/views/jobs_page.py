@@ -5,7 +5,6 @@ from __future__ import annotations
 from uuid import UUID
 
 from PySide6.QtWidgets import (
-    QHBoxLayout,
     QLabel,
     QMessageBox,
     QPushButton,
@@ -18,6 +17,7 @@ from PySide6.QtWidgets import (
 from vaultseek.core.container import Container
 from vaultseek.gui.datetime_format import format_local_datetime
 from vaultseek.gui.widgets.empty_state import EmptyState
+from vaultseek.gui.widgets.flow_host import FlowHost, ensure_control_labels
 from vaultseek.gui.widgets.page_header import add_page_header
 from vaultseek.gui.widgets.table_utils import (
     configure_data_table,
@@ -58,7 +58,7 @@ class JobsPage(QWidget):
         configure_data_table(self._table)
         layout.addWidget(self._table)
 
-        buttons = QHBoxLayout()
+        buttons = FlowHost(spacing=6)
         cancel_btn = QPushButton("Cancel")
         retry_btn = QPushButton("Retry failed")
         refresh_btn = QPushButton("Refresh")
@@ -71,11 +71,11 @@ class JobsPage(QWidget):
         cancel_btn.clicked.connect(self._cancel_selected)
         retry_btn.clicked.connect(self._retry_selected)
         refresh_btn.clicked.connect(self.refresh)
-        buttons.addWidget(cancel_btn)
-        buttons.addWidget(retry_btn)
-        buttons.addWidget(refresh_btn)
-        buttons.addStretch(1)
-        layout.addLayout(buttons)
+        buttons.add_widget(cancel_btn)
+        buttons.add_widget(retry_btn)
+        buttons.add_widget(refresh_btn)
+        layout.addWidget(buttons)
+        ensure_control_labels(self)
 
     def set_library(self, library_id: UUID | None) -> None:
         self._library_id = library_id

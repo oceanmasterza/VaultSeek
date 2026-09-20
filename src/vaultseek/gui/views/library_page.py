@@ -9,7 +9,6 @@ from PySide6.QtCore import QPoint, Qt, Signal
 from PySide6.QtGui import QAction, QKeySequence
 from PySide6.QtWidgets import (
     QComboBox,
-    QHBoxLayout,
     QLabel,
     QLineEdit,
     QMenu,
@@ -36,6 +35,7 @@ from vaultseek.gui.widgets.browse import (
 )
 from vaultseek.gui.widgets.desktop import copy_text_to_clipboard, open_path, reveal_in_explorer
 from vaultseek.gui.widgets.empty_state import EmptyState
+from vaultseek.gui.widgets.flow_host import FlowHost, add_labeled_field, ensure_control_labels
 from vaultseek.gui.widgets.health_legend import health_legend_label
 from vaultseek.gui.widgets.table_utils import (
     begin_table_update,
@@ -68,35 +68,33 @@ class LibraryPage(QWidget):
         heading.setProperty("heading", True)
         layout.addWidget(heading)
 
-        toolbar = QHBoxLayout()
-        toolbar.addWidget(QLabel("Zone:"))
+        toolbar = FlowHost(spacing=6)
         self._zone = QComboBox()
         self._zone.addItem("All zones", None)
         for zone in LibraryZone:
             self._zone.addItem(zone.value.title(), zone)
         self._zone.currentIndexChanged.connect(self._on_zone_combo)
-        toolbar.addWidget(self._zone)
-        toolbar.addWidget(QLabel("Search:"))
+        add_labeled_field(toolbar, "Zone", self._zone)
         self._search = QLineEdit()
         self._search.setPlaceholderText("Filter by title or file name…")
         self._search.setClearButtonEnabled(True)
         connect_debounced(self._search.textChanged, self._reload_tracks, parent=self)
-        toolbar.addWidget(self._search, stretch=1)
+        add_labeled_field(toolbar, "Search", self._search, expand=True)
         scan_btn = QPushButton("Scan Incoming")
         scan_btn.setProperty("secondary", True)
         scan_btn.setToolTip("Enqueue a scan of this library’s Incoming folder.")
         scan_btn.clicked.connect(self._scan_incoming)
-        toolbar.addWidget(scan_btn)
+        toolbar.add_widget(scan_btn)
         find_music = QPushButton("Find music…")
         find_music.setProperty("secondary", True)
         find_music.clicked.connect(lambda: self.navigate_requested.emit("find"))
-        toolbar.addWidget(find_music)
+        toolbar.add_widget(find_music)
         archive_selected = QPushButton("Archive selected…")
         archive_selected.setProperty("secondary", True)
         archive_selected.setToolTip("Move selected music to Archive. The move can be rolled back.")
         archive_selected.clicked.connect(self._archive_selected_tracks)
-        toolbar.addWidget(archive_selected)
-        layout.addLayout(toolbar)
+        toolbar.add_widget(archive_selected)
+        layout.addWidget(toolbar)
         layout.addWidget(health_legend_label())
 
         self._empty = EmptyState(
@@ -157,6 +155,7 @@ class LibraryPage(QWidget):
         reveal.setShortcut(QKeySequence("Ctrl+Return"))
         reveal.triggered.connect(self._reveal_selected)
         self.addAction(reveal)
+        ensure_control_labels(self)
 
     def set_library(self, library_id: UUID | None) -> None:
         self._library_id = library_id

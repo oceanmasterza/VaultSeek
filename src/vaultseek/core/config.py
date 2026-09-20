@@ -18,7 +18,7 @@ from typing import Any
 
 from vaultseek.core.exceptions import ConfigError, ConfigMigrationError, ConfigVersionError
 
-CURRENT_SCHEMA_VERSION = 22
+CURRENT_SCHEMA_VERSION = 23
 
 
 @dataclass(frozen=True)
@@ -81,12 +81,34 @@ class QbittorrentConfig:
 
 @dataclass(frozen=True)
 class SabnzbdConfig:
-    """SABnzbd settings — where Prowlarr NZB / Usenet results are downloaded."""
+    """SABnzbd settings — default client for Prowlarr NZB / Usenet results."""
 
     enabled: bool = False
     base_url: str = "http://127.0.0.1:8080"
     api_key: str = ""
     category: str = "vaultseek"
+
+
+@dataclass(frozen=True)
+class NzbgetConfig:
+    """NZBGet settings — optional Usenet client. SABnzbd stays the default."""
+
+    enabled: bool = False
+    base_url: str = "http://127.0.0.1:6789"
+    username: str = "nzbget"
+    password: str = field(default="", repr=False)
+    category: str = "vaultseek"
+
+
+_USENET_DOWNLOAD_CLIENTS = frozenset({"sabnzbd", "nzbget"})
+
+
+def normalize_usenet_download_client(value: object) -> str:
+    """Return ``sabnzbd`` or ``nzbget``. Any other value keeps the SABnzbd default."""
+    text = str(value or "").strip().casefold()
+    if text in _USENET_DOWNLOAD_CLIENTS:
+        return text
+    return "sabnzbd"
 
 
 @dataclass(frozen=True)
@@ -121,6 +143,9 @@ class AcquisitionConfig:
     prowlarr: ProwlarrConfig = field(default_factory=ProwlarrConfig)
     qbittorrent: QbittorrentConfig = field(default_factory=QbittorrentConfig)
     sabnzbd: SabnzbdConfig = field(default_factory=SabnzbdConfig)
+    # Which client receives new Usenet NZBs. Existing sab:/nzb: handles stay on their client.
+    usenet_download_client: str = "sabnzbd"
+    nzbget: NzbgetConfig = field(default_factory=NzbgetConfig)
 
 
 @dataclass(frozen=True)
@@ -610,6 +635,19 @@ def _migrate_v21_to_v22(raw: dict[str, Any]) -> dict[str, Any]:
     return migrated
 
 
+def _migrate_v22_to_v23(raw: dict[str, Any]) -> dict[str, Any]:
+    """Add optional NZBGet settings. SABnzbd remains the Usenet download client."""
+    migrated = dict(raw)
+    migrated["schema_version"] = 23
+    acq = dict(migrated.get("acquisition") or asdict(AcquisitionConfig()))
+    acq.setdefault("nzbget", asdict(NzbgetConfig()))
+    acq["usenet_download_client"] = normalize_usenet_download_client(
+        acq.get("usenet_download_client")
+    )
+    migrated["acquisition"] = acq
+    return migrated
+
+
 _MIGRATIONS: dict[int, Callable[[dict[str, Any]], dict[str, Any]]] = {
     1: _migrate_v1_to_v2,
     2: _migrate_v2_to_v3,
@@ -632,6 +670,7 @@ _MIGRATIONS: dict[int, Callable[[dict[str, Any]], dict[str, Any]]] = {
     19: _migrate_v19_to_v20,
     20: _migrate_v20_to_v21,
     21: _migrate_v21_to_v22,
+    22: _migrate_v22_to_v23,
 }
 
 
@@ -744,6 +783,15 @@ def _from_dict(raw: dict[str, Any]) -> AppConfig:
             coerced["sabnzbd"] = SabnzbdConfig(
                 **{key: value for key, value in sabnzbd_raw.items() if key in sabnzbd_fields}
             )
+        nzbget_raw = coerced.get("nzbget")
+        if isinstance(nzbget_raw, dict):
+            nzbget_fields = set(NzbgetConfig.__dataclass_fields__)
+            coerced["nzbget"] = NzbgetConfig(
+                **{key: value for key, value in nzbget_raw.items() if key in nzbget_fields}
+            )
+        coerced["usenet_download_client"] = normalize_usenet_download_client(
+            coerced.get("usenet_download_client")
+        )
         filtered["acquisition"] = AcquisitionConfig(**coerced)
 
     recommendations_raw = filtered.get("recommendations")

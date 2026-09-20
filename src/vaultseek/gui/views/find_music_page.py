@@ -11,7 +11,6 @@ from uuid import UUID
 
 from PySide6.QtCore import Signal
 from PySide6.QtWidgets import (
-    QHBoxLayout,
     QLabel,
     QMessageBox,
     QPushButton,
@@ -24,6 +23,7 @@ from vaultseek.core.container import Container
 from vaultseek.gui.async_task import run_in_background
 from vaultseek.gui.views.discogs_page import DiscogsPage
 from vaultseek.gui.widgets.empty_state import EmptyState
+from vaultseek.gui.widgets.flow_host import FlowHost, ensure_control_labels
 from vaultseek.services.library_scan_actions import run_missing_scan, run_quality_upgrade_scan
 
 
@@ -57,6 +57,7 @@ class FindMusicPage(QWidget):
         self._tabs.addTab(self._gaps, "Library gaps")
         self._tabs.addTab(self._discogs, "Discogs browse")
         layout.addWidget(self._tabs, stretch=1)
+        ensure_control_labels(self)
 
     def set_library(self, library_id: UUID | None) -> None:
         self._library_id = library_id
@@ -88,7 +89,7 @@ class _GapsTab(QWidget):
         self._status.setWordWrap(True)
         layout.addWidget(self._status)
 
-        actions = QHBoxLayout()
+        actions = FlowHost(spacing=6)
         self._btn_missing = QPushButton("Find missing songs")
         self._btn_missing.setToolTip(
             "Compare library albums to MusicBrainz tracklists and queue downloads."
@@ -103,11 +104,10 @@ class _GapsTab(QWidget):
         self._btn_wishlist = QPushButton("Open wishlist")
         self._btn_wishlist.setProperty("secondary", True)
         self._btn_wishlist.clicked.connect(lambda: self.navigate_requested.emit("acquisition"))
-        actions.addWidget(self._btn_missing)
-        actions.addWidget(self._btn_upgrades)
-        actions.addWidget(self._btn_wishlist)
-        actions.addStretch(1)
-        layout.addLayout(actions)
+        actions.add_widget(self._btn_missing)
+        actions.add_widget(self._btn_upgrades)
+        actions.add_widget(self._btn_wishlist)
+        layout.addWidget(actions)
 
         self._empty = EmptyState(
             "No gap scan yet",
@@ -127,6 +127,7 @@ class _GapsTab(QWidget):
         tip.setWordWrap(True)
         tip.setProperty("muted", True)
         layout.addWidget(tip)
+        ensure_control_labels(self)
 
     def set_library(self, library_id: UUID | None) -> None:
         self._library_id = library_id

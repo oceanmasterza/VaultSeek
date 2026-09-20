@@ -13,6 +13,7 @@ from uuid import UUID
 
 from PySide6.QtWidgets import (
     QCheckBox,
+    QComboBox,
     QDialog,
     QFormLayout,
     QGroupBox,
@@ -22,6 +23,7 @@ from PySide6.QtWidgets import (
     QMessageBox,
     QPlainTextEdit,
     QPushButton,
+    QSizePolicy,
     QSpinBox,
     QVBoxLayout,
     QWidget,
@@ -30,15 +32,18 @@ from PySide6.QtWidgets import (
 from vaultseek.core.config import (
     AcquisitionConfig,
     LastfmConfig,
+    NzbgetConfig,
     ProwlarrConfig,
     QbittorrentConfig,
     RecommendationConfig,
     SabnzbdConfig,
     SpotifyConfig,
+    normalize_usenet_download_client,
     save_config,
 )
 from vaultseek.core.container import Container, _build_recommenders
 from vaultseek.gui.async_task import run_in_background
+from vaultseek.gui.widgets.flow_host import FlowHost
 from vaultseek.gui.widgets.local_setup_dialog import LocalSetupDialog
 from vaultseek.gui.widgets.scrollable import wrap_scrollable
 from vaultseek.gui.widgets.settings_navigation import add_settings_navigation
@@ -67,8 +72,9 @@ class PluginsPage(QWidget):
         layout.addWidget(heading)
         intro = QLabel(
             "Optional add-ons, all disabled by default. Last.fm and Spotify fill the "
-            "Wishlist with suggestions; Prowlarr / qBittorrent / SABnzbd add indexer "
-            "downloads. Nicotine+, Discogs, AcoustID, and library quality stay in Settings."
+            "Wishlist with suggestions; Prowlarr searches indexers, then qBittorrent "
+            "downloads torrents and SABnzbd or NZBGet downloads Usenet. "
+            "Nicotine+, Discogs, AcoustID, and library quality stay in Settings."
         )
         intro.setWordWrap(True)
         intro.setProperty("muted", True)
@@ -76,8 +82,9 @@ class PluginsPage(QWidget):
 
         self._detect_button = QPushButton("Detect local download clients")
         self._detect_button.setToolTip(
-            "Read Prowlarr, qBittorrent and SABnzbd config files on this PC. "
-            "Does not enable providers or overwrite until you copy and Save."
+            "Read Prowlarr, qBittorrent, SABnzbd and NZBGet config files on this PC. "
+            "Does not enable providers, change those programs, or overwrite "
+            "until you copy and Save."
         )
         self._detect_button.clicked.connect(self._detect_local)
         layout.addWidget(self._detect_button)
@@ -180,7 +187,7 @@ class PluginsPage(QWidget):
         return box
 
     def _build_torrent_box(self) -> QGroupBox:
-        box = QGroupBox("Indexers — Prowlarr + qBittorrent / SABnzbd")
+        box = QGroupBox("Indexers — Prowlarr + qBittorrent / Usenet")
         form = QFormLayout(box)
         self._prowlarr_enabled = QCheckBox("Enable Prowlarr search")
         self._prowlarr_url = QLineEdit()
@@ -217,6 +224,40 @@ class PluginsPage(QWidget):
         self._sab_key.setPlaceholderText("SABnzbd API key (Config → General)")
         self._sab_category = QLineEdit()
         self._sab_category.setPlaceholderText("vaultseek")
+        self._usenet_client = QComboBox()
+        self._usenet_client.addItem("SABnzbd (default)", "sabnzbd")
+        self._usenet_client.addItem("NZBGet", "nzbget")
+        self._usenet_client.setToolTip(
+            "New Usenet downloads use this client only. "
+            "Downloads already sent keep their original client."
+        )
+        self._nzb_enabled = QCheckBox("Enable NZBGet downloads (Usenet / NZB)")
+        self._nzb_url = QLineEdit()
+        self._nzb_url.setPlaceholderText("http://127.0.0.1:6789")
+        self._nzb_username = QLineEdit()
+        self._nzb_username.setPlaceholderText("Control username")
+        self._nzb_password = QLineEdit()
+        self._nzb_password.setEchoMode(QLineEdit.EchoMode.Password)
+        self._nzb_password.setPlaceholderText("Control password")
+        self._nzb_category = QLineEdit()
+        self._nzb_category.setPlaceholderText("vaultseek")
+        for edit in (
+            self._prowlarr_url,
+            self._prowlarr_key,
+            self._qbit_url,
+            self._qbit_username,
+            self._qbit_password,
+            self._qbit_category,
+            self._qbit_save_path,
+            self._sab_url,
+            self._sab_key,
+            self._sab_category,
+            self._nzb_url,
+            self._nzb_username,
+            self._nzb_password,
+            self._nzb_category,
+        ):
+            edit.setMinimumWidth(0)
         form.addRow(self._prowlarr_enabled)
         form.addRow("Prowlarr URL", self._prowlarr_url)
         form.addRow("Prowlarr API key", self._prowlarr_key)
@@ -227,12 +268,16 @@ class PluginsPage(QWidget):
         form.addRow("qBittorrent password", self._qbit_password)
         form.addRow("qBittorrent category", self._qbit_category)
         form.addRow("qBittorrent save path", self._qbit_save_path)
+        form.addRow("Usenet downloader", self._usenet_client)
         form.addRow(self._sab_enabled)
         form.addRow("SABnzbd URL", self._sab_url)
         form.addRow("SABnzbd API key", self._sab_key)
         form.addRow("SABnzbd category", self._sab_category)
-        self._test_buttons: list[QPushButton] = []
-        test_row = QHBoxLayout()
+        form.addRow(self._nzb_enabled)
+        form.addRow("NZBGet URL", self._nzb_url)
+        form.addRow("NZBGet user", self._nzb_username)
+        form.addRow("NZBGet password", self._nzb_password)
+        form.addRow("NZBGet category", self._nzb_category)
         test_prowlarr = QPushButton("Test Prowlarr")
         test_prowlarr.setProperty("secondary", True)
         test_prowlarr.clicked.connect(self._test_prowlarr)
@@ -242,20 +287,29 @@ class PluginsPage(QWidget):
         test_sab = QPushButton("Test SABnzbd")
         test_sab.setProperty("secondary", True)
         test_sab.clicked.connect(self._test_sabnzbd)
-        self._test_buttons.extend((test_prowlarr, test_qbit, test_sab))
-        test_row.addWidget(test_prowlarr)
-        test_row.addWidget(test_qbit)
-        test_row.addWidget(test_sab)
-        test_row.addStretch(1)
-        form.addRow(test_row)
+        test_nzb = QPushButton("Test NZBGet")
+        test_nzb.setProperty("secondary", True)
+        test_nzb.clicked.connect(self._test_nzbget)
+        self._test_buttons = [test_prowlarr, test_qbit, test_sab, test_nzb]
+        self._test_actions = FlowHost(spacing=6)
+        for button in self._test_buttons:
+            button.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
+            self._test_actions.flow().addWidget(button)
+        form.addRow(self._test_actions)
         help_label = QLabel(
             "Enable Prowlarr plus at least one download client. Torrents go to "
-            "qBittorrent; NZBs go to SABnzbd. Completed downloads are verified and "
-            "imported like Nicotine+. Prefer qBittorrent on port 8081 if SABnzbd "
-            "already uses 8080."
+            "qBittorrent. New NZBs go only to the selected Usenet downloader "
+            "(SABnzbd by default, or NZBGet). Switching that choice does not "
+            "resubmit downloads already in the other client. Completed files are "
+            "verified and imported like Nicotine+. NZBGet needs the control "
+            "username and password; an add-only login cannot report progress. "
+            "Prefer qBittorrent on port 8081 if SABnzbd already uses 8080. "
+            "NZBGet’s usual port is 6789. See "
+            '<a href="https://nzbget.com/documentation/api/">NZBGet’s API</a>.'
         )
         help_label.setWordWrap(True)
         help_label.setProperty("muted", True)
+        help_label.setOpenExternalLinks(True)
         form.addRow(help_label)
         return box
 
@@ -263,8 +317,9 @@ class PluginsPage(QWidget):
         box = QGroupBox("Other ways to find missing music")
         layout = QVBoxLayout(box)
         label = QLabel(
-            "VaultSeek already searches Soulseek (Nicotine+), Usenet (Prowlarr → SABnzbd), "
-            "then public and private torrent indexers (Prowlarr → qBittorrent). "
+            "VaultSeek already searches Soulseek (Nicotine+), then one Usenet path "
+            "(Prowlarr → SABnzbd or NZBGet), then public and private torrent indexers "
+            "(Prowlarr → qBittorrent). "
             "For store-quality or licensed copies, buy from "
             '<a href="https://bandcamp.com">Bandcamp</a> '
             'or <a href="https://www.qobuz.com">Qobuz</a>, rip your CDs, or search '
@@ -309,6 +364,14 @@ class PluginsPage(QWidget):
         self._sab_url.setText(acq.sabnzbd.base_url)
         self._sab_key.setText(acq.sabnzbd.api_key)
         self._sab_category.setText(acq.sabnzbd.category)
+        client = normalize_usenet_download_client(acq.usenet_download_client)
+        client_index = self._usenet_client.findData(client)
+        self._usenet_client.setCurrentIndex(client_index if client_index >= 0 else 0)
+        self._nzb_enabled.setChecked(acq.nzbget.enabled)
+        self._nzb_url.setText(acq.nzbget.base_url)
+        self._nzb_username.setText(acq.nzbget.username)
+        self._nzb_password.setText(acq.nzbget.password)
+        self._nzb_category.setText(acq.nzbget.category)
 
     # --------------------------------------------------------------- actions --
     def _collect_recommendations(self) -> RecommendationConfig:
@@ -362,6 +425,14 @@ class PluginsPage(QWidget):
             api_key=self._sab_key.text().strip(),
             category=self._sab_category.text().strip() or "vaultseek",
         )
+        nzbget = NzbgetConfig(
+            enabled=self._nzb_enabled.isChecked(),
+            base_url=self._nzb_url.text().strip() or "http://127.0.0.1:6789",
+            username=self._nzb_username.text().strip(),
+            password=self._nzb_password.text(),
+            category=self._nzb_category.text().strip() or "vaultseek",
+        )
+        usenet_client = normalize_usenet_download_client(self._usenet_client.currentData())
         enabled = [
             p
             for p in acq.enabled_providers
@@ -375,7 +446,10 @@ class PluginsPage(QWidget):
                 "prowlarr_private",
             )
         ]
-        if prowlarr.enabled and sabnzbd.enabled:
+        usenet_on = (usenet_client == "nzbget" and nzbget.enabled) or (
+            usenet_client == "sabnzbd" and sabnzbd.enabled
+        )
+        if prowlarr.enabled and usenet_on:
             enabled.append("usenet")
         if prowlarr.enabled and qbittorrent.enabled:
             enabled.append("prowlarr_public")
@@ -390,6 +464,8 @@ class PluginsPage(QWidget):
             prowlarr=prowlarr,
             qbittorrent=qbittorrent,
             sabnzbd=sabnzbd,
+            nzbget=nzbget,
+            usenet_download_client=usenet_client,
         )
 
     def _save(self) -> None:
@@ -479,7 +555,9 @@ class PluginsPage(QWidget):
 
     def _local_detected(self, connections: list[LocalConnection]) -> None:
         self._detect_button.setEnabled(True)
-        connections = [c for c in connections if c.name in {"Prowlarr", "qBittorrent", "SABnzbd"}]
+        connections = [
+            c for c in connections if c.name in {"Prowlarr", "qBittorrent", "SABnzbd", "NZBGet"}
+        ]
         dialog = LocalSetupDialog(connections, self)
         if dialog.exec() != QDialog.DialogCode.Accepted:
             return
@@ -495,6 +573,12 @@ class PluginsPage(QWidget):
                 "key": self._sab_key,
                 "category": self._sab_category,
             },
+            "NZBGet": {
+                "url": self._nzb_url,
+                "username": self._nzb_username,
+                "password": self._nzb_password,
+                "category": self._nzb_category,
+            },
         }
         for connection in dialog.selected():
             widgets = fields.get(connection.name, {})
@@ -503,7 +587,14 @@ class PluginsPage(QWidget):
                 if widget is not None:
                     widget.setText(value)
 
-    def _test_connection(self, name: str, probe: Callable[[], bool], help_text: str) -> None:
+    def _test_connection(
+        self,
+        name: str,
+        probe: Callable[[], bool],
+        help_text: str,
+        *,
+        failure_detail: Callable[[], str] | None = None,
+    ) -> None:
         for button in self._test_buttons:
             button.setEnabled(False)
 
@@ -517,7 +608,8 @@ class PluginsPage(QWidget):
                     "Connection check passed. This does not test searches or download completion.",
                 )
             else:
-                QMessageBox.warning(self, name, help_text)
+                detail = failure_detail() if failure_detail is not None else help_text
+                QMessageBox.warning(self, name, detail or help_text)
 
         run_in_background(probe, on_finished=done, on_failed=lambda _: done(False))
 
@@ -542,3 +634,51 @@ class PluginsPage(QWidget):
             "Check URL and Config → General → API Key "
             "(not the NZB key). Queue access is required.",
         )
+
+    def _test_nzbget(self) -> None:
+        config = self._collect_acquisition()
+        for button in self._test_buttons:
+            button.setEnabled(False)
+
+        def done(access: object) -> None:
+            for button in self._test_buttons:
+                button.setEnabled(True)
+            level = getattr(access, "level", "unreachable")
+            message = str(getattr(access, "message", "") or "")
+            if level == "ready":
+                QMessageBox.information(
+                    self,
+                    "NZBGet",
+                    message
+                    or (
+                        "Connection check passed. Queue and history are readable. "
+                        "This does not submit a download."
+                    ),
+                )
+                return
+            QMessageBox.warning(
+                self,
+                "NZBGet",
+                message or _NZBGET_TEST_HELP.get(str(level), _NZBGET_TEST_HELP["unreachable"]),
+            )
+
+        run_in_background(
+            lambda: self._container.connection_checks.nzbget_access(config),
+            on_finished=done,
+            on_failed=lambda _error: done("unreachable"),
+        )
+
+
+_NZBGET_TEST_HELP = {
+    "add_only": (
+        "This login can reach NZBGet but cannot read the queue or history. "
+        "Use the control username and password (NZBGet Settings → Security), "
+        "not a restricted add-only user."
+    ),
+    "denied": "NZBGet rejected the username or password.",
+    "malformed": "NZBGet returned a response VaultSeek could not read.",
+    "unreachable": (
+        "Check the URL and that NZBGet is running. "
+        "The JSON-RPC endpoint is /jsonrpc and needs the control account."
+    ),
+}

@@ -1,5 +1,5 @@
 {
-  "schema_version": 22,
+  "schema_version": 23,
   "log_level": "INFO",
   "theme": "dark",
   "setup_completed": false,
@@ -68,6 +68,7 @@
     "quality_preset": "custom",
     "download_whole_album_on_upgrade": true,
     "wishlist_search_interval_hours": 0.0,
+    "usenet_download_client": "sabnzbd",
     "nicotine_plus": {
       "enabled": false,
       "host": "127.0.0.1",
@@ -101,6 +102,13 @@
       "enabled": false,
       "base_url": "http://127.0.0.1:8080",
       "api_key": "",
+      "category": "vaultseek"
+    },
+    "nzbget": {
+      "enabled": false,
+      "base_url": "http://127.0.0.1:6789",
+      "username": "nzbget",
+      "password": "",
       "category": "vaultseek"
     }
   },

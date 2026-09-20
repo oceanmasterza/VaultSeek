@@ -718,6 +718,17 @@ Library integrity
 
 # Session Notes
 
+## 2026-09-20 — Responsive FlowLayout and independent dashboard probes
+
+Shared `FlowLayout` / `FlowHost` wrap toolbars and dashboard status tiles instead of clipping them. Dashboard client probes run asynchronously off the UI thread. Each configured client is checked independently, and a connection-settings change drops stale results. Usenet remains one search tier: SABnzbd is the schema 23 default; NZBGet is the optional Plugins selection.
+
+## 2026-09-20 — NZBGet is a selectable Usenet client, not a new search source
+
+SABnzbd remains the default downloader for the existing Prowlarr `usenet` tier.
+Plugins can select NZBGet instead. New NZBs go to that client only. `sab:` and
+`nzb:` handles stay on the client that accepted them when the preference changes.
+Add-only NZBGet logins are not treated as connected. Schema version 23.
+
 ## 2026-09-20 — Review names, playback, artwork covers
 
 - Review fills the table with sorting off, so Track / confidence / reason stay on the same row.

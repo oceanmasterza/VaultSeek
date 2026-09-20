@@ -57,6 +57,7 @@ These rules apply equally to Cursor, Codex/ChatGPT, and any other assistant.
 | Nicotine+ provider | `src/vaultseek/plugins/builtin/nicotine_plus/` |
 | Prowlarr tiers (Usenet / public / private) | `src/vaultseek/plugins/builtin/prowlarr_qbit/` |
 | SABnzbd client | `src/vaultseek/plugins/builtin/sabnzbd/` |
+| NZBGet client | `src/vaultseek/plugins/builtin/nzbget/` |
 | Settings UI | `src/vaultseek/gui/views/settings_page.py` |
 | Plugins UI (Prowlarr / qBit / SAB / Last.fm / Spotify) | `src/vaultseek/gui/views/plugins_page.py` |
 | Local client detection | `src/vaultseek/services/local_setup.py`, Settings/Plugins detect buttons |
@@ -69,10 +70,10 @@ UI must not call providers directly. Go through `ProviderManager` / services fro
 
 ## Acquisition search waterfall (current product behaviour)
 
-Default **provider_order** (schema **v22+**):
+Default **provider_order** (schema **v23+**; waterfall tiers unchanged since v22):
 
 1. `nicotine_plus` — Soulseek via Nicotine+
-2. `usenet` — Prowlarr NZB / Usenet → SABnzbd
+2. `usenet` — Prowlarr NZB / Usenet → SABnzbd (default) or NZBGet. One tier, not two search sources.
 3. `prowlarr_public` — Prowlarr **public** torrents → qBittorrent
 4. `prowlarr_private` — Prowlarr **private** torrents → qBittorrent
 
@@ -82,19 +83,19 @@ Behaviour (`ProviderManager.search`):
 - `provider_search_delay_seconds` (default `15`): wait after an **empty** tier before trying the next
 - Nicotine `SearchThrottleError` must **not** block later tiers
 - Users reorder sources + delay under **Settings → Wishlist & downloads → Search source order**
-- Enable Prowlarr / SABnzbd / qBittorrent under **Plugins**; Nicotine+ under Settings
+- Enable Prowlarr, qBittorrent, and either SABnzbd (default) or NZBGet under **Plugins**; Nicotine+ under Settings
 
 Legacy id `prowlarr` / `prowlarr_qbit` expands to the three Prowlarr tiers on migrate/connect. Prefer the split ids in new code.
 
-Key modules: `acquisition_sources.py`, `acquisition_bootstrap.py`, `provider_manager.py`, `ProwlarrProvider` (protocol + privacy filters), config migration `_migrate_v21_to_v22`.
+Key modules: `acquisition_sources.py`, `acquisition_bootstrap.py`, `provider_manager.py`, `ProwlarrProvider` (protocol + privacy filters), config migration `_migrate_v22_to_v23`.
 
 ---
 
 ## Config rules
 
 - Never bump `CURRENT_SCHEMA_VERSION` without a `_migrate_vN_to_vN+1` and updating `config/defaults.json`
-- Nested acquisition settings (`prowlarr`, `qbittorrent`, `sabnzbd`, `nicotine_plus`) live on `AcquisitionConfig`
-- **One writer per nested field:** Settings saves Nicotine+ / waterfall / quality with `dataclasses.replace` on the existing `AcquisitionConfig`. Plugins saves Prowlarr / qBit / SAB the same way. Never rebuild `AcquisitionConfig(...)` from scratch — that wiped credentials.
+- Nested acquisition settings (`prowlarr`, `qbittorrent`, `sabnzbd`, `nzbget`, `nicotine_plus`) live on `AcquisitionConfig`. `usenet_download_client` is `sabnzbd` or `nzbget`.
+- **One writer per nested field:** Settings saves Nicotine+ / waterfall / quality with `dataclasses.replace` on the existing `AcquisitionConfig`. Plugins saves Prowlarr / qBit / SAB / NZBGet the same way. Never rebuild `AcquisitionConfig(...)` from scratch — that wiped credentials.
 - Strongly typed dataclasses only; no ad-hoc nested dict config for new features
 
 ---
@@ -108,7 +109,7 @@ Key modules: `acquisition_sources.py`, `acquisition_bootstrap.py`, `provider_man
 | Wishlist interval, auto-acquire, Nicotine+, **search waterfall** | Settings → Wishlist & downloads | **Save preferences** |
 | Theme, log level, Discogs, AcoustID, fingerprinting, pipeline workers | Settings → Application | **Save preferences** |
 | Media servers | Settings → Media servers | **Save media server** |
-| Last.fm, Spotify, Prowlarr, qBittorrent, SABnzbd | System → Plugins | **Save plugin settings** |
+| Last.fm, Spotify, Prowlarr, qBittorrent, SABnzbd, NZBGet | System → Plugins | **Save plugin settings** |
 
 - Dashboard shows wishlist hours as **read-only** (“Change in Settings”).
 - Wanted management lives on **Wishlist**, not Albums.

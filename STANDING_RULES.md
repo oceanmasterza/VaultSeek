@@ -13,7 +13,7 @@
 - Reuse a typed service, Protocol, repository, or widget before adding another one.
 - Keep config in typed dataclasses. A schema change requires a migration and matching `config/defaults.json` update.
 - Preserve nested acquisition settings with `dataclasses.replace`; never rebuild `AcquisitionConfig` or a nested config object on a page save.
-- Respect settings ownership: Settings owns library, quality, wishlist, Nicotine+, application, and media-server values; Plugins owns Last.fm, Spotify, Prowlarr, qBittorrent, SABnzbd, and their source flags.
+- Respect settings ownership: Settings owns library, quality, wishlist, Nicotine+, application, and media-server values; Plugins owns Last.fm, Spotify, Prowlarr, qBittorrent, SABnzbd, NZBGet, and the Usenet client choice (`usenet_download_client`, SABnzbd default).
 
 ## Code and quality
 

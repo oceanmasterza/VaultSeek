@@ -18,6 +18,7 @@ from PySide6.QtWidgets import (
     QLabel,
     QMainWindow,
     QMessageBox,
+    QSizePolicy,
     QStackedWidget,
     QStatusBar,
     QTreeWidget,
@@ -48,6 +49,7 @@ from vaultseek.gui.views.review_page import ReviewPage
 from vaultseek.gui.views.settings_page import SettingsPage
 from vaultseek.gui.views.setup_wizard import SetupWizard
 from vaultseek.gui.widgets.desktop import open_path
+from vaultseek.gui.widgets.flow_host import FlowHost
 from vaultseek.gui.widgets.jump_palette import JumpPalette, jump_destinations_from_hubs
 from vaultseek.models.entities.job import JobType
 from vaultseek.models.entities.library import Library
@@ -111,14 +113,17 @@ class MainWindow(QMainWindow):
         outer.setContentsMargins(0, 0, 0, 0)
         outer.setSpacing(0)
 
-        top = QHBoxLayout()
-        top.setContentsMargins(12, 8, 12, 8)
-        top.addWidget(QLabel("Library:"))
+        top_host = FlowHost(spacing=8)
+        top_host.flow().setContentsMargins(12, 8, 12, 8)
+        library_label = QLabel("Library:")
         self._library_combo = QComboBox()
+        self._library_combo.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
         self._library_combo.setToolTip("Active library — zone paths and jobs are scoped to this.")
         self._library_combo.currentIndexChanged.connect(self._on_library_changed)
-        top.addWidget(self._library_combo, stretch=1)
-        outer.addLayout(top)
+        library_label.setBuddy(self._library_combo)
+        top_host.add_widget(library_label, accessible_name="Library")
+        top_host.add_widget(self._library_combo, accessible_name="Library")
+        outer.addWidget(top_host)
 
         body = QHBoxLayout()
         body.setContentsMargins(0, 0, 0, 0)

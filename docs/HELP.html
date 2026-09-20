@@ -305,6 +305,23 @@
       articles or retention limits can cause failure even when all API tests pass.
       See <a href="https://sabnzbd.org/wiki/configuration/5.1/general">General/API settings</a>
       and <a href="https://sabnzbd.org/wiki/configuration/5.1/categories">Categories</a>.</p>
+    <h3>NZBGet: optional Usenet downloader</h3>
+    <p>SABnzbd stays the default. NZBGet is the same Prowlarr Usenet source with a
+      different download client, not an extra search step. Choose one under
+      Plugins → Usenet downloader. Downloads already sent keep their original client.</p>
+    <ol>
+      <li>Install NZBGet and add your Usenet server in its settings. VaultSeek does
+        not edit <code>nzbget.conf</code> or start downloads while you set this up.</li>
+      <li>Use the control username and password (Settings → Security), not an add-only
+        account. Add-only logins can queue an NZB but cannot report progress, history,
+        or cancellation.</li>
+      <li>The API is JSON-RPC at <code>http://127.0.0.1:6789/jsonrpc</code>
+        (HTTP Basic auth, positional parameters). Enter
+        <code>http://127.0.0.1:6789</code> in Plugins. See
+        <a href="https://nzbget.com/documentation/api/">NZBGet’s API</a>.</li>
+      <li>Create a <code>vaultseek</code> category if you want one, test NZBGet, enable
+        it, select it as the Usenet downloader, enable Prowlarr, then save.</li>
+    </ol>
 
     <h2 id="server-setup">Jellyfin and other media servers</h2>
     <p>Select the active VaultSeek library first. Open Settings → Media servers,

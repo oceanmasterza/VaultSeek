@@ -11,14 +11,14 @@
 - `core/`: typed configuration, migrations, Container wiring.
 - `models/`: domain entities and Protocols, isolated from UI/DB/services/workers/plugins.
 - `services/`: Acquisition Engine orchestration, ProviderManager, local setup, connection checks, import and verification coordination.
-- `plugins/builtin/`: external integrations only: Nicotine+, Prowlarr/qBittorrent, SABnzbd, metadata and media servers.
+- `plugins/builtin/`: external integrations only: Nicotine+, Prowlarr/qBittorrent, SABnzbd, NZBGet, metadata and media servers.
 - `workers/`: library scan, identify, organize, artwork, media-server and pipeline jobs.
-- `gui/`: PySide6 presentation pages and reusable widgets; accesses work through Container services.
+- `gui/`: PySide6 presentation pages and reusable widgets; accesses work through Container services. Shared `FlowLayout` wraps toolbars and status tiles instead of clipping them.
 - `db/`: SQLAlchemy Core tables, repositories, Alembic migrations.
 
 ## Acquisition behavior
 
-- Default waterfall: Nicotine+ → Prowlarr Usenet/SABnzbd → Prowlarr public torrents/qBittorrent → private torrents/qBittorrent.
+- Default waterfall (schema 23): Nicotine+ → Prowlarr Usenet (SABnzbd by default, or selectable NZBGet; one search tier) → Prowlarr public torrents/qBittorrent → private torrents/qBittorrent.
 - With `search_waterfall=True`, stop at the first connected source returning hits; wait 15 seconds after an empty tier by default. A Nicotine throttle failure must continue to later tiers.
 - The Verification Pipeline is mandatory before the Import Pipeline. Providers return normalized results and never alter library state.
 
@@ -31,7 +31,7 @@
 ## Current milestone
 
 - Version 1.1.0; active Phase 6 automation and polish.
-- Recent work: local client discovery, authenticated connection checks, source-health dashboard, setup help, and search-waterfall configuration.
+- Recent work: schema 23 selectable Usenet client (SABnzbd default, optional NZBGet), shared responsive FlowLayout, and independent asynchronous dashboard client probes (one failure does not cancel the others; stale results drop when settings change).
 - Current priorities: safely archive/remove selected tracks or albums, replace dashboard status prose with compact tested-readiness indicators, live provider validation, and a measured packaging-size audit.
 
 ## Collaboration
