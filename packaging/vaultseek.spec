@@ -1,4 +1,3 @@
-# -*- mode: python ; coding: utf-8 -*-
 """PyInstaller spec for VaultSeek (Windows onedir).
 
 Build from repo root::
@@ -19,7 +18,7 @@ ROOT = Path(SPECPATH).resolve().parent  # noqa: F821
 SRC = ROOT / "src"
 VENDOR = ROOT / "packaging" / "vendor"
 
-datas = []
+datas = [(str(SRC / "vaultseek" / "gui" / "assets"), "vaultseek/gui/assets")]
 binaries = []
 hiddenimports = [
     "vaultseek",
@@ -36,9 +35,7 @@ hiddenimports = [
 # Pinned native helpers (see packaging/vendor_manifest.json).
 _fpcalc = VENDOR / "fpcalc.exe"
 if not _fpcalc.is_file():
-    raise SystemExit(
-        f"Missing {_fpcalc}. Run: python packaging/fetch_vendor.py"
-    )
+    raise SystemExit(f"Missing {_fpcalc}. Run: python packaging/fetch_vendor.py")
 binaries.append((str(_fpcalc), "."))
 
 # Alembic needs the migrations tree on disk (not only inside the PYZ).
@@ -79,6 +76,14 @@ a = Analysis(  # noqa: F821
     noarchive=False,
 )
 
+# Qt 6.11 links to Windows' unversioned ICU libraries.  A build host may have
+# incompatible versioned ICU DLLs on PATH (for example from Poppler); letting
+# PyInstaller collect those into _internal makes Qt6Core fail before the GUI
+# starts.  Do not bundle ambient ICU DLLs.
+a.binaries = [
+    entry for entry in a.binaries if Path(entry[0]).name.lower() not in {"icuuc.dll", "icudt78.dll"}
+]
+
 pyz = PYZ(a.pure, a.zipped_data, cipher=block_cipher)  # noqa: F821
 
 exe = EXE(  # noqa: F821
@@ -87,6 +92,7 @@ exe = EXE(  # noqa: F821
     [],
     exclude_binaries=True,
     name="VaultSeek",
+    icon=str(SRC / "vaultseek" / "gui" / "assets" / "vaultseek.ico"),
     debug=False,
     bootloader_ignore_signals=False,
     strip=False,

@@ -62,10 +62,12 @@ Theme and log level apply immediately. Discogs, AcoustID, Shazamio, and
 fingerprint mode need a **restart**. Prowlarr / download clients reconnect
 when you save Plugins.
 
-The Dashboard **Music tools** panel shows whether Nicotine+, Usenet, Prowlarr
-torrent tiers, AcoustID, Discogs and a media server are connected. Use its
-Settings / Plugins / Setup instructions buttons. The wishlist search interval
-is also shown as read-only (**Change in Settings**).
+The Dashboard **Music tools** panel lists the configured download clients,
+fingerprinting and proxy routes, metadata APIs, recommenders, and media servers.
+**Connected** means VaultSeek has an active download-provider connection;
+**Configured** means credentials or settings are saved but still need a service
+test. Use its Settings / Plugins / Setup instructions buttons. The wishlist
+search interval is also shown as read-only (**Change in Settings**).
 
 ---
 
@@ -102,6 +104,13 @@ that starts a download without you picking a result. They are different.
 4. Browse Library / Artists / Albums. Green = meets quality prefs; orange = missing or below prefs.
 5. **Find music** → Find missing songs or Discogs → then **Wishlist** → Auto-acquire.
 6. Parked Discogs picks are **Wanted**. On Wishlist, enable **Show Wanted**, then **Start Wanted download**.
+
+### Archive a song or album
+
+Use **Archive selected…** in Library or Albums, or right-click the selected
+song, album, or album track. VaultSeek queues a move to the configured Archive
+folder and records it as an operation, so it can be rolled back. This does not
+permanently delete music.
 
 ---
 
@@ -259,3 +268,14 @@ In the app:
 - **Help → About** — version and data paths
 - **System → Plugins** — recommenders and Prowlarr / download clients
 - **System → Settings** — library, quality, Nicotine+, Discogs/AcoustID, media servers
+
+### Delete an album and its music files
+
+In Albums select the album(s), then **Delete album…**, or use the right-click menu.
+Confirm the named albums and song count. This removes their tracks from the active
+library and media folders, including archived copies tracked by VaultSeek. Files go
+through Windows deletion: the Recycle Bin is used where supported, but recovery is not guaranteed. The confirmation warns that files may be permanently deleted.
+Empty leaf folders are removed; unrelated files stay. Albums used by another library
+remain there. Finish library processing and cancel unfinished downloads for the album
+first. On failure, records stay for retry; already recycled files may be recovered
+from Windows. Archive remains the separate reversible move action.

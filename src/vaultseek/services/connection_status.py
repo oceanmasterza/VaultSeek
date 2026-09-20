@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections.abc import Iterable, Sequence
 from dataclasses import dataclass
 
-from vaultseek.core.config import AcquisitionConfig, MetadataConfig
+from vaultseek.core.config import AcquisitionConfig, MetadataConfig, RecommendationConfig
 
 _DOWNLOAD_IDS = frozenset({"nicotine_plus", "usenet", "prowlarr_public", "prowlarr_private"})
 
@@ -29,6 +29,7 @@ def summarize_music_tools(
     *,
     acquisition: AcquisitionConfig,
     metadata: MetadataConfig,
+    recommendations: RecommendationConfig | None = None,
     connected_ids: Iterable[str],
     media_plugins: Sequence[str] = (),
 ) -> tuple[ToolStatus, ...]:
@@ -37,10 +38,16 @@ def summarize_music_tools(
     nic = acquisition.nicotine_plus
     torrents = acquisition.prowlarr.enabled and acquisition.qbittorrent.enabled
     usenet = acquisition.prowlarr.enabled and acquisition.sabnzbd.enabled
+    prowlarr_connected = bool(connected & {"usenet", "prowlarr_public", "prowlarr_private"})
+    torrents_connected = bool(connected & {"prowlarr_public", "prowlarr_private"})
     acoustid = bool(metadata.acoustid_api_key) or any(
         endpoint.api_key for endpoint in metadata.acoustid_endpoints
     )
     plugins = tuple(plugin for plugin in media_plugins if plugin)
+    recommenders = recommendations or RecommendationConfig()
+    proxy_count = sum(1 for endpoint in metadata.acoustid_endpoints if endpoint.proxy_url)
+    fingerprinting_enabled = "acoustid" in metadata.enabled_providers
+    shazam_enabled = "shazamio" in metadata.enabled_providers
     return (
         _download_row(
             "Nicotine+ (Soulseek)",
@@ -70,13 +77,55 @@ def summarize_music_tools(
             location="plugins",
             off_detail="Enable Prowlarr and qBittorrent under System → Plugins.",
         ),
+        _download_row(
+            "Prowlarr indexers",
+            enabled=acquisition.prowlarr.enabled,
+            connected=prowlarr_connected,
+            location="plugins",
+            off_detail="Enable and configure Prowlarr under System → Plugins.",
+        ),
+        _download_row(
+            "qBittorrent WebUI",
+            enabled=acquisition.qbittorrent.enabled,
+            connected=torrents_connected,
+            location="plugins",
+            off_detail="Enable and configure qBittorrent under System → Plugins.",
+        ),
+        _download_row(
+            "SABnzbd",
+            enabled=acquisition.sabnzbd.enabled,
+            connected="usenet" in connected,
+            location="plugins",
+            off_detail="Enable and configure SABnzbd under System → Plugins.",
+        ),
         ToolStatus(
-            name="AcoustID fingerprinting",
-            state="configured" if acoustid else "off",
+            name="Chromaprint / AcoustID",
+            state="configured" if acoustid and fingerprinting_enabled else "off",
             detail=(
-                "Application key saved. Restart after changing keys."
+                f"{len(metadata.acoustid_endpoints) or 1} key(s) saved; "
+                f"{proxy_count} proxy route(s)."
                 if acoustid
-                else "Register an application at acoustid.org/new-application."
+                else "Add an AcoustID application key under Settings → Application."
+            ),
+            location="settings",
+        ),
+        ToolStatus(
+            name="Shazam audio recognition",
+            state="configured" if shazam_enabled else "off",
+            detail=(
+                f"Enabled with direct route plus {proxy_count} configured proxy route(s)."
+                if shazam_enabled
+                else "Enable under Settings → Application to use audio-recognition fallback."
+            ),
+            location="settings",
+        ),
+        ToolStatus(
+            name="MusicBrainz metadata",
+            state=("configured" if "musicbrainz" in metadata.enabled_providers else "off"),
+            detail=(
+                "Public metadata lookup enabled."
+                if "musicbrainz" in metadata.enabled_providers
+                else "Disabled in identification providers."
             ),
             location="settings",
         ),
@@ -99,6 +148,39 @@ def summarize_music_tools(
                 else "Optional. Save Jellyfin or another server under Settings → Media servers."
             ),
             location="settings",
+        ),
+        ToolStatus(
+            name="Last.fm recommendations",
+            state=(
+                "configured"
+                if recommenders.lastfm.enabled and bool(recommenders.lastfm.api_key)
+                else "off"
+            ),
+            detail=(
+                "API key saved; similar-artist recommendations are enabled."
+                if recommenders.lastfm.enabled and recommenders.lastfm.api_key
+                else "Add an API key and enable under System → Plugins."
+            ),
+            location="plugins",
+        ),
+        ToolStatus(
+            name="Spotify playlists",
+            state=(
+                "configured"
+                if recommenders.spotify.enabled
+                and bool(recommenders.spotify.client_id)
+                and bool(recommenders.spotify.client_secret)
+                else "off"
+            ),
+            detail=(
+                "Credentials saved; "
+                f"{len(recommenders.spotify.playlist_urls)} playlist(s) configured."
+                if recommenders.spotify.enabled
+                and recommenders.spotify.client_id
+                and recommenders.spotify.client_secret
+                else "Add app credentials and enable under System → Plugins."
+            ),
+            location="plugins",
         ),
     )
 

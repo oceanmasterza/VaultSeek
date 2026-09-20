@@ -715,3 +715,14 @@ Plugin security model
 Good architecture is a series of deliberate decisions.
 
 This document preserves those decisions so neither humans nor AI need to rediscover them.
+
+## 2026-09-20 — Explicit album deletion
+
+AlbumDeletionService owns filesystem removal; AlbumRepository holds a SQLite write
+transaction around preflight, related-record cleanup and recycling. No schema change.
+Deletion is scoped to the active library, with configured-zone validation and no
+recursive directory removal. Windows may permanently delete files when recycling is unavailable; the confirmation explicitly warns about this. Metadata changes commit
+only after file recycling succeeds. Filesystem and SQLite cannot commit atomically:
+on partial failure, database records roll back and files already recycled remain
+recoverable in Windows. Pending/running/retry library jobs and unfinished acquisitions
+for the album block deletion. Archive keeps its existing semantics.

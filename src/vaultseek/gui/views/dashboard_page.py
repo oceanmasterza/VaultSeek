@@ -536,6 +536,7 @@ class DashboardPage(QWidget):
                 for row in summarize_music_tools(
                     acquisition=acq,
                     metadata=self._container.config.metadata,
+                    recommendations=self._container.config.recommendations,
                     connected_ids=connected_ids,
                 )
                 if row.state == "connected"
@@ -587,6 +588,7 @@ class DashboardPage(QWidget):
         rows = summarize_music_tools(
             acquisition=self._container.config.acquisition,
             metadata=self._container.config.metadata,
+            recommendations=self._container.config.recommendations,
             connected_ids=self._container.provider_manager.connected_provider_ids(),
             media_plugins=media_plugins,
         )

@@ -138,3 +138,6 @@ forbidden_modules = [
     "vaultseek.services",
     "vaultseek.workers",
 ]
+
+[tool.setuptools.package-data]
+"vaultseek.gui" = ["assets/*.ico", "assets/*.svg", "assets/*.png"]

@@ -26,6 +26,7 @@ from PySide6.QtWidgets import (
 )
 
 from vaultseek.core.container import Container
+from vaultseek.core.exceptions import OperationError
 from vaultseek.gui.async_task import run_in_background
 from vaultseek.gui.debounce import connect_debounced
 from vaultseek.gui.widgets.browse import (
@@ -37,11 +38,15 @@ from vaultseek.gui.widgets.desktop import copy_text_to_clipboard, open_path, rev
 from vaultseek.gui.widgets.empty_state import EmptyState
 from vaultseek.gui.widgets.health_legend import health_legend_label
 from vaultseek.gui.widgets.table_utils import (
+    begin_table_update,
     configure_data_table,
+    end_table_update,
 )
 from vaultseek.models.entities.job import JobType
+from vaultseek.models.entities.operation import OperationType
 from vaultseek.models.entities.track import LibraryZone, Track
 from vaultseek.services.album_track_display import effective_track_health
+from vaultseek.services.dto.operation_dto import OperationRequest
 from vaultseek.services.library_scan_actions import run_missing_scan, run_quality_upgrade_scan
 
 
@@ -86,6 +91,11 @@ class LibraryPage(QWidget):
         find_music.setProperty("secondary", True)
         find_music.clicked.connect(lambda: self.navigate_requested.emit("find"))
         toolbar.addWidget(find_music)
+        archive_selected = QPushButton("Archive selected…")
+        archive_selected.setProperty("secondary", True)
+        archive_selected.setToolTip("Move selected music to Archive. The move can be rolled back.")
+        archive_selected.clicked.connect(self._archive_selected_tracks)
+        toolbar.addWidget(archive_selected)
         layout.addLayout(toolbar)
         layout.addWidget(health_legend_label())
 
@@ -272,6 +282,7 @@ class LibraryPage(QWidget):
         )
 
     def _fill_table(self, tracks: list[Track]) -> None:
+        sorting = begin_table_update(self._table)
         self._table.setRowCount(len(tracks))
         self._file_paths = []
         prefs = self._container.config.acquisition
@@ -288,11 +299,14 @@ class LibraryPage(QWidget):
                 QTableWidgetItem(conf),
                 QTableWidgetItem(quality),
             ]
+            cells[0].setData(Qt.ItemDataRole.UserRole, str(track.id))
+            cells[0].setData(Qt.ItemDataRole.UserRole + 1, track.file_path)
             cells[4].setTextAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
             health = effective_track_health(track, prefs)
             for col, item in enumerate(cells):
                 apply_track_health_style(item, health)
                 self._table.setItem(row, col, item)
+        end_table_update(self._table, sorting=sorting)
 
     def _scan_missing(self) -> None:
         if self._library_id is None:
@@ -345,9 +359,18 @@ class LibraryPage(QWidget):
         if len(rows) != 1:
             return None
         row = next(iter(rows))
-        if 0 <= row < len(self._file_paths):
-            return self._file_paths[row]
-        return None
+        item = self._table.item(row, 0)
+        return str(item.data(Qt.ItemDataRole.UserRole + 1)) if item else None
+
+    def _selected_track_ids(self) -> list[UUID]:
+        """Return selected track IDs in their displayed order."""
+        rows = sorted({index.row() for index in self._table.selectedIndexes()})
+        return [
+            UUID(str(item.data(Qt.ItemDataRole.UserRole)))
+            for row in rows
+            if (item := self._table.item(row, 0)) is not None
+            and item.data(Qt.ItemDataRole.UserRole)
+        ]
 
     def _context_menu(self, pos: QPoint) -> None:
         menu = QMenu(self)
@@ -355,6 +378,7 @@ class LibraryPage(QWidget):
         act_reveal = menu.addAction("Reveal in Explorer")
         act_copy = menu.addAction("Copy path")
         act_open = menu.addAction("Open containing folder")
+        act_archive = menu.addAction("Archive selected…")
         menu.addSeparator()
         act_find = menu.addAction("Find missing songs (library)")
         act_upgrades = menu.addAction("Find quality upgrades (library)")
@@ -363,6 +387,8 @@ class LibraryPage(QWidget):
             act_reveal.setEnabled(False)
             act_copy.setEnabled(False)
             act_open.setEnabled(False)
+        if not self._selected_track_ids():
+            act_archive.setEnabled(False)
         chosen = menu.exec(self._table.viewport().mapToGlobal(pos))
         if chosen is act_reveal and path:
             reveal_in_explorer(path)
@@ -370,6 +396,8 @@ class LibraryPage(QWidget):
             copy_text_to_clipboard(path)
         elif chosen is act_open and path:
             open_path(Path(path).parent)
+        elif chosen is act_archive:
+            self._archive_selected_tracks()
         elif chosen is act_find:
             self._scan_missing()
         elif chosen is act_upgrades:
@@ -381,6 +409,50 @@ class LibraryPage(QWidget):
         path = self._selected_path()
         if path:
             reveal_in_explorer(path)
+
+    def _archive_selected_tracks(self) -> None:
+        """Queue selected files for a reversible move to the Archive zone."""
+        track_ids = self._selected_track_ids()
+        if not track_ids:
+            QMessageBox.information(self, "Archive music", "Select one or more songs first.")
+            return
+        if self._library_id is None:
+            return
+        library = self._container.library_repo.get(self._library_id)
+        if library is None:
+            return
+        answer = QMessageBox.question(
+            self,
+            "Archive selected music",
+            f"Move {len(track_ids)} selected song(s) to:\n{library.archive_path}\n\n"
+            "VaultSeek keeps an operation history so the move can be rolled back.",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.Cancel,
+            QMessageBox.StandardButton.Cancel,
+        )
+        if answer is not QMessageBox.StandardButton.Yes:
+            return
+        queued = 0
+        errors: list[str] = []
+        for track_id in track_ids:
+            try:
+                result = self._container.operation_orchestrator.execute(
+                    OperationRequest(
+                        operation_type=OperationType.FILE_MOVE,
+                        track_id=track_id,
+                        target_zone=LibraryZone.ARCHIVE,
+                        dry_run=False,
+                    )
+                )
+            except OperationError as exc:
+                errors.append(str(exc))
+            else:
+                queued += result.affected_count
+        self._counts.setText(
+            f"Queued {queued} song(s) for Archive"
+            + (f"; skipped {len(errors)}." if errors else ".")
+        )
+        if errors:
+            QMessageBox.warning(self, "Archive music", "\n".join(errors[:3]))
 
     def _scan_incoming(self) -> None:
         if self._library_id is None:

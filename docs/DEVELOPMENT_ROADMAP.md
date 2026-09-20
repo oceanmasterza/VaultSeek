@@ -718,6 +718,22 @@ Library integrity
 
 # Session Notes
 
+## 2026-09-20 — Album deletion and music-note icon
+
+- Added confirmed album deletion through AlbumDeletionService and a locked repository transaction. Recycles registered files in configured zones, removes related records, preserves other libraries and unrelated files. Busy libraries and unfinished album acquisitions must be cleared first.
+- Added multi-size music-note icon to Qt, executable, installer and package assets.
+- Validation: 752 unit tests pass; ruff, strict mypy, import-linter and changed-file Black pass. Frozen, disposable installed, and real-profile startup checks pass. Updated the normal installation and verified the configuration hash was preserved; executable matches the build. Installer: packaging/output/VaultSeek-Setup-20260920.exe.
+- Added disposable-file deletion tests covering failure/retry, root boundaries, archive tracks, shared albums, related records, real Recycle Bin and cancelled UI confirmation.
+
+## 2026-09-20 — Upgrade startup repair and Archive selection review
+
+- Inno upgrades now remove only the two obsolete bundled ICU DLLs; previous clean-install smoke tests did not cover leftover files in an existing installation.
+- Archive selection in Library and Albums follows item IDs after sorting; missing metadata-only rows are excluded. Added Qt regression tests.
+- Preserve user AppData and all acquisition/configuration contracts. Expanded Dashboard metadata/recommendation rows describe saved configuration, not independently verified connectivity.
+- Final installer upgraded the real installation on 2026-09-20; executable hash matches dist, configuration hash is unchanged, and the real-profile main window responds. Existing Nicotine connection and qBittorrent login failures remain; Usenet connects. Git commit blocked by missing author identity.
+- Validation: 742 unit tests pass; ruff, strict mypy, import-linter and changed-file Black pass. Upgrade test seeded with obsolete ICU files reaches a responding VaultSeek main window; existing installation also passes with isolated AppData.
+- Whole-tree Black has four pre-existing failures (health_legend, setup_wizard, test_settings_cleanup, test_provider_manager); changed files are checked separately.
+
 ## 2026-09-14 — Connection status, faster local detect, pipeline workers
 
 - Dashboard **Music tools** uses waterfall ids (`usenet` / `prowlarr_public` /

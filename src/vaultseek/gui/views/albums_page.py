@@ -24,6 +24,7 @@ from PySide6.QtWidgets import (
 )
 
 from vaultseek.core.container import Container
+from vaultseek.core.exceptions import OperationError
 from vaultseek.gui.async_task import run_in_background
 from vaultseek.gui.debounce import connect_debounced
 from vaultseek.gui.widgets.browse import (
@@ -40,11 +41,14 @@ from vaultseek.gui.widgets.table_utils import (
     end_table_update,
 )
 from vaultseek.models.entities.acquisition_job import AcquisitionJobType
+from vaultseek.models.entities.operation import OperationType
+from vaultseek.models.entities.track import LibraryZone
 from vaultseek.plugins.builtin.musicbrainz.provider import MusicBrainzProvider
 from vaultseek.services.album_track_display import (
     album_status_for_display,
     build_album_track_rows,
 )
+from vaultseek.services.dto.operation_dto import OperationRequest
 from vaultseek.services.library_scan_actions import (
     run_missing_scan,
     run_missing_scan_for_album,
@@ -100,6 +104,17 @@ class AlbumsPage(QWidget):
         find_music.setToolTip("Open Find & get → Find music (gap scans + Discogs).")
         find_music.clicked.connect(lambda: self.navigate_requested.emit("find"))
         toolbar.addWidget(find_music)
+        archive_album = QPushButton("Archive selected…")
+        archive_album.setProperty("secondary", True)
+        archive_album.setToolTip("Move all present songs on the selected album(s) to Archive.")
+        archive_album.clicked.connect(self._archive_selected_albums)
+        toolbar.addWidget(archive_album)
+        self._delete_album = QPushButton("Delete album…")
+        self._delete_album.setToolTip(
+            "Remove the album from VaultSeek and recycle its music files."
+        )
+        self._delete_album.clicked.connect(self._delete_selected_albums)
+        toolbar.addWidget(self._delete_album)
         layout.addLayout(toolbar)
         layout.addWidget(health_legend_label())
 
@@ -337,6 +352,27 @@ class AlbumsPage(QWidget):
             return self._album_ids[row]
         return None
 
+    def _selected_album_ids(self) -> list[UUID]:
+        """Return selected album IDs in their displayed order."""
+        rows = sorted({index.row() for index in self._table.selectedIndexes()})
+        return [
+            UUID(str(item.data(Qt.ItemDataRole.UserRole)))
+            for row in rows
+            if (item := self._table.item(row, 0)) is not None
+            and item.data(Qt.ItemDataRole.UserRole)
+        ]
+
+    def _selected_track_ids(self) -> list[UUID]:
+        """Return selected real track IDs, excluding MusicBrainz-only missing rows."""
+        rows = sorted({index.row() for index in self._tracks.selectedIndexes()})
+        selected: list[UUID] = []
+        for row in rows:
+            item = self._tracks.item(row, 0)
+            track_id = item.data(Qt.ItemDataRole.UserRole + 1) if item else None
+            if track_id:
+                selected.append(UUID(str(track_id)))
+        return selected
+
     def _on_album_selected(self) -> None:
         album_id = self._selected_album_id()
         if album_id is None or self._library_id is None:
@@ -361,10 +397,13 @@ class AlbumsPage(QWidget):
         begin_table_update(self._tracks)
         self._tracks.setRowCount(len(display_rows))
         self._track_paths = []
+        track_by_path = {track.file_path: track.id for track in tracks}
         for index, row in enumerate(display_rows):
             self._track_paths.append(row.file_path or "")
             path_item = QTableWidgetItem(row.title)
             path_item.setData(Qt.ItemDataRole.UserRole, row.file_path or "")
+            track_id = track_by_path.get(row.file_path or "")
+            path_item.setData(Qt.ItemDataRole.UserRole + 1, str(track_id) if track_id else None)
             cells = [
                 path_item,
                 QTableWidgetItem(row.zone),
@@ -437,6 +476,8 @@ class AlbumsPage(QWidget):
         act_find_lib = menu.addAction("Find missing songs (whole library)")
         act_upgrades = menu.addAction("Find quality upgrades (library)")
         act_queue = menu.addAction("Queue this album for download")
+        act_archive = menu.addAction("Archive selected album(s)…")
+        act_delete = menu.addAction("Delete selected album(s)…")
         act_find_page = menu.addAction("Open Find music…")
         chosen = menu.exec(self._table.mapToGlobal(pos))
         if chosen is act_find and album_id is not None:
@@ -447,6 +488,10 @@ class AlbumsPage(QWidget):
             self._scan_upgrades()
         elif chosen is act_queue and album_id is not None:
             self._queue_album_download(album_id)
+        elif chosen is act_archive:
+            self._archive_selected_albums()
+        elif chosen is act_delete:
+            self._delete_selected_albums()
         elif chosen is act_find_page:
             self.navigate_requested.emit("find")
 
@@ -454,6 +499,7 @@ class AlbumsPage(QWidget):
         album_id = self._selected_album_id()
         menu = QMenu(self)
         act_reveal = menu.addAction("Reveal in Explorer")
+        act_archive = menu.addAction("Archive selected track(s)…")
         act_find = menu.addAction("Find missing songs (this album)")
         act_find_lib = menu.addAction("Find missing songs (whole library)")
         act_upgrades = menu.addAction("Find quality upgrades (library)")
@@ -461,6 +507,8 @@ class AlbumsPage(QWidget):
         chosen = menu.exec(self._tracks.mapToGlobal(pos))
         if chosen is act_reveal:
             self._reveal_track()
+        elif chosen is act_archive:
+            self._archive_selected_tracks()
         elif chosen is act_find and album_id is not None:
             self._scan_missing(album_id=album_id)
         elif chosen is act_find_lib:
@@ -469,6 +517,116 @@ class AlbumsPage(QWidget):
             self._scan_upgrades()
         elif chosen is act_find_page:
             self.navigate_requested.emit("find")
+
+    def _delete_selected_albums(self) -> None:
+        if not self._delete_album.isEnabled():
+            return
+        album_ids = self._selected_album_ids()
+        library_id = self._library_id
+        if not album_ids or library_id is None:
+            QMessageBox.information(self, "Delete albums", "Select one or more albums first.")
+            return
+        names = [
+            album.title
+            for aid in album_ids
+            if (album := self._container.album_repo.get(aid)) is not None
+        ]
+        count = self._container.album_repo.count_tracks(library_id, album_ids)
+        answer = QMessageBox.question(
+            self,
+            "Delete albums and music files",
+            f"Delete these albums ({count} songs) from this library and remove their music files "
+            "from all its folders, including Archive?\n\n"
+            + "\n".join(names[:15])
+            + (f"\n…and {len(names) - 15} more" if len(names) > 15 else "")
+            + "\n\nWindows uses the Recycle Bin where supported; "
+            "otherwise files may be permanently deleted. "
+            "This is not Archive and cannot be undone through VaultSeek. "
+            "Unrelated files in shared folders are kept.",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.Cancel,
+            QMessageBox.StandardButton.Cancel,
+        )
+        if answer != QMessageBox.StandardButton.Yes:
+            return
+        self._delete_album.setEnabled(False)
+
+        def work() -> int:
+            return sum(self._container.album_deletion.delete(library_id, aid) for aid in album_ids)
+
+        def done(result: object) -> None:
+            self._delete_album.setEnabled(True)
+            self.refresh()
+            self._status.setText(
+                f"Deleted {result} song(s) and removed their albums from this library."
+            )
+
+        def failed(message: str) -> None:
+            self._delete_album.setEnabled(True)
+            self.refresh()
+            QMessageBox.warning(self, "Album deletion stopped", message)
+
+        run_in_background(work, on_finished=done, on_failed=failed)
+
+    def _archive_selected_albums(self) -> None:
+        """Queue all present files in selected albums for reversible archiving."""
+        if self._library_id is None:
+            return
+        track_ids: list[UUID] = []
+        for album_id in self._selected_album_ids():
+            track_ids.extend(
+                track.id
+                for track in self._container.track_repo.list_by_album(
+                    self._library_id, album_id, limit=100_000
+                )
+            )
+        self._archive_tracks(track_ids, "selected album(s)")
+
+    def _archive_selected_tracks(self) -> None:
+        """Queue selected present album tracks for reversible archiving."""
+        self._archive_tracks(self._selected_track_ids(), "selected track(s)")
+
+    def _archive_tracks(self, track_ids: list[UUID], label: str) -> None:
+        """Confirm and enqueue archive moves through the operation service."""
+        if not track_ids:
+            QMessageBox.information(self, "Archive music", f"Select {label} first.")
+            return
+        if self._library_id is None:
+            return
+        library = self._container.library_repo.get(self._library_id)
+        if library is None:
+            return
+        answer = QMessageBox.question(
+            self,
+            "Archive music",
+            f"Move {len(track_ids)} song(s) from {label} to:\n{library.archive_path}\n\n"
+            "VaultSeek keeps an operation history so the move can be rolled back.",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.Cancel,
+            QMessageBox.StandardButton.Cancel,
+        )
+        if answer is not QMessageBox.StandardButton.Yes:
+            return
+        queued = 0
+        errors: list[str] = []
+        for track_id in dict.fromkeys(track_ids):
+            try:
+                result = self._container.operation_orchestrator.execute(
+                    OperationRequest(
+                        operation_type=OperationType.FILE_MOVE,
+                        track_id=track_id,
+                        target_zone=LibraryZone.ARCHIVE,
+                        dry_run=False,
+                    )
+                )
+            except OperationError as exc:
+                errors.append(str(exc))
+            else:
+                queued += result.affected_count
+        self._status.setText(
+            f"Queued {queued} song(s) for Archive"
+            + (f"; skipped {len(errors)}." if errors else ".")
+        )
+        if errors:
+            QMessageBox.warning(self, "Archive music", "\n".join(errors[:3]))
 
     def _queue_album_download(self, album_id: UUID) -> None:
         if self._library_id is None:

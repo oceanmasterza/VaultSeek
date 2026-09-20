@@ -9,4 +9,7 @@ Before editing this repo, read and follow **AGENTS.md** at the repository root.
 
 It covers the acquisition search waterfall, config schema migrations, key paths, test commands, and the GitLab remote rules for this project.
 
+Also read `STANDING_RULES.md`, `PROJECT_CONTEXT.md`, and
+`CHANGELOG_DECISIONS.md` for compact shared context before detailed documents.
+
 Also respect **docs/AI_RULES.md** and **docs/DECISIONS.md** (do not silently reverse ADRs).

@@ -1,0 +1,23 @@
+---
+description: Compact project memory and token-efficient VaultSeek work rules
+alwaysApply: true
+---
+
+# VaultSeek architecture and efficiency
+
+Before editing, read `AGENTS.md`, `STANDING_RULES.md`, `PROJECT_CONTEXT.md`,
+`CHANGELOG_DECISIONS.md`, and the directly relevant detailed documentation.
+
+- For a task affecting three or more files or core logic, give a plan of at most
+  five bullets and wait for approval or adjustments before implementation,
+  unless the active task already explicitly authorizes implementation.
+- Read only the directly affected modules and contracts. Work in small,
+  testable chunks; avoid unrelated refactors.
+- Keep replies concise: use file paths, symbols, changed functions, and test
+  results. Do not paste whole files unless explicitly asked.
+- UI uses Container services; Providers only communicate with external systems.
+  Keep configuration typed and preserve nested acquisition values with
+  `dataclasses.replace`.
+- Before completing significant work, make a minimal update to project memory
+  if shared facts changed; record architectural decisions in
+  `CHANGELOG_DECISIONS.md` and detailed ADRs in `docs/DECISIONS.md`.

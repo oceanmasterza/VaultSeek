@@ -205,7 +205,7 @@ def _write_arp(install_dir: Path, uninstall_exe: Path) -> None:
         "NoModify": 1,
         "NoRepair": 1,
         "VersionMajor": 1,
-        "VersionMinor": 0,
+        "VersionMinor": 1,
     }
     key = winreg.CreateKeyEx(winreg.HKEY_CURRENT_USER, ARP_KEY, 0, winreg.KEY_WRITE)
     try:
@@ -290,11 +290,21 @@ def do_install() -> int:
 
     install_dir = _default_install_dir()
     log(f"Install directory: {install_dir}")
+    upgrading = (install_dir / "VaultSeek.exe").is_file()
+    action = "Upgrade / reinstall" if upgrading else "Install"
+    keep_data = (
+        f"\n\nAn older {APP_NAME} was found here. Program files will be replaced. "
+        f"Your settings and library database under:\n{_user_data_dir()}\n"
+        f"are kept."
+        if upgrading
+        else ""
+    )
 
     if not _ask_yes_no(
         f"{APP_NAME} Setup",
-        f"Install {APP_NAME} {APP_VERSION} to:\n{install_dir}\n\n"
-        f"This copies ~{size_mb:.0f} MiB of bundled files (Python, Qt, fpcalc, …).\n\n"
+        f"{action} {APP_NAME} {APP_VERSION} to:\n{install_dir}\n\n"
+        f"This copies ~{size_mb:.0f} MiB of bundled files (Python, Qt, fpcalc, …)."
+        f"{keep_data}\n\n"
         f"Continue?\n\n(Progress is shown in the console window.)",
     ):
         log("User cancelled.")
@@ -302,7 +312,7 @@ def do_install() -> int:
 
     _stop_running_app()
     if install_dir.exists():
-        log("Removing previous install…")
+        log("Removing previous program files (user data under AppData is kept)…")
         shutil.rmtree(install_dir, ignore_errors=True)
     install_dir.mkdir(parents=True, exist_ok=True)
 

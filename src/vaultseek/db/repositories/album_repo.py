@@ -2,13 +2,16 @@
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Iterator, Sequence
+from contextlib import contextmanager
 from datetime import datetime
 from typing import Any
 from uuid import UUID
 
-from sqlalchemy import Engine, Row, exists, func, or_, select
+from sqlalchemy import Engine, Row, delete, exists, func, or_, select, update
 
+from vaultseek.core.exceptions import OperationError
+from vaultseek.db import tables
 from vaultseek.db.repositories.base import batch_upsert
 from vaultseek.db.tables import album_artwork, artists
 from vaultseek.db.tables import albums as albums_table
@@ -34,6 +37,130 @@ class AlbumRepository:
         rows = [_to_row(album) for album in albums]
         with self._engine.begin() as conn:
             batch_upsert(conn, albums_table, rows, conflict_columns=["id"])
+
+    def count_tracks(self, library_id: UUID, album_ids: Sequence[UUID]) -> int:
+        with self._engine.connect() as conn:
+            return int(
+                conn.execute(
+                    select(func.count())
+                    .select_from(tracks_table)
+                    .where(
+                        tracks_table.c.library_id == uuid_to_blob(library_id),
+                        tracks_table.c.album_id.in_([uuid_to_blob(aid) for aid in album_ids]),
+                    )
+                ).scalar_one()
+            )
+
+    @contextmanager
+    def removal(self, library_id: UUID, album_id: UUID) -> Iterator[list[str]]:
+        """Lock a deletion plan; commit metadata removal only after files are removed.
+
+        Filesystem failure rolls back metadata, allowing a retry. Already recycled
+        files remain recoverable from the Recycle Bin.
+        """
+        lib, aid = uuid_to_blob(library_id), uuid_to_blob(album_id)
+        with self._engine.connect() as conn:
+            conn.exec_driver_sql("BEGIN IMMEDIATE")
+            try:
+                album = conn.execute(select(albums_table).where(albums_table.c.id == aid)).first()
+                if album is None:
+                    raise OperationError("This album no longer exists. Refresh Albums.")
+                busy = conn.execute(
+                    select(tables.jobs.c.id)
+                    .where(
+                        tables.jobs.c.library_id == lib,
+                        tables.jobs.c.status.in_(["pending", "running", "retry"]),
+                    )
+                    .limit(1)
+                ).first()
+                acquiring = conn.execute(
+                    select(tables.acquisition_jobs.c.id)
+                    .where(
+                        tables.acquisition_jobs.c.library_id == lib,
+                        tables.acquisition_jobs.c.album == album.title,
+                        tables.acquisition_jobs.c.state.not_in(["completed", "cancelled"]),
+                    )
+                    .limit(1)
+                ).first()
+                if busy or acquiring:
+                    raise OperationError(
+                        "Wait for library processing to finish and cancel this album's "
+                        "unfinished downloads in Wishlist before deleting it."
+                    )
+                rows = conn.execute(
+                    select(tracks_table.c.id, tracks_table.c.file_path).where(
+                        tracks_table.c.library_id == lib,
+                        tracks_table.c.album_id == aid,
+                    )
+                ).all()
+                ids = [row.id for row in rows]
+                paths = [str(row.file_path) for row in rows]
+                if not ids:
+                    raise OperationError("This album has no tracks in the selected library.")
+                shared = conn.execute(
+                    select(tracks_table.c.id)
+                    .where(
+                        tracks_table.c.file_path.collate("NOCASE").in_(paths),
+                        tracks_table.c.id.not_in(ids),
+                    )
+                    .limit(1)
+                ).first()
+                if shared:
+                    raise OperationError(
+                        "A selected file is also registered to another album or library."
+                    )
+                groups = list(
+                    conn.execute(
+                        select(tables.duplicate_members.c.group_id).where(
+                            tables.duplicate_members.c.track_id.in_(ids)
+                        )
+                    ).scalars()
+                )
+                for table in (
+                    tables.file_identity,
+                    tables.metadata_confidence,
+                    tables.track_artwork,
+                    tables.duplicate_members,
+                    tables.review_items,
+                ):
+                    conn.execute(delete(table).where(table.c.track_id.in_(ids)))
+                conn.execute(
+                    update(tables.change_history)
+                    .where(tables.change_history.c.track_id.in_(ids))
+                    .values(track_id=None)
+                )
+                conn.execute(
+                    update(tables.duplicate_groups)
+                    .where(tables.duplicate_groups.c.best_track_id.in_(ids))
+                    .values(best_track_id=None)
+                )
+                conn.execute(delete(tracks_table).where(tracks_table.c.id.in_(ids)))
+                for group in set(groups):
+                    count = conn.execute(
+                        select(func.count())
+                        .select_from(tables.duplicate_members)
+                        .where(tables.duplicate_members.c.group_id == group)
+                    ).scalar_one()
+                    conn.execute(
+                        update(tables.duplicate_groups)
+                        .where(tables.duplicate_groups.c.id == group)
+                        .values(track_count=count)
+                    )
+                if not conn.execute(
+                    select(tracks_table.c.id).where(tracks_table.c.album_id == aid).limit(1)
+                ).first():
+                    conn.execute(
+                        delete(tables.album_artwork).where(tables.album_artwork.c.album_id == aid)
+                    )
+                    conn.execute(
+                        delete(tables.review_items).where(tables.review_items.c.album_id == aid)
+                    )
+                    conn.execute(delete(albums_table).where(albums_table.c.id == aid))
+                yield paths
+                conn.commit()
+            except BaseException:
+                conn.rollback()
+                raise
 
     def get(self, album_id: UUID) -> Album | None:
         with self._engine.connect() as conn:

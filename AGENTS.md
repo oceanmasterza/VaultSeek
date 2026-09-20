@@ -20,15 +20,28 @@ Windows desktop **Acquisition Engine** (Python 3.12+, PySide6). It finds missing
 
 ## Mandatory reading (in order)
 
-1. [docs/ARCHITECTURAL_UPDATE_001.md](docs/ARCHITECTURAL_UPDATE_001.md) — Acquisition Engine model
-2. [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — layers
-3. [docs/DECISIONS.md](docs/DECISIONS.md) — ADRs (do not silently reverse)
-4. [docs/AI_RULES.md](docs/AI_RULES.md) — coding / docs rules
-5. [docs/architecture/02-folder-layout.md](docs/architecture/02-folder-layout.md) — import boundaries
-6. Feature-specific: [docs/PROWLARR.md](docs/PROWLARR.md), [docs/NICOTINE_PLUS.md](docs/NICOTINE_PLUS.md), [docs/USER_GUIDE.md](docs/USER_GUIDE.md), [docs/SOURCES.md](docs/SOURCES.md), in-app `docs/HELP.html`
-7. Latest **Session Notes** in [docs/DEVELOPMENT_ROADMAP.md](docs/DEVELOPMENT_ROADMAP.md)
+1. [STANDING_RULES.md](STANDING_RULES.md) — compact invariants and working method
+2. [PROJECT_CONTEXT.md](PROJECT_CONTEXT.md) — current architecture and scope
+3. [CHANGELOG_DECISIONS.md](CHANGELOG_DECISIONS.md) — brief dated decision index
+4. [docs/ARCHITECTURAL_UPDATE_001.md](docs/ARCHITECTURAL_UPDATE_001.md) — Acquisition Engine model
+5. [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — layers
+6. [docs/DECISIONS.md](docs/DECISIONS.md) — ADRs (do not silently reverse)
+7. [docs/AI_RULES.md](docs/AI_RULES.md) — coding / docs rules
+8. [docs/architecture/02-folder-layout.md](docs/architecture/02-folder-layout.md) — import boundaries
+9. Feature-specific: [docs/PROWLARR.md](docs/PROWLARR.md), [docs/NICOTINE_PLUS.md](docs/NICOTINE_PLUS.md), [docs/USER_GUIDE.md](docs/USER_GUIDE.md), [docs/SOURCES.md](docs/SOURCES.md), in-app `docs/HELP.html`
+10. Latest **Session Notes** in [docs/DEVELOPMENT_ROADMAP.md](docs/DEVELOPMENT_ROADMAP.md)
 
 If a change alters architecture: update ADRs + architecture docs **before** or with the code (see AI_RULES documentation-first section).
+
+## Shared AI memory and execution protocol
+
+These rules apply equally to Cursor, Codex/ChatGPT, and any other assistant.
+
+1. Start with the compact memory files above, then inspect only the directly affected code and contracts.
+2. For a change touching three or more files or core logic, give a plan of at most five bullets and wait for approval or adjustments, unless the active request already authorizes implementation.
+3. Work in small testable chunks. Report changed paths, behavior, and checks; do not paste complete files unless asked.
+4. Before completing significant work, make a minimal update to `PROJECT_CONTEXT.md` or `STANDING_RULES.md` when shared facts changed; add dated decisions to `CHANGELOG_DECISIONS.md` and detailed ADRs to `docs/DECISIONS.md` where applicable.
+5. Cursor implements and pushes reviewed code to `gitlab/main`; Codex/ChatGPT plans, reviews, verifies, and maintains the shared project memory unless the user assigns it implementation work.
 
 ---
 

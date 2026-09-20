@@ -3,7 +3,9 @@
 from __future__ import annotations
 
 import sys
+from pathlib import Path
 
+from PySide6.QtGui import QIcon
 from PySide6.QtWidgets import QApplication
 
 from vaultseek.core.container import Container
@@ -22,6 +24,7 @@ def run_gui(container: Container) -> int:
     existing = QApplication.instance()
     app = existing if isinstance(existing, QApplication) else QApplication(sys.argv)
 
+    app.setWindowIcon(QIcon(str(Path(__file__).parent / "assets" / "vaultseek.ico")))
     apply_theme(app, container.config.theme)
     window = MainWindow(container)
     window.show()

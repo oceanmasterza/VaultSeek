@@ -84,6 +84,7 @@ from vaultseek.services.acquisition_bootstrap import connect_acquisition_provide
 from vaultseek.services.acquisition_engine import AcquisitionEngine
 from vaultseek.services.acquisition_runner import AcquisitionRunner
 from vaultseek.services.acquisition_workflow import AcquisitionWorkflow
+from vaultseek.services.album_deletion import AlbumDeletionService
 from vaultseek.services.connection_checks import ConnectionChecks
 from vaultseek.services.download_manager import DownloadManager
 from vaultseek.services.folder_trust import FolderTrustService
@@ -142,6 +143,7 @@ class Container:
     rules_engine: RulesEngine
     duplicate_matcher: DuplicateMatcher
     organize_engine: OrganizeEngine
+    album_deletion: AlbumDeletionService
     operation_orchestrator: OperationOrchestrator
     report_service: ReportService
     watch_folder: WatchFolderService
@@ -483,6 +485,7 @@ class Container:
             rules_engine=rules_engine,
             duplicate_matcher=duplicate_matcher,
             organize_engine=organize_engine,
+            album_deletion=AlbumDeletionService(album_repo, library_repo),
             operation_orchestrator=operation_orchestrator,
             report_service=report_service,
             watch_folder=watch_folder,
