@@ -49,6 +49,13 @@ def test_illegal_transition_raises() -> None:
         validate_transition(AcquisitionJobState.CREATED, AcquisitionJobState.DOWNLOADING)
 
 
+def test_scoring_cannot_jump_to_download_failed() -> None:
+    """Startup retry must not treat a refused download as a direct scoring failure."""
+    assert not can_transition(AcquisitionJobState.SCORING, AcquisitionJobState.DOWNLOAD_FAILED)
+    with pytest.raises(ValueError, match="scoring -> download_failed"):
+        validate_transition(AcquisitionJobState.SCORING, AcquisitionJobState.DOWNLOAD_FAILED)
+
+
 def test_engine_create_queue_and_cancel(
     acquisition_engine: AcquisitionEngine, library_id: UUID
 ) -> None:

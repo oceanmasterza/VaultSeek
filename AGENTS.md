@@ -82,6 +82,7 @@ Behaviour (`ProviderManager.search`):
 - `search_waterfall=True` (default): **stop after the first connected source that returns hits**
 - `provider_search_delay_seconds` (default `15`): wait after an **empty** tier before trying the next
 - Nicotine `SearchThrottleError` must **not** block later tiers
+- A refused download start (provider not connected) moves `scoring` or `waiting_for_user` through `downloading` and then `download_failed`. `scoring -> download_failed` stays illegal so one disconnected peer cannot abort the rest of the acquisition tick. A later connected tier can still start.
 - Users reorder sources + delay under **Settings → Wishlist & downloads → Search source order**
 - Enable Prowlarr, qBittorrent, and either SABnzbd (default) or NZBGet under **Plugins**; Nicotine+ under Settings
 

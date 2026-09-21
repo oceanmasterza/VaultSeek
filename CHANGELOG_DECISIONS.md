@@ -17,3 +17,4 @@
 
 - 2026-09-21: Settings/Plugins provider reconnect runs in the background and shares `ProviderManager.lifecycle` with search so concurrent reconnects cannot mutate providers mid-search. Library combo and media-plugin switches confirm before discarding dirty Settings edits. HELP documents Albums as the combined covers/Problems surface.
 - 2026-09-21: ProviderManager GUI status reads immutable connected/order snapshots and never waits on the lifecycle lock held during search sleeps or reconnect network I/O.
+- 2026-09-21: A refused download start from scoring or waiting-for-user enters downloading, then download_failed. scoring -> download_failed stays illegal so a disconnected Nicotine+ peer cannot abort the acquisition tick.

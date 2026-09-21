@@ -31,11 +31,7 @@ class DownloadManager:
 
         handle = self._providers.download(result)
         if handle is None:
-            self._engine.advance(
-                job_id,
-                AcquisitionJobState.DOWNLOAD_FAILED,
-                note=f"provider {result.provider_id} unavailable",
-            )
+            self._record_provider_unavailable(job_id, result.provider_id)
             return None
 
         self._handles[job_id] = handle
@@ -68,6 +64,21 @@ class DownloadManager:
                 },
             )
         return handle
+
+    def _record_provider_unavailable(self, job_id: UUID, provider_id: str) -> None:
+        """Record a refused download start using only legal transitions.
+
+        ``SCORING -> DOWNLOAD_FAILED`` is illegal. A start that never obtains a
+        handle still entered the download step, so move through ``DOWNLOADING``
+        first when the job is not already there.
+        """
+        job = self._engine.get(job_id)
+        if job is None:
+            raise KeyError(f"AcquisitionJob {job_id} not found")
+        note = f"provider {provider_id} unavailable"
+        if job.state is not AcquisitionJobState.DOWNLOADING:
+            self._engine.advance(job_id, AcquisitionJobState.DOWNLOADING, note=note)
+        self._engine.advance(job_id, AcquisitionJobState.DOWNLOAD_FAILED, note=note)
 
     def poll(self, job_id: UUID) -> DownloadStatus | None:
         handle = self._resolve_handle(job_id)

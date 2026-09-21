@@ -21,6 +21,7 @@
 - Default waterfall (schema 23): Nicotine+ → Prowlarr Usenet (SABnzbd by default, or selectable NZBGet; one search tier) → Prowlarr public torrents/qBittorrent → private torrents/qBittorrent.
 - With `search_waterfall=True`, stop at the first connected source returning hits; wait 15 seconds after an empty tier by default. A Nicotine throttle failure must continue to later tiers.
 - The Verification Pipeline is mandatory before the Import Pipeline. Providers return normalized results and never alter library state.
+- A download start that gets no handle moves through `downloading` before `download_failed`. `scoring -> download_failed` stays illegal, so one disconnected peer cannot abort the rest of the acquisition tick.
 
 ## Persisted data
 

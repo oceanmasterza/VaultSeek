@@ -718,6 +718,12 @@ Library integrity
 
 # Session Notes
 
+## 2026-09-21 — Refused download start stays on the legal path
+
+Startup polling of a Nicotine+ download whose client is disconnected tries the next scored peer. That start used to advance `scoring -> download_failed` and abort the library tick, leaving the job in `scoring`. `DownloadManager` now records the refusal as `scoring -> downloading -> download_failed`. The direct transition stays illegal. A later connected waterfall tier can still start, and a verification failure can still try the next result.
+
+Delivery used that build. Prior checks: 867 unit tests passed, plus the 22 acquisition regressions. Installer `packaging/output/VaultSeek-Setup.exe` SHA256 `7C649832C4A0720E2E74679B3078F72C34032FD09D0870C2922A7D11A21FBD83`. Frozen and installed `VaultSeek.exe` SHA256 `28D08A706D7CA8874BF3FD202C96FC2ECF20A25D236B51C33C53B7882B591262`. Dated copy: `packaging/output/VaultSeek-Setup-20260921-final.exe`. Inno exit 0 over the per-user Programs folder. Config SHA256 stayed `5628CA5E9475965DADD1032A5B46CE5E1D3AB3CEDFAB280D54D8F429A35FE76A`. The SQLite backup-API snapshot matched before and after (`completed:138; downloading:5; queued:294; searching:2; verification_failed:2`). Isolated temporary AppData smoke saw window title VaultSeek, WM_NULL at 1280 and 720, pipeline Discover/Hash/Sync with a narrow wrap, Albums Archive/Delete/Find music, and Settings Save library/Save preferences. No traceback or crash file. The real profile was not launched.
+
 ## 2026-09-21 — Combined Albums, pipeline, and advanced settings
 
 Albums owns covers. Artwork is not its own sidebar page; older Artwork links open Albums with Problems only. Cover identity is provenance-first: a trusted `artwork.source_id` matching the album MBID may claim the cover, foreign provenance blocks the wrong album, and popularity counts or timestamps do not pick a winner. Numbered slots include the normalized title so Live, Acoustic, and Remix editions stay distinct.
