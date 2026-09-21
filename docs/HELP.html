@@ -136,7 +136,7 @@
     <h2>Pages</h2>
     <a href="#dashboard">Dashboard</a>
     <a href="#library">Library (Files)</a>
-    <a href="#artists-albums">Artists, Albums, Artwork</a>
+    <a href="#artists-albums">Artists, Albums, Duplicates</a>
     <a href="#find-music">Find music</a>
     <a href="#wishlist">Wishlist</a>
     <a href="#review">Review</a>
@@ -513,7 +513,7 @@
     <table>
       <tr><th>Hub</th><th>Pages</th><th>Use it for</th></tr>
       <tr><td><strong>Home</strong></td><td>Dashboard</td><td>Health, pipeline, getting started</td></tr>
-      <tr><td><strong>Library</strong></td><td>Files, Artists, Albums, Artwork, Duplicates</td><td>Browse what you already have</td></tr>
+      <tr><td><strong>Library</strong></td><td>Files, Artists, Albums (covers + Problems), Duplicates</td><td>Browse what you already have</td></tr>
       <tr><td><strong>Find &amp; get</strong></td><td>Find music, Review, Wishlist</td><td>Gaps, Discogs, approve IDs, downloads</td></tr>
       <tr><td><strong>System</strong></td><td>Jobs, Activity, Reports, Logs, Settings, Plugins</td><td>Background work and configuration</td></tr>
     </table>
@@ -590,7 +590,7 @@
       <li>Right-click a row for Explorer, gap scan, or quality-upgrade scan.</li>
     </ul>
 
-    <h2 id="artists-albums">Artists, Albums, Artwork, Duplicates</h2>
+    <h2 id="artists-albums">Artists, Albums, Duplicates</h2>
     <p><strong>Archive selected</strong> moves music to Archive and keeps it in VaultSeek.
     <strong>Delete album…</strong> removes the selected album's songs from the current library
     and its media folders, including Archive, after confirmation. Files are sent to the Windows
@@ -600,17 +600,18 @@
     remain for retry; any files already recycled can be recovered from the Recycle Bin.</p>
     <h3>Artists</h3>
     <p>Artists created during identify. Select a row for tracks; double-click to open Albums filtered to that artist.</p>
-    <h3>Albums</h3>
+    <h3>Albums (covers included)</h3>
     <p>
       Album list with cover and tracks. Orange means missing songs or below quality prefs.
       Right-click to find missing songs for one album or the whole library, or queue a download.
+      Cover status and <em>Problems only</em> (missing / low-res covers) live on this page —
+      there is no separate Artwork destination. Pipeline artwork jobs still fetch covers;
+      Jump to… / Dashboard pipeline “Artwork” opens Albums with Problems only checked.
     </p>
     <p>
       Parked Wanted items are <strong>not</strong> managed here. Albums shows a count
       and an <em>Open Wishlist</em> button. Start or remove Wanted items on Wishlist.
     </p>
-    <h3>Artwork</h3>
-    <p>Cover status (OK / low-res / missing). Covers are fetched by pipeline jobs, not from this page.</p>
     <h3>Duplicates</h3>
     <p>
       Open groups the pipeline detected. A side-by-side compare viewer is not built yet.
@@ -670,7 +671,9 @@
     <h3>Jobs</h3>
     <p>
       The library pipeline queue: scan, hash, fingerprint, identify, organize, artwork, media-server sync.
-      Wishlist downloads are a different queue (see Wishlist). Cancel and retry need a selected row.
+      The Dashboard pipeline diagram jumps to the matching page (Artwork opens Albums with
+      <em>Problems only</em>). Wishlist downloads are a different queue (see Wishlist).
+      Cancel and retry need a selected row.
     </p>
     <h3>Activity</h3>
     <p>Combined timeline of pipeline jobs and wishlist downloads. Select a row, then Open… to jump to Jobs or Wishlist.</p>

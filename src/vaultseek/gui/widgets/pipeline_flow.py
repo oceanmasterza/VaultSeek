@@ -1,19 +1,20 @@
-"""Horizontal pipeline progress strip for the Dashboard."""
+"""Wrapping pipeline progress strip for the Dashboard."""
 
 from __future__ import annotations
 
-from PySide6.QtCore import Qt, Signal
-from PySide6.QtGui import QMouseEvent
+from PySide6.QtCore import QSize, Qt, Signal
+from PySide6.QtGui import QMouseEvent, QResizeEvent
 from PySide6.QtWidgets import (
     QFrame,
-    QHBoxLayout,
     QLabel,
     QProgressBar,
+    QSizePolicy,
     QVBoxLayout,
     QWidget,
 )
 
-from vaultseek.services.dashboard import PipelineStageStat
+from vaultseek.gui.widgets.flow_layout import FlowLayout
+from vaultseek.services.dashboard import PIPELINE_STAGES, PipelineStageStat
 
 # Pipeline stage key → main-window nav key (click-through from Dashboard).
 STAGE_NAV_KEYS: dict[str, str] = {
@@ -31,6 +32,21 @@ STAGE_NAV_KEYS: dict[str, str] = {
 }
 
 
+def _idle_stages() -> tuple[PipelineStageStat, ...]:
+    """Named stages with zero library/wishlist counts so the diagram never collapses."""
+    return tuple(
+        PipelineStageStat(
+            key=key,
+            label=label,
+            backlog=0,
+            running=0,
+            is_active=False,
+            is_bottleneck=False,
+        )
+        for key, label, _job_type in PIPELINE_STAGES
+    )
+
+
 class _StageCard(QFrame):
     clicked = Signal(str)
 
@@ -46,33 +62,48 @@ class _StageCard(QFrame):
 
 
 class PipelineFlowWidget(QWidget):
-    """Beets/Picard-style left-to-right processing journey."""
+    """Beets/Picard-style processing journey that wraps instead of collapsing."""
 
     stage_clicked = Signal(str)
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
-        self._row = QHBoxLayout(self)
-        self._row.setContentsMargins(0, 0, 0, 0)
-        self._row.setSpacing(4)
-        self._stage_widgets: list[QFrame] = []
+        self.setObjectName("processingPipeline")
+        self._flow = FlowLayout(self, margin=0, spacing=6)
+        self._syncing = False
+        policy = QSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
+        policy.setHeightForWidth(True)
+        self.setSizePolicy(policy)
+        self.set_stages(())
+
+    def hasHeightForWidth(self) -> bool:  # noqa: N802 — Qt API
+        return True
+
+    def heightForWidth(self, width: int) -> int:  # noqa: N802 — Qt API
+        return int(self._flow.heightForWidth(width))
+
+    def resizeEvent(self, event: QResizeEvent) -> None:  # noqa: N802 — Qt API
+        super().resizeEvent(event)
+        self._sync_height()
 
     def set_stages(self, stages: tuple[PipelineStageStat, ...]) -> None:
-        while self._row.count():
-            item = self._row.takeAt(0)
+        shown = stages if stages else _idle_stages()
+        while self._flow.count():
+            item = self._flow.takeAt(0)
             if item is None:
                 continue
             widget = item.widget()
             if widget is not None:
+                widget.setParent(None)
                 widget.deleteLater()
-        self._stage_widgets.clear()
 
-        for index, stage in enumerate(stages):
+        for index, stage in enumerate(shown):
             if index:
                 arrow = QLabel("→")
                 arrow.setAlignment(Qt.AlignmentFlag.AlignCenter)
                 arrow.setProperty("muted", True)
-                self._row.addWidget(arrow)
+                arrow.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
+                self._flow.addWidget(arrow)
 
             card = _StageCard(stage.key)
             card.setProperty("pipelineStage", True)
@@ -84,6 +115,7 @@ class PipelineFlowWidget(QWidget):
                 f"{stage.label}: {stage.backlog} waiting"
                 + (f", {stage.running} running" if stage.running else "")
             )
+            card.setSizePolicy(QSizePolicy.Policy.Minimum, QSizePolicy.Policy.Minimum)
             inner = QVBoxLayout(card)
             inner.setContentsMargins(8, 8, 8, 8)
             inner.setSpacing(4)
@@ -109,15 +141,36 @@ class PipelineFlowWidget(QWidget):
             status = QLabel("running" if stage.running else ("queued" if stage.backlog else "idle"))
             status.setAlignment(Qt.AlignmentFlag.AlignCenter)
             status.setProperty("muted", True)
-            inner.addWidget(title)
-            inner.addWidget(count)
-            inner.addWidget(bar)
-            inner.addWidget(status)
+            for child in (title, count, bar, status):
+                child.setAttribute(Qt.WidgetAttribute.WA_TransparentForMouseEvents, True)
+                inner.addWidget(child)
+            card.setMinimumWidth(max(88, title.sizeHint().width() + 16))
             card.clicked.connect(self.stage_clicked.emit)
-            self._row.addWidget(card, stretch=1)
-            self._stage_widgets.append(card)
+            self._flow.addWidget(card)
 
-        # Force style re-polish for dynamic properties.
-        for stage_card in self._stage_widgets:
-            stage_card.style().unpolish(stage_card)
-            stage_card.style().polish(stage_card)
+        for card in self.findChildren(_StageCard):
+            card.style().unpolish(card)
+            card.style().polish(card)
+        self.updateGeometry()
+        self._sync_height()
+
+    def _sync_height(self) -> None:
+        """Grow to the wrapped height so later rows are not clipped at 0."""
+        if self._syncing:
+            return
+        width = self.width()
+        if width < 40:
+            return
+        height = self.heightForWidth(width)
+        if height <= 0 or height == self.minimumHeight():
+            return
+        self._syncing = True
+        try:
+            self.setMinimumHeight(height)
+            self.updateGeometry()
+        finally:
+            self._syncing = False
+
+    def sizeHint(self) -> QSize:  # noqa: N802 — Qt API
+        width = self.width() if self.width() > 40 else 720
+        return QSize(width, max(self.heightForWidth(width), 1))

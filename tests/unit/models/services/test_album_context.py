@@ -54,3 +54,42 @@ def test_albums_not_equivalent_same_title_different_artists() -> None:
 
 def test_albums_not_equivalent_title_alone_without_artist() -> None:
     assert not albums_equivalent(_album(title="OK Computer"), _album(title="OK Computer"))
+
+
+def test_release_cover_key_strips_edition_notes_only() -> None:
+    from vaultseek.models.services.album_context import release_cover_key
+
+    salvation = release_cover_key("Alphaville", "Salvation (Deluxe Version)")
+    remaster = release_cover_key("Alphaville", "Salvation (Deluxe Remaster 2023) [3CD]")
+    no_limit = release_cover_key("2 Unlimited", "No Limit - EP")
+    assert salvation == remaster
+    assert salvation != no_limit
+    assert release_cover_key("Alice In Chains", "Alice In Chains") == release_cover_key(
+        "alice in chains", "Alice In Chains"
+    )
+
+
+def test_release_cover_key_keeps_live_remix_and_volume_titles() -> None:
+    from vaultseek.models.services.album_context import release_cover_key
+
+    assert release_cover_key("Pink Floyd", "The Wall") != release_cover_key(
+        "Pink Floyd", "The Wall (Live)"
+    )
+    assert release_cover_key("Artist", "Hits") != release_cover_key("Artist", "Hits (Acoustic)")
+    assert release_cover_key("Artist", "Song") != release_cover_key("Artist", "Song (Remix)")
+    assert release_cover_key("Artist", "Album") != release_cover_key(
+        "Artist", "Album (feat. Guest)"
+    )
+    assert release_cover_key("Artist", "Vol 1") != release_cover_key("Artist", "Vol 1 (Blue Album)")
+
+
+def test_release_slot_key_treats_nonpositive_as_unnumbered() -> None:
+    from vaultseek.db.uuid_utils import generate_uuid7
+    from vaultseek.models.services.album_context import release_slot_key
+
+    a = generate_uuid7()
+    b = generate_uuid7()
+    assert release_slot_key(1, 0, a, "A") != release_slot_key(1, 0, b, "B")
+    assert release_slot_key(1, None, a) != release_slot_key(1, None, b)
+    assert release_slot_key(1, 1, a, "Same") == release_slot_key(1, 1, b, "same")
+    assert release_slot_key(1, 1, a, "One") != release_slot_key(1, 1, b, "Two")

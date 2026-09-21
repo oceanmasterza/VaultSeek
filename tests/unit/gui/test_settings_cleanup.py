@@ -41,7 +41,17 @@ def test_settings_preserves_nicotine_username_password(
         "vaultseek.gui.views.settings_page.QMessageBox.information",
         lambda *args, **kwargs: None,
     )
+    monkeypatch.setattr(
+        "vaultseek.gui.views.settings_page.connect_acquisition_providers",
+        lambda *args, **kwargs: None,
+    )
     page._save_preferences()  # noqa: SLF001
+    from PySide6.QtCore import QThreadPool
+
+    button = page._save_prefs_button  # noqa: SLF001
+    assert button is not None
+    qtbot.waitUntil(lambda: button.isEnabled(), timeout=5000)
+    QThreadPool.globalInstance().waitForDone(5000)
     saved = container.config.acquisition.nicotine_plus
     assert saved.username == "keep-user"
     assert saved.password == "keep-pass"
@@ -89,9 +99,7 @@ def test_wizard_can_disable_nicotine(container: Container, tmp_path: Path) -> No
     assert container.config.acquisition.nicotine_plus.port == 22025
 
 
-def test_wizard_updates_existing_acoustid_endpoint(
-    container: Container, tmp_path: Path
-) -> None:
+def test_wizard_updates_existing_acoustid_endpoint(container: Container, tmp_path: Path) -> None:
     incoming = tmp_path / "Incoming"
     library = tmp_path / "Library"
     incoming.mkdir()

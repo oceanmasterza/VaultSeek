@@ -24,8 +24,8 @@ class AlbumBrowseRow:
     artist_name: str | None
     artist_id: UUID | None
     year: int | None
-    track_count: int  # present tracks linked to this library
-    has_cover: bool
+    track_count: int  # distinct disc/track/title slots in this library, not duplicate files
+    has_cover: bool  # True only when get_primary_for_album would return a valid cover
     mbid: str | None = None
     expected_track_count: int | None = None  # albums.track_count when known
 

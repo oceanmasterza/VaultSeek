@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from dataclasses import replace
 from datetime import UTC, datetime
 from uuid import UUID
 
@@ -138,6 +139,140 @@ def test_album_list_for_library_and_track_list_by_album(
     listed = tracks.list_by_album(library_id, album_id)
     assert len(listed) == 1
     assert listed[0].album_id == album_id
+
+
+def test_album_track_count_is_distinct_disc_slots_not_duplicate_files(
+    engine: Engine, library_id: UUID, artist_id: UUID
+) -> None:
+    albums_repo = AlbumRepository(engine)
+    tracks = TrackRepository(engine)
+    album_id = generate_uuid7()
+    with engine.begin() as conn:
+        conn.execute(
+            insert(albums).values(
+                id=uuid_to_blob(album_id),
+                title="Alice In Chains",
+                sort_title="Alice In Chains",
+                album_artist_id=uuid_to_blob(artist_id),
+                year=1995,
+                created_at=_NOW.isoformat(),
+                updated_at=_NOW.isoformat(),
+            )
+        )
+    copies = [
+        replace(
+            _track(library_id, path="C:/library/01.flac", album_id=album_id),
+            track_number=1,
+            disc_number=1,
+            title="Grind",
+        ),
+        replace(
+            _track(
+                library_id,
+                path="C:/archive/01.mp3",
+                album_id=album_id,
+                zone=LibraryZone.ARCHIVE,
+            ),
+            track_number=1,
+            disc_number=1,
+            title="Grind",
+        ),
+        replace(
+            _track(library_id, path="C:/library/disc2-01.flac", album_id=album_id),
+            track_number=1,
+            disc_number=2,
+            title="Bonus",
+        ),
+    ]
+    for track in copies:
+        tracks.upsert(track)
+
+    rows = albums_repo.list_for_library(library_id)
+
+    assert len(rows) == 1
+    assert rows[0].track_count == 2
+    assert len(tracks.list_by_album(library_id, album_id)) == 3
+
+
+def test_album_slots_keep_track_zero_and_conflicting_titles(
+    engine: Engine, library_id: UUID, artist_id: UUID
+) -> None:
+    albums_repo = AlbumRepository(engine)
+    tracks = TrackRepository(engine)
+    album_id = generate_uuid7()
+    with engine.begin() as conn:
+        conn.execute(
+            insert(albums).values(
+                id=uuid_to_blob(album_id),
+                title="Mixed Tags",
+                sort_title="Mixed Tags",
+                album_artist_id=uuid_to_blob(artist_id),
+                created_at=_NOW.isoformat(),
+                updated_at=_NOW.isoformat(),
+            )
+        )
+    for path, number, title in (
+        ("C:/library/z0a.mp3", 0, "Extra A"),
+        ("C:/library/z0b.mp3", 0, "Extra B"),
+        ("C:/library/t1a.mp3", 1, "Song A"),
+        ("C:/library/t1b.mp3", 1, "Song B"),
+    ):
+        tracks.upsert(
+            replace(
+                _track(library_id, path=path, album_id=album_id),
+                track_number=number,
+                title=title,
+            )
+        )
+
+    rows = albums_repo.list_for_library(library_id)
+    assert len(rows) == 1
+    assert rows[0].track_count == 4
+    assert len(tracks.list_by_album(library_id, album_id)) == 4
+
+
+def test_album_has_cover_matches_valid_primary_not_foreign_link(
+    engine: Engine, library_id: UUID, artist_id: UUID
+) -> None:
+    albums_repo = AlbumRepository(engine)
+    tracks = TrackRepository(engine)
+    artwork = ArtworkRepository(engine)
+    real_id = generate_uuid7()
+    fake_id = generate_uuid7()
+    with engine.begin() as conn:
+        for album_id, title in ((real_id, "Real"), (fake_id, "Fake")):
+            conn.execute(
+                insert(albums).values(
+                    id=uuid_to_blob(album_id),
+                    title=title,
+                    sort_title=title,
+                    album_artist_id=uuid_to_blob(artist_id),
+                    created_at=_NOW.isoformat(),
+                    updated_at=_NOW.isoformat(),
+                )
+            )
+    tracks.upsert(_track(library_id, path="C:/library/real/01.mp3", album_id=real_id))
+    tracks.upsert(_track(library_id, path="C:/library/fake/01.mp3", album_id=fake_id))
+    art = Artwork(
+        id=generate_uuid7(),
+        content_hash_sha256="cd" * 32,
+        source="embedded_art",
+        mime_type="image/jpeg",
+        width=600,
+        height=600,
+        file_size=10,
+        file_path="C:/cache/cd.jpg",
+        created_at=_NOW,
+    )
+    art_id = artwork.upsert_image(art)
+    assert artwork.link_album(real_id, art_id) is True
+    assert artwork.link_album(fake_id, art_id) is False
+
+    by_id = {row.album_id: row for row in albums_repo.list_for_library(library_id)}
+    assert by_id[real_id].has_cover is True
+    assert by_id[fake_id].has_cover is False
+    assert artwork.get_primary_for_album(real_id) is not None
+    assert artwork.get_primary_for_album(fake_id) is None
 
 
 def test_list_by_path_prefix_and_artwork_browse(

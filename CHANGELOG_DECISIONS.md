@@ -14,3 +14,6 @@
 - 2026-09-20: Dashboard client probes run off the UI thread and independently. One client failure does not cancel the others. A settings change drops stale probe results.
 
 - 2026-09-20: Review lists only songs with a local audio file and names them from an embedded tag or the filename when fingerprinting stored an id. Artwork shows the same album cover files as Albums.
+
+- 2026-09-21: Settings/Plugins provider reconnect runs in the background and shares `ProviderManager.lifecycle` with search so concurrent reconnects cannot mutate providers mid-search. Library combo and media-plugin switches confirm before discarding dirty Settings edits. HELP documents Albums as the combined covers/Problems surface.
+- 2026-09-21: ProviderManager GUI status reads immutable connected/order snapshots and never waits on the lifecycle lock held during search sleeps or reconnect network I/O.

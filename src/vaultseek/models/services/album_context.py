@@ -1,4 +1,4 @@
-"""Album-sameness helpers for duplicate detection.
+"""Album-sameness helpers for duplicate detection and cover identity.
 
 Same recording on *different* albums (singles vs LPs, soundtracks,
 compilations, remasters with distinct release titles) is a normal
@@ -8,6 +8,7 @@ duplicate regardless of tags.
 
 from __future__ import annotations
 
+import re
 from typing import Protocol
 from uuid import UUID
 
@@ -65,3 +66,51 @@ def albums_equivalent(left: Album, right: Album) -> bool:
 
 def _normalize_title(title: str) -> str:
     return " ".join(title.casefold().split())
+
+
+# Strip known packaging/edition notes only. Live / remix / acoustic / feat. /
+# coloured-volume parentheses stay so distinct releases keep separate covers.
+_EDITION_TOKEN = (
+    r"(?:deluxe|remaster(?:ed)?|expanded|bonus|anniversary|explicit|"
+    r"special\s+edition|digipak|super\s+deluxe|\d+\s*cd|"
+    r"disc\s*\d+|cd\s*\d+|bonus\s+tracks?|expanded\s+edition|"
+    r"remaster(?:ed)?\s+\d{4}|\d{4}\s+remaster(?:ed)?)"
+)
+_EDITION_NOTES = re.compile(
+    rf"\s*[\(\[][^\(\)\[\]]*{_EDITION_TOKEN}[^\(\)\[\]]*[\)\]]",
+    re.IGNORECASE,
+)
+
+
+def release_cover_key(artist_name: str | None, title: str) -> tuple[str, str]:
+    """Identity of a cover: album artist plus title without edition notes.
+
+    Different artists, or different works by one artist, must not share a
+    primary image. Deluxe and remaster spellings of one title may.
+    Live, remix, acoustic, and similar parenthetical titles do not collapse.
+    """
+    artist = " ".join((artist_name or "").casefold().split())
+    bare = title
+    previous = None
+    while previous != bare:
+        previous = bare
+        bare = _EDITION_NOTES.sub("", bare)
+    return artist, " ".join(bare.casefold().split())
+
+
+def release_slot_key(
+    disc_number: int,
+    track_number: int | None,
+    track_id: UUID,
+    title: str | None = None,
+) -> tuple[object, ...]:
+    """One album position. Extra files of the same disc, number, and title share.
+
+    Nonpositive or missing track numbers are unnumbered: each file keeps its
+    own slot. Different songs that share a disc and number stay distinct by
+    title so neither vanishes from the track table.
+    """
+    if track_number is not None and int(track_number) > 0:
+        bare = " ".join((title or "").casefold().split())
+        return ("number", int(disc_number), int(track_number), bare)
+    return ("file", track_id)

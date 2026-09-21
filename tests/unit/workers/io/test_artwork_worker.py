@@ -467,3 +467,107 @@ def test_rerun_is_idempotent(
     stored = artwork_repo.get_primary_for_track(track_id)
     assert stored is not None
     assert len(list(artwork_dir.rglob("*.png"))) == 1
+
+
+def test_embedded_art_from_another_release_is_not_applied(
+    engine: Engine,
+    track_repo: TrackRepository,
+    album_repo: AlbumRepository,
+    artwork_repo: ArtworkRepository,
+    review_queue: ReviewQueueService,
+    job_queue: JobQueueService,
+    job_repo: JobRepository,
+    library_id: UUID,
+    track_id: UUID,
+    artwork_dir: Path,
+) -> None:
+    from dataclasses import replace
+
+    from sqlalchemy import insert
+
+    from vaultseek.db.tables import artists
+    from vaultseek.db.tables import tracks as tracks_table
+
+    salvation_id = generate_uuid7()
+    no_limit_id = generate_uuid7()
+    alphaville_id = generate_uuid7()
+    unlimited_id = generate_uuid7()
+    no_limit_track_id = generate_uuid7()
+    with engine.begin() as conn:
+        conn.execute(
+            insert(artists).values(
+                id=uuid_to_blob(alphaville_id),
+                name="Alphaville",
+                sort_name="Alphaville",
+                created_at="2026-07-15T00:00:00",
+                updated_at="2026-07-15T00:00:00",
+            )
+        )
+        conn.execute(
+            insert(artists).values(
+                id=uuid_to_blob(unlimited_id),
+                name="2 Unlimited",
+                sort_name="2 Unlimited",
+                created_at="2026-07-15T00:00:00",
+                updated_at="2026-07-15T00:00:00",
+            )
+        )
+        for album_id, title, artist_id in (
+            (salvation_id, "Salvation (Deluxe Version)", alphaville_id),
+            (no_limit_id, "No Limit - EP", unlimited_id),
+        ):
+            conn.execute(
+                insert(albums).values(
+                    id=uuid_to_blob(album_id),
+                    title=title,
+                    sort_title=title,
+                    album_artist_id=uuid_to_blob(artist_id),
+                    created_at="2026-07-15T00:00:00",
+                    updated_at="2026-07-15T00:00:00",
+                )
+            )
+        conn.execute(
+            insert(tracks_table).values(
+                id=uuid_to_blob(no_limit_track_id),
+                library_id=uuid_to_blob(library_id),
+                album_id=uuid_to_blob(no_limit_id),
+                zone="library",
+                file_path=f"C:/library/{no_limit_track_id}.mp3",
+                file_name=f"{no_limit_track_id}.mp3",
+                file_size=1024,
+                file_modified="2026-07-15T00:00:00",
+                created_at="2026-07-15T00:00:00",
+                updated_at="2026-07-15T00:00:00",
+            )
+        )
+    salvation_track = track_repo.get_by_id(track_id)
+    assert salvation_track is not None
+    track_repo.upsert(replace(salvation_track, album_id=salvation_id))
+    stolen = _png(1400, 1400)
+    own_cover = _png(1200, 1200)
+    embedded = _StubProvider("embedded_art", 50, _result("embedded_art", 1400, 1400, data=stolen))
+    network = _StubProvider(
+        "cover_art_archive", 10, _result("cover_art_archive", 1200, 1200, data=own_cover)
+    )
+    worker = _make_worker(
+        track_repo,
+        album_repo,
+        artwork_repo,
+        [network, embedded],
+        review_queue,
+        job_queue,
+        artwork_dir,
+    )
+
+    worker.execute(_running_job(job_queue, job_repo, library_id, track_id))
+    worker.execute(_running_job(job_queue, job_repo, library_id, no_limit_track_id))
+
+    salvation_art = artwork_repo.get_primary_for_album(salvation_id)
+    no_limit_art = artwork_repo.get_primary_for_album(no_limit_id)
+    assert salvation_art is not None
+    assert salvation_art.source == "embedded_art"
+    assert no_limit_art is not None
+    assert no_limit_art.source == "cover_art_archive"
+    assert no_limit_art.id != salvation_art.id
+    assert network.calls == 1
+    assert embedded.calls == 2

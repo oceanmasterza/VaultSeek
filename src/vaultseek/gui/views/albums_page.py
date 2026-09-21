@@ -5,9 +5,10 @@ from __future__ import annotations
 from pathlib import Path
 from uuid import UUID
 
-from PySide6.QtCore import QPoint, Qt, Signal
-from PySide6.QtGui import QPixmap, QResizeEvent
+from PySide6.QtCore import QPoint, QSize, Qt, Signal
+from PySide6.QtGui import QIcon, QImageReader, QPixmap, QResizeEvent
 from PySide6.QtWidgets import (
+    QCheckBox,
     QFrame,
     QLabel,
     QLineEdit,
@@ -40,7 +41,10 @@ from vaultseek.gui.widgets.table_utils import (
     configure_data_table,
     end_table_update,
 )
+from vaultseek.models.dto.browse_dto import AlbumBrowseRow
 from vaultseek.models.entities.acquisition_job import AcquisitionJobType
+from vaultseek.models.entities.artwork import Artwork
+from vaultseek.models.entities.job import JobType
 from vaultseek.models.entities.operation import OperationType
 from vaultseek.models.entities.track import LibraryZone
 from vaultseek.plugins.builtin.musicbrainz.provider import MusicBrainzProvider
@@ -56,6 +60,13 @@ from vaultseek.services.library_scan_actions import (
 )
 from vaultseek.services.wanted import list_wanted
 
+_THUMB = 56
+# Stable identity on every album-row cell. Never look up covers by visual row
+# index: QTableWidget sorting moves items, not a parallel list.
+_ALBUM_ID_ROLE = Qt.ItemDataRole.UserRole
+_COVER_PATH_ROLE = Qt.ItemDataRole.UserRole + 1
+_COVER_LABELS = {"ok": "OK", "missing": "Missing", "low_res": "Low-res"}
+
 
 class AlbumsPage(QWidget):
     """List albums for the active library; selection shows cover + tracks."""
@@ -67,17 +78,18 @@ class AlbumsPage(QWidget):
         self._container = container
         self._library_id: UUID | None = None
         self._filter_artist_id: UUID | None = None
-        self._album_ids: list[UUID] = []
-        self._track_paths: list[str] = []
         self._wanted_ids: list[UUID] = []
         self._full_cover: QPixmap | None = None
+        self._cover_album_id: UUID | None = None
 
         layout = QVBoxLayout(self)
         heading = QLabel("Albums")
         heading.setProperty("heading", True)
         layout.addWidget(heading)
         help_lbl = QLabel(
-            "Select an album to see its cover and tracks. Right-click for Find / Acquire. "
+            "Select an album to see its cover, artwork status, and tracks. "
+            "Right-click to find missing songs or a missing cover — that does not "
+            "re-download a whole album or replace a cover already on file. "
             "Double-click a track to reveal it in Explorer."
         )
         help_lbl.setWordWrap(True)
@@ -90,6 +102,13 @@ class AlbumsPage(QWidget):
         self._search.setClearButtonEnabled(True)
         connect_debounced(self._search.textChanged, self.refresh, parent=self)
         add_labeled_field(toolbar, "Search", self._search, expand=True)
+        self._missing_only = QCheckBox("Problems only")
+        self._missing_only.setToolTip(
+            "Show missing and low-resolution covers only. "
+            "Does not change covers that are already OK."
+        )
+        self._missing_only.toggled.connect(self.refresh)
+        toolbar.add_widget(self._missing_only)
         self._filter_label = QLabel("")
         self._filter_label.setProperty("muted", True)
         toolbar.add_widget(self._filter_label)
@@ -134,13 +153,15 @@ class AlbumsPage(QWidget):
         left_layout = QVBoxLayout(left)
         left_layout.setContentsMargins(0, 0, 0, 0)
         list_split = QSplitter(Qt.Orientation.Vertical)
-        self._table = QTableWidget(0, 6)
+        self._table = QTableWidget(0, 7)
         self._table.setHorizontalHeaderLabels(
-            ["Album", "Artist", "Year", "Tracks", "Status", "Cover"]
+            ["Album", "Artist", "Year", "Tracks", "Status", "Artwork", "Source"]
         )
         self._table.setSelectionBehavior(QTableWidget.SelectionBehavior.SelectRows)
         self._table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
+        self._table.setIconSize(QSize(_THUMB, _THUMB))
         configure_data_table(self._table)
+        self._table.verticalHeader().setDefaultSectionSize(_THUMB + 8)
         self._table.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self._table.customContextMenuRequested.connect(self._album_context_menu)
         self._table.itemSelectionChanged.connect(self._on_album_selected)
@@ -237,13 +258,16 @@ class AlbumsPage(QWidget):
             self._clear_filter.setVisible(True)
         self.refresh()
 
+    def focus_artwork(self) -> None:
+        """Old Artwork page and pipeline stage land on this combined view."""
+        self._missing_only.setVisible(True)
+        self._missing_only.setChecked(True)
+
     def refresh(self) -> None:
         begin_table_update(self._table)
         begin_table_update(self._tracks)
         self._table.setRowCount(0)
-        self._album_ids = []
         self._tracks.setRowCount(0)
-        self._track_paths = []
         self._tracks_label.setText("Select an album to list tracks")
         self._clear_cover()
         if self._library_id is None:
@@ -263,18 +287,26 @@ class AlbumsPage(QWidget):
             query=needle,
             limit=500,
         )
-        empty = len(rows) == 0
-        self._empty.setVisible(empty and not self._wanted_ids)
-        self._main_split.setVisible(not empty)
-        if empty:
-            self._status.setText("0 album(s)")
+        prepared: list[tuple[AlbumBrowseRow, Artwork | None]] = []
+        for row in rows:
+            art = self._container.artwork_repo.get_primary_for_album(row.album_id)
+            if self._missing_only.isChecked() and self._cover_status(art) == "ok":
+                continue
+            prepared.append((row, art))
+        welcome = len(rows) == 0 and not self._wanted_ids
+        self._empty.setVisible(welcome)
+        self._main_split.setVisible(not welcome)
+        if not prepared:
+            if self._missing_only.isChecked() and rows:
+                self._status.setText("0 album(s) with cover problems")
+            else:
+                self._status.setText("0 album(s)")
             end_table_update(self._table)
             end_table_update(self._tracks)
             return
-        self._table.setRowCount(len(rows))
+        self._table.setRowCount(len(prepared))
         prefs = self._container.config.acquisition
-        for i, row in enumerate(rows):
-            self._album_ids.append(row.album_id)
+        for i, (row, art) in enumerate(prepared):
             tracks = self._container.track_repo.list_by_album(
                 self._library_id, row.album_id, limit=500
             )
@@ -289,25 +321,49 @@ class AlbumsPage(QWidget):
             track_label = str(row.track_count)
             if status.expected_count is not None:
                 track_label = f"{status.present_count}/{status.expected_count}"
+            cover_status = self._cover_status(art)
+            cover_path = self._cover_path(art)
             year_item = QTableWidgetItem()
             year_item.setData(Qt.ItemDataRole.DisplayRole, str(row.year) if row.year else "—")
             year_item.setData(Qt.ItemDataRole.EditRole, int(row.year or 0))
-            title_item = QTableWidgetItem(row.title)
-            title_item.setData(Qt.ItemDataRole.UserRole, str(row.album_id))
+            artwork_item = QTableWidgetItem(_COVER_LABELS[cover_status])
+            thumb = _thumbnail(cover_path)
+            if thumb is not None:
+                artwork_item.setIcon(QIcon(thumb))
+            source = art.source if art is not None and cover_path else "—"
             cells = [
-                title_item,
+                QTableWidgetItem(row.title),
                 QTableWidgetItem(row.artist_name or "—"),
                 year_item,
                 QTableWidgetItem(track_label),
                 QTableWidgetItem(status.health.value.replace("_", " ")),
-                QTableWidgetItem("Yes" if row.has_cover else "Missing"),
+                artwork_item,
+                QTableWidgetItem(source),
             ]
-            for col, item in enumerate(cells):
+            for item in cells:
                 apply_album_health_style(item, status.health)
+                _bind_album_identity(item, row.album_id, cover_path)
+            for col, item in enumerate(cells):
                 self._table.setItem(i, col, item)
-        self._status.setText(f"{len(rows)} album(s)")
+        self._status.setText(f"{len(prepared)} album(s)")
         end_table_update(self._table)
         end_table_update(self._tracks)
+
+    def _cover_status(self, art: Artwork | None) -> str:
+        """``ok`` / ``low_res`` / ``missing`` for this album's own primary file."""
+        if self._cover_path(art) == "":
+            return "missing"
+        assert art is not None
+        min_w = self._container.config.artwork.min_width
+        min_h = self._container.config.artwork.min_height
+        if art.width < min_w or art.height < min_h:
+            return "low_res"
+        return "ok"
+
+    def _cover_path(self, art: Artwork | None) -> str:
+        if art is None or not art.file_path or not Path(art.file_path).is_file():
+            return ""
+        return art.file_path
 
     def _reload_wanted_count(self) -> None:
         self._wanted_ids = []
@@ -342,27 +398,34 @@ class AlbumsPage(QWidget):
         return None
 
     def _selected_album_id(self) -> UUID | None:
-        rows = {index.row() for index in self._table.selectedIndexes()}
-        if len(rows) != 1:
+        ids = self._selected_album_ids()
+        if len(ids) != 1:
             return None
-        row = next(iter(rows))
-        item = self._table.item(row, 0)
-        raw = item.data(Qt.ItemDataRole.UserRole) if item else None
-        if raw:
-            return UUID(str(raw))
-        if 0 <= row < len(self._album_ids):
-            return self._album_ids[row]
-        return None
+        return ids[0]
 
     def _selected_album_ids(self) -> list[UUID]:
         """Return selected album IDs in their displayed order."""
         rows = sorted({index.row() for index in self._table.selectedIndexes()})
-        return [
-            UUID(str(item.data(Qt.ItemDataRole.UserRole)))
-            for row in rows
-            if (item := self._table.item(row, 0)) is not None
-            and item.data(Qt.ItemDataRole.UserRole)
-        ]
+        selected: list[UUID] = []
+        for row in rows:
+            album_id = _album_id_on_row(self._table, row)
+            if album_id is not None:
+                selected.append(album_id)
+        return selected
+
+    def _selected_cover_path(self) -> str:
+        """Cover path stored on the selected row, never a neighbouring row's art."""
+        rows = {index.row() for index in self._table.selectedIndexes()}
+        if len(rows) != 1:
+            return ""
+        row = next(iter(rows))
+        item = self._table.item(row, 0)
+        if item is None:
+            return ""
+        album_id = _album_id_on_row(self._table, row)
+        if album_id is None or album_id != self._selected_album_id():
+            return ""
+        return str(item.data(_COVER_PATH_ROLE) or "")
 
     def _selected_track_ids(self) -> list[UUID]:
         """Return selected real track IDs, excluding MusicBrainz-only missing rows."""
@@ -398,10 +461,8 @@ class AlbumsPage(QWidget):
         )
         begin_table_update(self._tracks)
         self._tracks.setRowCount(len(display_rows))
-        self._track_paths = []
         track_by_path = {track.file_path: track.id for track in tracks}
         for index, row in enumerate(display_rows):
-            self._track_paths.append(row.file_path or "")
             path_item = QTableWidgetItem(row.title)
             path_item.setData(Qt.ItemDataRole.UserRole, row.file_path or "")
             track_id = track_by_path.get(row.file_path or "")
@@ -417,6 +478,10 @@ class AlbumsPage(QWidget):
                 self._tracks.setItem(index, col, item)
         end_table_update(self._tracks)
         self._show_cover(album_id, title)
+
+    def _show_selected_cover(self) -> None:
+        """Artwork-page name for the combined cover preview."""
+        self._on_album_selected()
 
     def _scan_missing(self, *, album_id: UUID | None = None) -> None:
         if self._library_id is None:
@@ -472,53 +537,122 @@ class AlbumsPage(QWidget):
         )
 
     def _album_context_menu(self, pos: QPoint) -> None:
+        self._ensure_context_row(self._table, pos)
+        menu = self._build_album_menu()
+        chosen = menu.exec(self._table.mapToGlobal(pos))
+        if chosen is not None:
+            self._run_album_action(chosen.text())
+
+    def _build_album_menu(self) -> QMenu:
         album_id = self._selected_album_id()
         menu = QMenu(self)
-        act_find = menu.addAction("Find missing songs (this album)")
-        act_find_lib = menu.addAction("Find missing songs (whole library)")
-        act_upgrades = menu.addAction("Find quality upgrades (library)")
-        act_queue = menu.addAction("Queue this album for download")
-        act_archive = menu.addAction("Archive selected album(s)…")
-        act_delete = menu.addAction("Delete selected album(s)…")
-        act_find_page = menu.addAction("Open Find music…")
-        chosen = menu.exec(self._table.mapToGlobal(pos))
-        if chosen is act_find and album_id is not None:
-            self._scan_missing(album_id=album_id)
-        elif chosen is act_find_lib:
-            self._scan_missing()
-        elif chosen is act_upgrades:
-            self._scan_upgrades()
-        elif chosen is act_queue and album_id is not None:
-            self._queue_album_download(album_id)
-        elif chosen is act_archive:
-            self._archive_selected_albums()
-        elif chosen is act_delete:
-            self._delete_selected_albums()
-        elif chosen is act_find_page:
-            self.navigate_requested.emit("find")
+        find_songs = menu.addAction("Find missing songs")
+        find_songs.setToolTip(
+            "Search for songs missing from this album. Does not re-download songs you already have."
+        )
+        find_art = menu.addAction("Find missing artwork")
+        find_art.setToolTip(
+            "Fetch a cover only when this album has none. Does not replace a cover already on file."
+        )
+        menu.addSeparator()
+        menu.addAction("Find missing songs (whole library)")
+        menu.addAction("Find quality upgrades (library)")
+        menu.addSeparator()
+        reacquire = menu.addAction("Reacquire whole album")
+        reacquire.setToolTip(
+            "Queue a full album download. This is not a missing-song search "
+            "and does not change a cover."
+        )
+        menu.addAction("Archive selected album(s)…")
+        menu.addAction("Delete selected album(s)…")
+        menu.addAction("Open Find music…")
+        if album_id is None:
+            find_songs.setEnabled(False)
+            find_art.setEnabled(False)
+            reacquire.setEnabled(False)
+        return menu
 
     def _track_context_menu(self, pos: QPoint) -> None:
+        self._ensure_context_row(self._tracks, pos)
+        menu = self._build_track_menu()
+        chosen = menu.exec(self._tracks.mapToGlobal(pos))
+        if chosen is not None:
+            self._run_album_action(chosen.text())
+
+    def _build_track_menu(self) -> QMenu:
         album_id = self._selected_album_id()
         menu = QMenu(self)
-        act_reveal = menu.addAction("Reveal in Explorer")
-        act_archive = menu.addAction("Archive selected track(s)…")
-        act_find = menu.addAction("Find missing songs (this album)")
-        act_find_lib = menu.addAction("Find missing songs (whole library)")
-        act_upgrades = menu.addAction("Find quality upgrades (library)")
-        act_find_page = menu.addAction("Open Find music…")
-        chosen = menu.exec(self._tracks.mapToGlobal(pos))
-        if chosen is act_reveal:
-            self._reveal_track()
-        elif chosen is act_archive:
-            self._archive_selected_tracks()
-        elif chosen is act_find and album_id is not None:
+        menu.addAction("Reveal in Explorer")
+        menu.addAction("Archive selected track(s)…")
+        find_songs = menu.addAction("Find missing songs")
+        find_art = menu.addAction("Find missing artwork")
+        menu.addAction("Find missing songs (whole library)")
+        menu.addAction("Find quality upgrades (library)")
+        reacquire = menu.addAction("Reacquire whole album")
+        menu.addAction("Open Find music…")
+        if album_id is None:
+            find_songs.setEnabled(False)
+            find_art.setEnabled(False)
+            reacquire.setEnabled(False)
+        return menu
+
+    def _ensure_context_row(self, table: QTableWidget, pos: QPoint) -> None:
+        index = table.indexAt(pos)
+        if not index.isValid():
+            return
+        selected = {item.row() for item in table.selectedIndexes()}
+        if index.row() not in selected:
+            table.selectRow(index.row())
+
+    def _run_album_action(self, label: str) -> None:
+        album_id = self._selected_album_id()
+        if label == "Find missing songs" and album_id is not None:
             self._scan_missing(album_id=album_id)
-        elif chosen is act_find_lib:
+        elif label == "Find missing artwork" and album_id is not None:
+            self._find_missing_artwork(album_id)
+        elif label == "Find missing songs (whole library)":
             self._scan_missing()
-        elif chosen is act_upgrades:
+        elif label == "Find quality upgrades (library)":
             self._scan_upgrades()
-        elif chosen is act_find_page:
+        elif label == "Reacquire whole album" and album_id is not None:
+            self._queue_album_download(album_id)
+        elif label == "Archive selected album(s)…":
+            self._archive_selected_albums()
+        elif label == "Delete selected album(s)…":
+            self._delete_selected_albums()
+        elif label == "Open Find music…":
             self.navigate_requested.emit("find")
+        elif label == "Reveal in Explorer":
+            self._reveal_track()
+        elif label == "Archive selected track(s)…":
+            self._archive_selected_tracks()
+
+    def _find_missing_artwork(self, album_id: UUID) -> None:
+        """Queue fetch_artwork only when this album has no cover file on disk."""
+        if self._library_id is None:
+            QMessageBox.information(self, "Albums", "Select a library first.")
+            return
+        art = self._container.artwork_repo.get_primary_for_album(album_id)
+        if self._cover_path(art):
+            kind = "low-resolution" if self._cover_status(art) == "low_res" else "existing"
+            self._status.setText(
+                f"Not replacing the {kind} cover. "
+                "Find missing artwork only runs when the album has no cover file."
+            )
+            return
+        tracks = self._container.track_repo.list_by_album(self._library_id, album_id, limit=1)
+        if not tracks:
+            self._status.setText("No songs on this album to attach a cover to.")
+            return
+        self._container.job_queue.enqueue(
+            JobType.FETCH_ARTWORK,
+            self._library_id,
+            {"track_id": str(tracks[0].id)},
+        )
+        self._status.setText(
+            "Queued a fetch for the missing cover. Covers already on file are not replaced."
+        )
+        self.navigate_requested.emit("jobs")
 
     def _delete_selected_albums(self) -> None:
         if not self._delete_album.isEnabled():
@@ -631,6 +765,7 @@ class AlbumsPage(QWidget):
             QMessageBox.warning(self, "Archive music", "\n".join(errors[:3]))
 
     def _queue_album_download(self, album_id: UUID) -> None:
+        """Reacquire the whole album. Not a missing-song or missing-artwork search."""
         if self._library_id is None:
             return
         album = self._container.album_repo.get(album_id)
@@ -652,24 +787,27 @@ class AlbumsPage(QWidget):
         )
         if self._container.config.acquisition.auto_queue_jobs:
             self._container.acquisition_engine.queue(job.id)
-        self._status.setText(f"Queued “{album.title}” for download.")
+        self._status.setText(f"Queued “{album.title}” for a whole-album download.")
         self.navigate_requested.emit("acquisition")
 
     def _show_cover(self, album_id: UUID, title: str) -> None:
+        self._cover_album_id = album_id
+        self._full_cover = None
         self._cover_title.setText(title)
         art = self._container.artwork_repo.get_primary_for_album(album_id)
-        if art is None or not art.file_path:
+        path_text = self._selected_cover_path() or self._cover_path(art)
+        if not path_text:
             self._cover_meta.setText("No cover on file for this album")
             self._cover_image.clear()
             self._cover_image.setText("No cover")
             self._cover_source.setText("")
             return
-        path = Path(art.file_path)
+        path = Path(path_text)
         if not path.is_file():
             self._cover_meta.setText("Cover path missing from cache")
             self._cover_image.clear()
             self._cover_image.setText("Missing file")
-            self._cover_source.setText(art.file_path)
+            self._cover_source.setText(path_text)
             return
         pixmap = QPixmap(str(path))
         if pixmap.isNull():
@@ -678,8 +816,12 @@ class AlbumsPage(QWidget):
             self._cover_image.setText("Invalid image")
             self._cover_source.setText(str(path))
             return
-        self._cover_meta.setText(f"{art.width}×{art.height}")
-        self._cover_source.setText(f"{art.source} · {path.name}")
+        if art is not None and art.file_path == path_text:
+            self._cover_meta.setText(f"{art.width}×{art.height}")
+            self._cover_source.setText(f"{art.source} · {path.name}")
+        else:
+            self._cover_meta.setText(path.name)
+            self._cover_source.setText(path.name)
         self._cover_image.setText("")
         self._set_scaled_cover(pixmap)
 
@@ -697,10 +839,16 @@ class AlbumsPage(QWidget):
 
     def resizeEvent(self, event: QResizeEvent) -> None:  # noqa: N802 - Qt
         super().resizeEvent(event)
-        if self._full_cover is not None and not self._full_cover.isNull():
+        if (
+            self._full_cover is not None
+            and not self._full_cover.isNull()
+            and self._cover_album_id is not None
+            and self._cover_album_id == self._selected_album_id()
+        ):
             self._set_scaled_cover(self._full_cover)
 
     def _clear_cover(self) -> None:
+        self._cover_album_id = None
         self._cover_title.setText("Cover")
         self._cover_meta.setText("Select an album")
         self._cover_image.clear()
@@ -717,7 +865,38 @@ class AlbumsPage(QWidget):
         path = ""
         if item is not None:
             path = str(item.data(Qt.ItemDataRole.UserRole) or "")
-        if not path and 0 <= row < len(self._track_paths):
-            path = self._track_paths[row]
         if path:
             reveal_in_explorer(path)
+
+
+def _bind_album_identity(item: QTableWidgetItem, album_id: UUID, cover_path: str) -> None:
+    """Stamp the album id and its own cover path onto a row cell."""
+    item.setData(_ALBUM_ID_ROLE, str(album_id))
+    item.setData(_COVER_PATH_ROLE, cover_path)
+
+
+def _album_id_on_row(table: QTableWidget, row: int) -> UUID | None:
+    for col in range(table.columnCount()):
+        item = table.item(row, col)
+        if item is None:
+            continue
+        raw = item.data(_ALBUM_ID_ROLE)
+        if raw:
+            return UUID(str(raw))
+    return None
+
+
+def _thumbnail(path: str | None) -> QPixmap | None:
+    """Decode a small preview. The preview pane loads the full album image."""
+    if not path or not Path(path).is_file():
+        return None
+    reader = QImageReader(path)
+    reader.setAutoTransform(True)
+    size = reader.size()
+    if size.isValid():
+        size.scale(_THUMB, _THUMB, Qt.AspectRatioMode.KeepAspectRatio)
+        reader.setScaledSize(size)
+    image = reader.read()
+    if image.isNull():
+        return None
+    return QPixmap.fromImage(image)

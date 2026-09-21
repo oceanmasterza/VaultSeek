@@ -21,15 +21,18 @@ def test_plugin_save_selects_nzbget_without_wiping_sab(qtbot, container, monkeyp
     qtbot.addWidget(page)
     page.refresh()
     page._prowlarr_enabled.setChecked(True)
+    page._prowlarr_key.setText("prowlarr-key")
     page._nzb_enabled.setChecked(True)
     page._nzb_username.setText("control")
     page._nzb_password.setText("hidden")
     page._usenet_client.setCurrentIndex(page._usenet_client.findData("nzbget"))
     monkeypatch.setattr(QMessageBox, "information", lambda *args: None)
+    monkeypatch.setattr(QMessageBox, "warning", lambda *args: None)
     monkeypatch.setattr(
         "vaultseek.gui.views.plugins_page.connect_acquisition_providers", lambda *args: None
     )
     page._save()
+    qtbot.waitUntil(lambda: page._save_btn.isEnabled(), timeout=3000)
     saved = load_config(container.paths.config_file)
     assert saved.acquisition.sabnzbd.api_key == "sab-keep"
     assert saved.acquisition.nicotine_plus.password == "soul-keep"

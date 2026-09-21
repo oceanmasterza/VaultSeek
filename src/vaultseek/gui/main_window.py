@@ -36,7 +36,6 @@ from vaultseek.gui.views.acquisition_page import AcquisitionPage
 from vaultseek.gui.views.activity_page import ActivityPage
 from vaultseek.gui.views.albums_page import AlbumsPage
 from vaultseek.gui.views.artists_page import ArtistsPage
-from vaultseek.gui.views.artwork_page import ArtworkPage
 from vaultseek.gui.views.dashboard_page import DashboardPage
 from vaultseek.gui.views.duplicates_page import DuplicatesPage
 from vaultseek.gui.views.find_music_page import FindMusicPage
@@ -67,7 +66,6 @@ _NAV_HUBS: tuple[tuple[str, tuple[tuple[str, str], ...]], ...] = (
             ("Files", "library"),
             ("Artists", "artists"),
             ("Albums", "albums"),
-            ("Artwork", "artwork"),
             ("Duplicates", "duplicates"),
         ),
     ),
@@ -91,6 +89,14 @@ _NAV_HUBS: tuple[tuple[str, tuple[tuple[str, str], ...]], ...] = (
         ),
     ),
 )
+
+
+def _jump_destinations() -> list[tuple[str, str]]:
+    """Hub leaves plus the Artwork alias, which opens Albums."""
+    rows = jump_destinations_from_hubs(_NAV_HUBS)
+    if not any(key == "artwork" for _label, key in rows):
+        rows.append(("Library · Artwork", "artwork"))
+    return rows
 
 
 class MainWindow(QMainWindow):
@@ -154,7 +160,6 @@ class MainWindow(QMainWindow):
         self._artists_page.navigate_to_albums.connect(self._on_artists_to_albums)
         self._albums_page = AlbumsPage(container)
         self._albums_page.navigate_requested.connect(self._on_dashboard_navigate)
-        self._artwork_page = ArtworkPage(container)
         self._jobs_page = JobsPage(container)
         self._activity_page = ActivityPage(container)
         self._activity_page.navigate_requested.connect(self._on_dashboard_navigate)
@@ -182,7 +187,6 @@ class MainWindow(QMainWindow):
             "acquisition": self._acquisition_page,
             "jobs": self._jobs_page,
             "activity": self._activity_page,
-            "artwork": self._artwork_page,
             "reports": self._reports_page,
             "logs": self._logs_page,
             "settings": self._settings_page,
@@ -205,6 +209,10 @@ class MainWindow(QMainWindow):
                 child.setData(0, Qt.ItemDataRole.UserRole, key)
                 hub_item.addChild(child)
                 self._nav_items[key] = child
+
+        # Artwork is no longer its own page. Old links still open Albums.
+        self._pages["artwork"] = self._albums_page
+        self._stack_index["artwork"] = self._stack_index["albums"]
 
         self._nav.currentItemChanged.connect(self._on_nav_item_changed)
         # Start on Dashboard leaf.
@@ -316,7 +324,7 @@ class MainWindow(QMainWindow):
         help_menu.addAction(uninstall)
 
     def _open_jump_palette(self) -> None:
-        dialog = JumpPalette(jump_destinations_from_hubs(_NAV_HUBS), parent=self)
+        dialog = JumpPalette(_jump_destinations(), parent=self)
         if dialog.exec() and dialog.selected_key:
             self._go_to(dialog.selected_key)
 
@@ -417,6 +425,9 @@ class MainWindow(QMainWindow):
         self._go_to("albums")
 
     def _go_to(self, key: str) -> None:
+        if key == "artwork":
+            self._albums_page.focus_artwork()
+            key = "albums"
         item = self._nav_items.get(key)
         if item is None:
             return
@@ -542,8 +553,6 @@ class MainWindow(QMainWindow):
             self._artists_page.refresh()
         elif key == "albums":
             self._albums_page.refresh()
-        elif key == "artwork":
-            self._artwork_page.refresh()
         elif key == "duplicates":
             self._duplicates_page.refresh()
         elif key == "find":
@@ -560,7 +569,30 @@ class MainWindow(QMainWindow):
             self._plugins_page.refresh()
 
     def _on_library_changed(self, _index: int) -> None:
-        self._set_library(self._library_combo.currentData())
+        new_id = self._library_combo.currentData()
+        if new_id == self._library_id:
+            return
+        if self._settings_page.has_unsaved_library_edits():
+            answer = QMessageBox.question(
+                self,
+                "Library",
+                "Settings has unsaved library or media-server edits. Discard them?",
+            )
+            if answer != QMessageBox.StandardButton.Yes:
+                self._library_combo.blockSignals(True)
+                try:
+                    restore = 0
+                    if self._library_id is not None:
+                        for i in range(self._library_combo.count()):
+                            if self._library_combo.itemData(i) == self._library_id:
+                                restore = i
+                                break
+                    self._library_combo.setCurrentIndex(restore)
+                finally:
+                    self._library_combo.blockSignals(False)
+                return
+            self._settings_page.discard_library_edits()
+        self._set_library(new_id)
 
     def _set_library(self, library_id: UUID | None) -> None:
         self._library_id = library_id
@@ -569,7 +601,6 @@ class MainWindow(QMainWindow):
             self._library_page,
             self._artists_page,
             self._albums_page,
-            self._artwork_page,
             self._review_page,
             self._jobs_page,
             self._activity_page,

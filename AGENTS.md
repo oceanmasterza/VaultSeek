@@ -91,6 +91,18 @@ Key modules: `acquisition_sources.py`, `acquisition_bootstrap.py`, `provider_man
 
 ---
 
+## Library UI and provider status (2026-09-21)
+
+- Albums is the cover surface. There is no separate Artwork sidebar page. Jump / `focus_artwork` opens Albums with **Problems only**.
+- Primary covers follow provenance (`artwork.source_id` matching the album MBID). Track counts and timestamps do not decide ownership. Foreign provenance stays off the wrong album. Live, Acoustic, and Remix titles stay distinct slots.
+- Dashboard pipeline stages and toolbars use `FlowLayout` / `FlowHost` and wrap on a narrow window (Discover, Hash, Sync, and the later stages).
+- `ProviderManager` still serializes connect, disconnect, search, and download work on `lifecycle`. GUI status reads immutable connected/order snapshots and does not wait on that lock during waterfall sleeps or background reconnect.
+- Settings keeps the advanced library, quality, wishlist/waterfall, Nicotine+, AcoustID, fingerprint, and pipeline-worker fields. Plugins keeps Last.fm, Spotify, Prowlarr, qBittorrent, SABnzbd, and NZBGet. Both reconnect off the UI thread. Dirty library and media edits confirm before discard. Numeric fields live in `gui/widgets/numeric_fields.py`.
+
+Validated the same day: 862 unit tests; `ruff check src/ tests/`; `mypy src/ --strict` (248 files); `lint-imports` (3 contracts); Black on the 32 changed Python files. Independent review approved. Installer SHA256 `C6A073A0D1876C5F76962A7550901BA454360ED0D91678CC45C8F5F307E0CED0`. Frozen executable SHA256 `6483088858E4D762688B8FC8B59D2D876995C79083DF2FDA73A5A3F02D0469B4`.
+
+---
+
 ## Config rules
 
 - Never bump `CURRENT_SCHEMA_VERSION` without a `_migrate_vN_to_vN+1` and updating `config/defaults.json`

@@ -103,6 +103,10 @@ def ensure_control_labels(root: QWidget) -> None:
 
 
 def _label_for(widget: QWidget) -> str:
+    if isinstance(widget, QAbstractSpinBox):
+        form_label = _form_label(widget)
+        if form_label:
+            return form_label
     if not isinstance(widget, QLineEdit):
         text = _text_label(widget)
         if text:

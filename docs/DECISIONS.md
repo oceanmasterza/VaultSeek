@@ -730,3 +730,17 @@ only after file recycling succeeds. Filesystem and SQLite cannot commit atomical
 on partial failure, database records roll back and files already recycled remain
 recoverable in Windows. Pending/running/retry library jobs and unfinished acquisitions
 for the album block deletion. Archive keeps its existing semantics.
+
+## 2026-09-21 — Serialized acquisition provider lifecycle
+
+`ProviderManager` holds one reentrant lock across connect, disconnect, search, and
+download status. `connect_acquisition_providers` acquires that lock for the full
+reconnect. Settings and Plugins schedule reconnect off the UI thread but share this
+lifecycle so concurrent preference/plugin saves cannot mutate providers while a
+search (or another reconnect) is in flight. UI dirty library and media-server edits
+confirm before discard on library-combo or media-plugin switches.
+
+GUI-callable status (`connected_provider_ids`, `has_connected_search_providers`)
+reads immutable connected/order snapshots published after mutations. Those reads
+never acquire the lifecycle lock, so Dashboard refresh cannot freeze during
+waterfall sleeps or background reconnect network I/O.

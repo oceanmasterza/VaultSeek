@@ -32,6 +32,12 @@ def test_all_acoustid_rows_survive_save(qtbot, container, monkeypatch):
         "vaultseek.gui.views.settings_page.connect_acquisition_providers", lambda *a: None
     )
     page._save_preferences()
+    from PySide6.QtCore import QThreadPool
+
+    button = page._save_prefs_button
+    assert button is not None
+    qtbot.waitUntil(lambda: button.isEnabled(), timeout=5000)
+    QThreadPool.globalInstance().waitForDone(5000)
     saved = load_config(container.paths.config_file)
     assert len(saved.metadata.acoustid_endpoints) == 6
     assert saved.metadata.acoustid_endpoints[:5] == endpoints
@@ -50,6 +56,12 @@ def test_pipeline_worker_counts_survive_save(qtbot, container, monkeypatch):
         "vaultseek.gui.views.settings_page.connect_acquisition_providers", lambda *a: None
     )
     page._save_preferences()
+    from PySide6.QtCore import QThreadPool
+
+    button = page._save_prefs_button
+    assert button is not None
+    qtbot.waitUntil(lambda: button.isEnabled(), timeout=5000)
+    QThreadPool.globalInstance().waitForDone(5000)
     saved = load_config(container.paths.config_file)
     assert saved.pipeline.hash_worker_processes == 4
     assert saved.pipeline.metadata_worker_threads == 6
@@ -98,13 +110,30 @@ def test_download_test_keeps_ui_event_loop_running(qtbot, container, monkeypatch
     try:
         page._test_connection("Test", lambda: release.wait(5), "Failure")
         assert not page._test_buttons[0].isEnabled()
-        # This edit is handled while the network stand-in is still waiting.
-        page._prowlarr_url.setText("http://edited")
+        # Non-credential edit keeps the UI responsive while the probe waits.
+        page._lastfm_similar.setValue(11)
         qtbot.wait(30)
         assert not completed
         release.set()
         qtbot.waitUntil(lambda: bool(completed), timeout=3000)
         assert page._test_buttons[0].isEnabled()
+    finally:
+        release.set()
+        QThreadPool.globalInstance().waitForDone(6000)
+
+
+def test_download_test_drops_stale_dialog_when_credentials_change(qtbot, container, monkeypatch):
+    page = PluginsPage(container)
+    qtbot.addWidget(page)
+    release = Event()
+    completed = []
+    monkeypatch.setattr(QMessageBox, "information", lambda *a: completed.append(True))
+    try:
+        page._test_connection("Test", lambda: release.wait(5), "Failure")
+        page._prowlarr_url.setText("http://edited-during-probe")
+        release.set()
+        qtbot.waitUntil(lambda: page._test_buttons[0].isEnabled(), timeout=3000)
+        assert not completed
     finally:
         release.set()
         QThreadPool.globalInstance().waitForDone(6000)

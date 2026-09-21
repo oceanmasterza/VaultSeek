@@ -2,13 +2,15 @@
 
 from __future__ import annotations
 
+from collections.abc import Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from uuid import UUID
 
 from vaultseek.core.config import AcquisitionConfig
 from vaultseek.models.entities.album import Album
-from vaultseek.models.entities.track import Track
+from vaultseek.models.entities.track import LibraryZone, Track
+from vaultseek.models.services.album_context import release_slot_key
 from vaultseek.plugins.builtin.musicbrainz.provider import MusicBrainzProvider, ReleaseTracklist
 from vaultseek.services.library_quality import (
     AlbumHealth,
@@ -58,6 +60,7 @@ def album_status_for_display(
     official_tracklist: ReleaseTracklist | None = None,
 ) -> AlbumStatus:
     """Status using on-disk presence + official/expected track counts."""
+    present = representative_tracks(present)
     missing_files = sum(1 for track in present if present_track_is_missing_file(track))
     present_ok = [track for track in present if not present_track_is_missing_file(track)]
     quality_gaps = sum(1 for track in present_ok if not track_meets_quality_prefs(track, prefs))
@@ -98,6 +101,7 @@ def build_album_track_rows(
     musicbrainz: MusicBrainzProvider | None = None,
 ) -> list[AlbumTrackDisplayRow]:
     """Return present + missing placeholder rows for the album track table."""
+    present = representative_tracks(present)
     tracklist = _official_tracklist(album, musicbrainz)
     by_number: dict[int, Track] = {}
     by_title: dict[str, Track] = {}
@@ -155,6 +159,49 @@ def build_album_track_rows(
             for index in range(1, expected - len(present) + 1):
                 rows.append(_row_from_track_or_missing(f"Missing track {index}", None, None, prefs))
     return rows
+
+
+def representative_tracks(tracks: Sequence[Track]) -> list[Track]:
+    """One file per release slot. Duplicate copies stay in the database.
+
+    Preference: a file that exists, then the library zone, then higher quality.
+    """
+    best: dict[tuple[object, ...], Track] = {}
+    for track in tracks:
+        key = release_slot_key(track.disc_number, track.track_number, track.id, track.title)
+        current = best.get(key)
+        if current is None or _track_rank(track) < _track_rank(current):
+            best[key] = track
+    return sorted(best.values(), key=_slot_sort)
+
+
+def _track_rank(track: Track) -> tuple[object, ...]:
+    zone_rank = {
+        LibraryZone.LIBRARY: 0,
+        LibraryZone.STAGING: 1,
+        LibraryZone.INCOMING: 2,
+        LibraryZone.ARCHIVE: 3,
+    }
+    return (
+        1 if present_track_is_missing_file(track) else 0,
+        zone_rank.get(track.zone, 9),
+        0 if track.is_lossless else 1,
+        -(track.bitrate or 0),
+        -(track.quality_score or 0),
+        track.file_name,
+        str(track.id),
+    )
+
+
+def _slot_sort(track: Track) -> tuple[object, ...]:
+    numbered = track.track_number is not None and track.track_number > 0
+    return (
+        track.disc_number,
+        not numbered,
+        track.track_number if numbered else 0,
+        (track.title or "").casefold(),
+        track.file_name,
+    )
 
 
 def _official_tracklist(

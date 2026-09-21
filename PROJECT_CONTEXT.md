@@ -33,6 +33,7 @@
 - Version 1.1.0; active Phase 6 automation and polish.
 - Recent work: schema 23 selectable Usenet client (SABnzbd default, optional NZBGet), shared responsive FlowLayout, and independent asynchronous dashboard client probes (one failure does not cancel the others; stale results drop when settings change).
 - Current priorities: safely archive/remove selected tracks or albums, replace dashboard status prose with compact tested-readiness indicators, live provider validation, and a measured packaging-size audit.
+- Settings and Plugins reconnect acquisition providers off the UI thread; `ProviderManager` serializes connect/disconnect/search so those reconnects cannot race an in-flight search. GUI status uses immutable connected/order snapshots and never waits on that lifecycle lock. Library/media dirty edits confirm before discard on library or media-plugin switch. Artwork is folded into Albums (Problems only).
 
 ## Collaboration
 

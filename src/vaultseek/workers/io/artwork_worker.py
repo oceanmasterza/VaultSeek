@@ -90,7 +90,8 @@ class ArtworkWorker:
 
         now = datetime.now(UTC)
 
-        # Fast path: album (or track) already has cover — link and skip network.
+        # Fast path: this album already has its own cover — link and skip network.
+        # A primary that belongs to a different release is not reused.
         if self._reuse_existing_cover(track) is not None:
             summary = f"Reused album cover for '{track.file_name}'"
             self._job_queue.mark_completed(
@@ -101,7 +102,7 @@ class ArtworkWorker:
             return
 
         query = self._build_query(track)
-        chosen, saw_embedded = self._pick_result(query)
+        chosen, saw_embedded = self._pick_result(query, track.album_id)
 
         if saw_embedded and not track.has_embedded_art:
             track = replace(track, has_embedded_art=True, updated_at=now)
@@ -159,17 +160,29 @@ class ArtworkWorker:
         )
 
     def _reuse_existing_cover(self, track: Track) -> UUID | None:
-        """Link an already-fetched album/track cover without network I/O."""
+        """Link an already-fetched cover that belongs to this release.
+
+        Track art is not reused when the album still needs its own primary,
+        and an image owned by a different artist or title is never applied.
+        """
+        if track.album_id is not None:
+            album_art = self._artwork.get_primary_for_album(track.album_id)
+            if album_art is not None:
+                self._artwork.link_track(track.id, album_art.id)
+                return album_art.id
+            if self._artwork.has_artwork_for_track(track.id):
+                existing = self._artwork.get_primary_for_track(track.id)
+                if (
+                    existing is not None
+                    and not self._artwork.primary_conflicts_with_album(existing.id, track.album_id)
+                    and self._artwork.link_album(track.album_id, existing.id)
+                ):
+                    return existing.id
+            return None
         if self._artwork.has_artwork_for_track(track.id):
             existing = self._artwork.get_primary_for_track(track.id)
             return existing.id if existing is not None else None
-        if track.album_id is None:
-            return None
-        album_art = self._artwork.get_primary_for_album(track.album_id)
-        if album_art is None:
-            return None
-        self._artwork.link_track(track.id, album_art.id)
-        return album_art.id
+        return None
 
     def _build_query(self, track: Track) -> ArtworkQuery:
         mb_release_id: str | None = None
@@ -208,13 +221,17 @@ class ArtworkWorker:
             album=album_title,
         )
 
-    def _pick_result(self, query: ArtworkQuery) -> tuple[ArtworkResult | None, bool]:
+    def _pick_result(
+        self, query: ArtworkQuery, album_id: UUID | None
+    ) -> tuple[ArtworkResult | None, bool]:
         """Return ``(chosen result, embedded art was seen)``.
 
         Embedded art is probed first (local, free). If it meets the
         configured minimum resolution we skip network providers entirely.
         Otherwise network providers run in priority order; the first
         result meeting the minimum wins, else the largest candidate.
+        An image already owned by a different release is skipped so it
+        cannot become this album's cover.
         """
         candidates: list[ArtworkResult] = []
         saw_embedded = False
@@ -227,13 +244,15 @@ class ArtworkWorker:
             if result is None:
                 continue
             saw_embedded = True
+            if not self._usable_for_album(result, album_id):
+                continue
             candidates.append(result)
             if self._meets_minimum(result):
                 return result, saw_embedded
 
         for provider in network_providers:
             result = provider.fetch(query)
-            if result is None:
+            if result is None or not self._usable_for_album(result, album_id):
                 continue
             candidates.append(result)
             if self._meets_minimum(result):
@@ -243,6 +262,20 @@ class ArtworkWorker:
             return None, saw_embedded
         best = max(candidates, key=lambda result: result.width * result.height)
         return best, saw_embedded
+
+    def _usable_for_album(self, result: ArtworkResult, album_id: UUID | None) -> bool:
+        if album_id is None:
+            return True
+        content_hash = hashlib.sha256(result.data).hexdigest()
+        existing = self._artwork.get_by_content_hash(content_hash)
+        if existing is None:
+            return True
+        # Incoming trusted provenance can claim even when a sole wrong owner linked.
+        if result.source_id:
+            album = self._albums.get(album_id)
+            if album is not None and album.mbid and result.source_id == album.mbid:
+                return True
+        return not self._artwork.primary_conflicts_with_album(existing.id, album_id)
 
     def _meets_minimum(self, result: ArtworkResult) -> bool:
         return result.width >= self._min_width and result.height >= self._min_height
@@ -268,6 +301,12 @@ class ArtworkWorker:
                     source_id=result.source_id,
                 )
             )
+        if track.album_id is not None and result.source_id:
+            album = self._albums.get(track.album_id)
+            if album is not None and album.mbid and result.source_id == album.mbid:
+                self._artwork.set_release_provenance(
+                    artwork_id, source_id=result.source_id, source=result.source
+                )
         self._artwork.link_track(track.id, artwork_id)
         if track.album_id is not None:
             self._artwork.link_album(track.album_id, artwork_id)

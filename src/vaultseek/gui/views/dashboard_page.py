@@ -26,7 +26,7 @@ from vaultseek.core.container import Container
 from vaultseek.core.logging import get_live_log_buffer
 from vaultseek.gui.async_task import run_in_background
 from vaultseek.gui.user_help import HelpDialog
-from vaultseek.gui.widgets.flow_host import FlowHost
+from vaultseek.gui.widgets.flow_host import FlowHost, ensure_control_labels
 from vaultseek.gui.widgets.integration_status import IntegrationStatusTile
 from vaultseek.gui.widgets.pipeline_flow import STAGE_NAV_KEYS, PipelineFlowWidget
 from vaultseek.gui.widgets.table_utils import (
@@ -176,10 +176,13 @@ class DashboardPage(QWidget):
         tools_actions.flow().addWidget(btn_plugins)
         tools_actions.flow().addWidget(btn_help)
         tools_layout.addWidget(tools_actions)
-        layout.addWidget(self._music_tools)
+
+        self._pipeline_panel = self._build_pipeline_panel()
+        layout.addWidget(self._pipeline_panel)
 
         self._insight = _selectable_label(insight=True)
         layout.addWidget(self._insight)
+        layout.addWidget(self._music_tools)
 
         # First-time / incomplete setup checklist (hide when dismissed).
         self._getting_started = QFrame()
@@ -212,21 +215,6 @@ class DashboardPage(QWidget):
             label.setTextInteractionFlags(_TEXT_SELECT)
             label.setFocusPolicy(Qt.FocusPolicy.ClickFocus)
             return label
-
-        # Pipeline queue — work waiting/running in the library job queue *right now*
-        layout.addWidget(_section_title("Library pipeline — queue right now"))
-        self._pipeline_kpi_host = FlowHost(spacing=10)
-        self._kpi_pending = _KpiCard("Pending")
-        self._kpi_pending.setToolTip(
-            "Library pipeline jobs waiting to start (scan, hash, fingerprint, identify, …)."
-        )
-        self._kpi_running = _KpiCard("Running")
-        self._kpi_running.setToolTip("Library pipeline jobs actively processing right now.")
-        self._kpi_failed = _KpiCard("Failed")
-        self._kpi_failed.setToolTip("Library pipeline jobs that failed and need retry or cleanup.")
-        for card in (self._kpi_pending, self._kpi_running, self._kpi_failed):
-            self._pipeline_kpi_host.flow().addWidget(card)
-        layout.addWidget(self._pipeline_kpi_host)
 
         # Totals — collection size and throughput (not the live queue)
         layout.addWidget(_section_title("Totals"))
@@ -320,12 +308,6 @@ class DashboardPage(QWidget):
         actions.flow().addWidget(self._btn_force_scan)
         layout.addWidget(actions)
 
-        self._last_scan = _selectable_label(muted=True)
-        layout.addWidget(self._last_scan)
-
-        self._processing_report = _selectable_label(muted=True)
-        layout.addWidget(self._processing_report)
-
         acq_box = QFrame()
         acq_box.setProperty("dashPanel", True)
         acq_layout = QVBoxLayout(acq_box)
@@ -340,33 +322,6 @@ class DashboardPage(QWidget):
         self._acquisition_summary = _selectable_label()
         acq_layout.addWidget(self._acquisition_summary)
         layout.addWidget(acq_box)
-
-        # Pipeline
-        pipe_box = QFrame()
-        pipe_box.setProperty("dashPanel", True)
-        pipe_layout = QVBoxLayout(pipe_box)
-        pipe_title = QLabel("Processing pipeline")
-        pipe_title.setProperty("panelTitle", True)
-        pipe_help = _selectable_label(
-            "Left → right: Discover → Hash → Fingerprint → Identify → Review → "
-            "Duplicates / Rules → Organize → Artwork → Acquiring (wishlist) → Sync. "
-            "Identify the library before acquiring missing tracks.",
-            muted=True,
-        )
-        self._pipeline = PipelineFlowWidget()
-        self._pipeline.stage_clicked.connect(self._on_pipeline_stage_clicked)
-        pipe_scroll = QScrollArea()
-        pipe_scroll.setWidget(self._pipeline)
-        pipe_scroll.setWidgetResizable(False)
-        pipe_scroll.setFrameShape(QFrame.Shape.NoFrame)
-        pipe_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAsNeeded)
-        pipe_scroll.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
-        pipe_scroll.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Fixed)
-        pipe_scroll.setMinimumHeight(160)
-        pipe_layout.addWidget(pipe_title)
-        pipe_layout.addWidget(pipe_help)
-        pipe_layout.addWidget(pipe_scroll)
-        layout.addWidget(pipe_box)
 
         # Collection + confidence side by side
         mid = FlowHost(spacing=12)
@@ -501,6 +456,54 @@ class DashboardPage(QWidget):
         layout.addWidget(live)
 
         layout.addStretch(1)
+        ensure_control_labels(self)
+
+    def _build_pipeline_panel(self) -> QFrame:
+        """Processing diagram plus the library queue, separate from wishlist counts."""
+        panel = QFrame()
+        panel.setObjectName("processingPipelinePanel")
+        panel.setProperty("dashPanel", True)
+        pipe_layout = QVBoxLayout(panel)
+        pipe_layout.addWidget(self._panel_title("Processing pipeline"))
+        pipe_layout.addWidget(
+            _selectable_label(
+                "Left → right: Discover → Hash → Fingerprint → Identify → Review → "
+                "Duplicates / Rules → Organize → Artwork → Acquiring (wishlist) → Sync. "
+                "Identify the library before acquiring missing tracks.",
+                muted=True,
+            )
+        )
+        pipe_layout.addWidget(self._panel_title("Library pipeline — queue right now"))
+        pipe_layout.addWidget(
+            _selectable_label(
+                "Pending, running, and failed count library jobs only "
+                "(scan, hash, fingerprint, identify, and the rest). "
+                "Wishlist downloads are not included in these three numbers.",
+                muted=True,
+            )
+        )
+        self._pipeline_kpi_host = FlowHost(spacing=10)
+        self._kpi_pending = _KpiCard("Pending")
+        self._kpi_pending.setToolTip(
+            "Library pipeline jobs waiting to start (scan, hash, fingerprint, identify, …)."
+        )
+        self._kpi_running = _KpiCard("Running")
+        self._kpi_running.setToolTip("Library pipeline jobs actively processing right now.")
+        self._kpi_failed = _KpiCard("Failed")
+        self._kpi_failed.setToolTip("Library pipeline jobs that failed and need retry or cleanup.")
+        for card in (self._kpi_pending, self._kpi_running, self._kpi_failed):
+            self._pipeline_kpi_host.flow().addWidget(card)
+        pipe_layout.addWidget(self._pipeline_kpi_host)
+
+        self._pipeline = PipelineFlowWidget()
+        self._pipeline.stage_clicked.connect(self._on_pipeline_stage_clicked)
+        pipe_layout.addWidget(self._pipeline)
+
+        self._processing_report = _selectable_label(muted=True)
+        pipe_layout.addWidget(self._processing_report)
+        self._last_scan = _selectable_label(muted=True)
+        pipe_layout.addWidget(self._last_scan)
+        return panel
 
     @staticmethod
     def _panel_title(text: str) -> QLabel:

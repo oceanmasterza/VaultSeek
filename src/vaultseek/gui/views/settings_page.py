@@ -8,7 +8,7 @@ from functools import partial
 from pathlib import Path
 from uuid import UUID
 
-from PySide6.QtCore import Qt, Signal
+from PySide6.QtCore import QEvent, Qt, Signal
 from PySide6.QtWidgets import (
     QCheckBox,
     QComboBox,
@@ -27,7 +27,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from vaultseek.core.config import save_config
+from vaultseek.core.config import AppConfig, save_config
 from vaultseek.core.container import Container
 from vaultseek.core.logging import configure_logging
 from vaultseek.core.uuid_utils import generate_uuid7
@@ -36,6 +36,7 @@ from vaultseek.gui.views.rules_page import RulesPage
 from vaultseek.gui.widgets.desktop import open_path
 from vaultseek.gui.widgets.flow_host import FlowHost, add_labeled_field, ensure_control_labels
 from vaultseek.gui.widgets.local_setup_dialog import LocalSetupDialog
+from vaultseek.gui.widgets.numeric_fields import fit_numeric_spinboxes, should_refit_numeric
 from vaultseek.gui.widgets.path_picker import PathPickerRow
 from vaultseek.gui.widgets.quality_fields import QualityFields
 from vaultseek.gui.widgets.scrollable import wrap_scrollable
@@ -73,6 +74,13 @@ class SettingsPage(QWidget):
         self._container = container
         self._editing_id: UUID | None = None
         self._suggest_siblings = True
+        self._loading = False
+        self._preferences_dirty = False
+        self._library_dirty = False
+        self._media_dirty = False
+        self._ms_plugin_previous = ""
+        self._prefs_connect_gen = 0
+        self._save_prefs_button: QPushButton | None = None
 
         body = QWidget()
         scroll = wrap_scrollable(self, body)
@@ -429,17 +437,17 @@ class SettingsPage(QWidget):
         prefs_form.addRow(pipeline_help)
 
         prefs_actions = FlowHost(spacing=6)
-        save_prefs = QPushButton("Save preferences")
+        self._save_prefs_button = QPushButton("Save preferences")
         open_logs = QPushButton("Open log folder")
         open_data = QPushButton("Open data folder")
         open_logs.setProperty("secondary", True)
         open_data.setProperty("secondary", True)
         open_logs.setToolTip(str(container.paths.logs_dir))
         open_data.setToolTip(str(container.paths.root))
-        save_prefs.clicked.connect(self._save_preferences)
+        self._save_prefs_button.clicked.connect(self._save_preferences)
         open_logs.clicked.connect(lambda: open_path(self._container.paths.logs_dir))
         open_data.clicked.connect(lambda: open_path(self._container.paths.root))
-        prefs_actions.add_widget(save_prefs)
+        prefs_actions.add_widget(self._save_prefs_button)
         prefs_actions.add_widget(open_logs)
         prefs_actions.add_widget(open_data)
         prefs_form.addRow(prefs_actions)
@@ -488,7 +496,7 @@ class SettingsPage(QWidget):
         self._ms_status = QLabel("")
         media_form.addRow(self._ms_status)
         layout.addWidget(media)
-        self._ms_plugin.currentTextChanged.connect(self._load_media_server_form)
+        self._ms_plugin.currentIndexChanged.connect(self._on_media_plugin_changed)
 
         self._rules_page = RulesPage(container, embedded=True)
         layout.addWidget(self._rules_page)
@@ -496,11 +504,147 @@ class SettingsPage(QWidget):
         layout.addStretch(1)
         add_settings_navigation(self, scroll, "connection-setup")
         ensure_control_labels(self)
+        fit_numeric_spinboxes(self)
+        self._wire_dirty_tracking()
+        self._ms_plugin_previous = self._ms_plugin.currentText()
+
+    def changeEvent(self, event: QEvent) -> None:  # noqa: N802 — Qt API
+        super().changeEvent(event)
+        if should_refit_numeric(event):
+            fit_numeric_spinboxes(self)
+
+    def has_unsaved_library_edits(self) -> bool:
+        """True when library paths or media-server fields would be lost on switch."""
+        return self._library_dirty or self._media_dirty
+
+    def discard_library_edits(self) -> None:
+        """Clear dirty flags after the shell confirmed discard (or New library)."""
+        self._library_dirty = False
+        self._media_dirty = False
 
     def set_library(self, library_id: UUID | None) -> None:
+        if (
+            library_id != self._editing_id
+            and self.has_unsaved_library_edits()
+            and self._editing_id is not None
+        ):
+            # Main window confirms first; clear so refresh can load the new library.
+            self.discard_library_edits()
         self._editing_id = library_id
         self._rules_page.set_library(library_id)
         self.refresh()
+
+    def _wire_dirty_tracking(self) -> None:
+        """Mark form sections dirty so refresh does not silently discard edits."""
+        for widget in (
+            self._name,
+            self._incoming.line_edit(),
+            self._staging.line_edit(),
+            self._library.line_edit(),
+            self._archive.line_edit(),
+        ):
+            widget.textChanged.connect(self._mark_library_dirty)
+        self._watch.toggled.connect(self._mark_library_dirty)
+        self._threshold.valueChanged.connect(self._mark_library_dirty)
+        for widget in (
+            self._ms_url,
+            self._ms_username,
+            self._ms_password,
+            self._ms_token,
+            self._ms_db_path.line_edit(),
+        ):
+            widget.textChanged.connect(self._mark_media_dirty)
+
+        pref_lines = (
+            self._nicotine_host,
+            self._nicotine_api_token,
+            self._discogs_token,
+            self._quality.preferred_codec,
+        )
+        for widget in pref_lines:
+            widget.textChanged.connect(self._mark_preferences_dirty)
+        for box in (
+            self._acq_threshold,
+            self._nicotine_port,
+            self._nicotine_api_port,
+            self._nicotine_search_interval,
+            self._nicotine_search_max_per_min,
+            self._wishlist_hours,
+            self._search_delay,
+            self._fingerprint_sample_min,
+            self._hash_processes,
+            self._metadata_threads,
+            self._scanner_threads,
+            self._quality.min_bitrate,
+        ):
+            box.valueChanged.connect(self._mark_preferences_dirty)
+        for checkbox in (
+            self._auto_queue_jobs,
+            self._nicotine_enabled,
+            self._search_waterfall,
+            self._download_whole_album,
+            self._quality.prefer_lossless,
+        ):
+            checkbox.toggled.connect(self._mark_preferences_dirty)
+        for combo in (
+            self._nicotine_transport,
+            self._log_level,
+            self._theme,
+            self._fingerprint_mode,
+            self._quality.preset,
+        ):
+            combo.currentIndexChanged.connect(self._mark_preferences_dirty)
+        self._source_order.model().rowsMoved.connect(self._mark_preferences_dirty)
+        for row in self._acoustid_rows:
+            self._wire_acoustid_row_dirty(row)
+
+    def _wire_acoustid_row_dirty(self, row: tuple[QLineEdit, QLineEdit, QLineEdit]) -> None:
+        for edit in row:
+            edit.textChanged.connect(self._mark_preferences_dirty)
+
+    def _mark_library_dirty(self, *_args: object) -> None:
+        if not self._loading:
+            self._library_dirty = True
+
+    def _mark_media_dirty(self, *_args: object) -> None:
+        if not self._loading:
+            self._media_dirty = True
+
+    def _mark_preferences_dirty(self, *_args: object) -> None:
+        if not self._loading:
+            self._preferences_dirty = True
+
+    def _on_media_plugin_changed(self, *_args: object) -> None:
+        """Reload media fields for the selected plugin; confirm before discarding edits."""
+        if self._loading:
+            self._ms_plugin_previous = self._ms_plugin.currentText()
+            return
+        new_plugin = self._ms_plugin.currentText()
+        if new_plugin == self._ms_plugin_previous:
+            return
+        if self._media_dirty:
+            answer = QMessageBox.question(
+                self,
+                "Media server",
+                "Discard unsaved media-server edits for the previous plugin?",
+            )
+            if answer != QMessageBox.StandardButton.Yes:
+                self._loading = True
+                try:
+                    index = self._ms_plugin.findText(self._ms_plugin_previous)
+                    if index >= 0:
+                        self._ms_plugin.setCurrentIndex(index)
+                finally:
+                    self._loading = False
+                return
+            self._media_dirty = False
+        self._ms_plugin_previous = new_plugin
+        self._loading = True
+        try:
+            self._load_media_server_form()
+        finally:
+            self._loading = False
+            self._media_dirty = False
 
     def _add_acoustid_row(self) -> None:
         index = len(self._acoustid_rows) + 1
@@ -511,11 +655,16 @@ class SettingsPage(QWidget):
         proxy.setPlaceholderText("Optional http://user:pass@host:port")
         proxy.setEchoMode(QLineEdit.EchoMode.Password)
         proxy.setToolTip("Leave blank for direct access. Use a trusted proxy only.")
-        self._acoustid_rows.append((label, key, proxy))
+        row = (label, key, proxy)
+        self._acoustid_rows.append(row)
         self._acoustid_form.addRow(f"Label {index}", label)
         self._acoustid_form.addRow(f"API key {index}", key)
         self._acoustid_form.addRow(f"Proxy {index}", proxy)
         ensure_control_labels(self)
+        if getattr(self, "_save_prefs_button", None) is not None:
+            self._wire_acoustid_row_dirty(row)
+            if not self._loading:
+                self._mark_preferences_dirty()
 
     def _detect_local(self) -> None:
         self._detect_button.setEnabled(False)
@@ -546,18 +695,23 @@ class SettingsPage(QWidget):
                 self._nicotine_api_port.setValue(int(values["api_port"]))
                 self._nicotine_api_token.setText(values["api_token"])
                 self._nicotine_transport.setCurrentIndex(self._nicotine_transport.findData("http"))
+                self._mark_preferences_dirty()
             elif connection.name == "Jellyfin":
                 self._ms_plugin.setCurrentText("jellyfin")
                 self._ms_url.setText(values["url"])
+                self._mark_media_dirty()
             elif connection.name == "Navidrome":
                 self._ms_plugin.setCurrentText("navidrome")
                 self._ms_url.setText(values["url"])
+                self._mark_media_dirty()
             elif connection.name == "Plex":
                 self._ms_plugin.setCurrentText("plex")
                 self._ms_url.setText(values["url"])
+                self._mark_media_dirty()
             elif connection.name == "Emby":
                 self._ms_plugin.setCurrentText("emby")
                 self._ms_url.setText(values["url"])
+                self._mark_media_dirty()
 
     def _test_media_connection(self) -> None:
         if self._editing_id is None:
@@ -589,11 +743,49 @@ class SettingsPage(QWidget):
 
     def refresh(self) -> None:
         config = self._container.config
-        self._rules_page.refresh()
+        self._loading = True
+        try:
+            self._rules_page.refresh()
+            if not self._preferences_dirty:
+                self._load_preference_fields(config)
+            if self._editing_id is None:
+                if not self._library_dirty:
+                    self._clear_library_form()
+                if not self._media_dirty:
+                    self._clear_media_server_form()
+                return
+            library = self._container.library_repo.get(self._editing_id)
+            if library is None:
+                if not self._library_dirty:
+                    self._clear_library_form()
+                if not self._media_dirty:
+                    self._clear_media_server_form()
+                return
+            if not self._library_dirty:
+                self._name.setText(library.name)
+                self._suggest_siblings = False
+                try:
+                    self._incoming.setText(library.incoming_path)
+                    self._staging.setText(library.staging_path)
+                    self._library.setText(library.library_path)
+                    self._archive.setText(library.archive_path)
+                finally:
+                    self._suggest_siblings = True
+                self._watch.setChecked(library.watch_enabled)
+                self._threshold.setValue(library.auto_approve_threshold)
+            if not self._media_dirty:
+                self._load_media_server_form()
+                self._ms_plugin_previous = self._ms_plugin.currentText()
+        finally:
+            self._loading = False
+            fit_numeric_spinboxes(self)
+
+    def _load_preference_fields(self, config: AppConfig) -> None:
+        from vaultseek.core.config import AcoustIdEndpointConfig
+
         self._log_level.setCurrentText(config.log_level)
         self._theme.setCurrentText(config.theme)
         self._discogs_token.setText(config.metadata.discogs_user_token or "")
-        from vaultseek.core.config import AcoustIdEndpointConfig
 
         endpoints = list(config.metadata.acoustid_endpoints)
         while len(self._acoustid_rows) < len(endpoints):
@@ -638,28 +830,6 @@ class SettingsPage(QWidget):
         self._nicotine_api_token.setText(nicotine.api_token)
         self._nicotine_search_interval.setValue(float(nicotine.search_min_interval_seconds))
         self._nicotine_search_max_per_min.setValue(int(nicotine.search_max_per_minute))
-
-        if self._editing_id is None:
-            self._clear_library_form()
-            self._clear_media_server_form()
-            return
-        library = self._container.library_repo.get(self._editing_id)
-        if library is None:
-            self._clear_library_form()
-            self._clear_media_server_form()
-            return
-        self._name.setText(library.name)
-        self._suggest_siblings = False
-        try:
-            self._incoming.setText(library.incoming_path)
-            self._staging.setText(library.staging_path)
-            self._library.setText(library.library_path)
-            self._archive.setText(library.archive_path)
-        finally:
-            self._suggest_siblings = True
-        self._watch.setChecked(library.watch_enabled)
-        self._threshold.setValue(library.auto_approve_threshold)
-        self._load_media_server_form()
 
     def _clear_library_form(self) -> None:
         self._name.clear()
@@ -716,8 +886,22 @@ class SettingsPage(QWidget):
             return
 
     def _new_library(self) -> None:
+        if self.has_unsaved_library_edits():
+            answer = QMessageBox.question(
+                self,
+                "New library",
+                "Discard unsaved library or media-server edits?",
+            )
+            if answer != QMessageBox.StandardButton.Yes:
+                return
         self._editing_id = None
-        self._clear_library_form()
+        self._loading = True
+        try:
+            self._clear_library_form()
+            self._clear_media_server_form()
+        finally:
+            self._loading = False
+        self.discard_library_edits()
 
     def _scan_incoming(self) -> None:
         if self._editing_id is None:
@@ -864,6 +1048,7 @@ class SettingsPage(QWidget):
         )
         self._container.library_repo.upsert(library)
         self._editing_id = library.id
+        self._library_dirty = False
         QMessageBox.information(self, "Settings", f"Library “{name}” saved.")
         self.library_saved.emit(library.id)
 
@@ -982,12 +1167,41 @@ class SettingsPage(QWidget):
         save_config(updated, self._container.paths.config_file)
         self._container.config = updated
         configure_logging(self._container.paths, level=updated.log_level)
-        connect_acquisition_providers(acquisition, self._container.provider_manager)
+        # Runner / automation must see the new thresholds immediately; provider
+        # connect probes (Prowlarr 60s, qBit, Nicotine) stay off the GUI thread.
         self._container.acquisition_runner.set_auto_acquire_threshold(
             acquisition.auto_acquire_threshold
         )
         self._container.acquisition_automation_service.set_acquisition_config(acquisition)
+        self._preferences_dirty = False
         self.preferences_saved.emit(updated.theme)
+
+        self._prefs_connect_gen += 1
+        connect_gen = self._prefs_connect_gen
+        if self._save_prefs_button is not None:
+            self._save_prefs_button.setEnabled(False)
+
+        def _reconnect() -> None:
+            connect_acquisition_providers(acquisition, self._container.provider_manager)
+
+        run_in_background(
+            _reconnect,
+            on_finished=lambda _result: self._preferences_connect_done(connect_gen, None),
+            on_failed=lambda error: self._preferences_connect_done(connect_gen, error),
+        )
+
+    def _preferences_connect_done(self, connect_gen: int, error: str | None) -> None:
+        if connect_gen != self._prefs_connect_gen:
+            return
+        if self._save_prefs_button is not None:
+            self._save_prefs_button.setEnabled(True)
+        if error:
+            QMessageBox.warning(
+                self,
+                "Settings",
+                "Preferences saved, but reconnecting acquisition providers failed:\n" f"{error}",
+            )
+            return
         QMessageBox.information(
             self,
             "Settings",
@@ -1026,6 +1240,7 @@ class SettingsPage(QWidget):
         item = self._source_order.takeItem(row)
         self._source_order.insertItem(target, item)
         self._source_order.setCurrentRow(target)
+        self._mark_preferences_dirty()
 
     def _test_nicotine_connection(self) -> None:
         probe = partial(
@@ -1086,5 +1301,10 @@ class SettingsPage(QWidget):
                 last_sync_status=prior.last_sync_status if prior is not None else None,
             )
         )
-        self._load_media_server_form()
+        self._loading = True
+        try:
+            self._load_media_server_form()
+        finally:
+            self._loading = False
+        self._media_dirty = False
         QMessageBox.information(self, "Settings", f"Media server “{plugin_id}” saved.")

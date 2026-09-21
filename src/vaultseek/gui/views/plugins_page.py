@@ -9,8 +9,10 @@ from __future__ import annotations
 
 from collections.abc import Callable
 from dataclasses import replace
+from urllib.parse import urlparse
 from uuid import UUID
 
+from PySide6.QtCore import QEvent
 from PySide6.QtWidgets import (
     QCheckBox,
     QComboBox,
@@ -43,14 +45,25 @@ from vaultseek.core.config import (
 )
 from vaultseek.core.container import Container, _build_recommenders
 from vaultseek.gui.async_task import run_in_background
-from vaultseek.gui.widgets.flow_host import FlowHost
+from vaultseek.gui.widgets.flow_host import FlowHost, ensure_control_labels
 from vaultseek.gui.widgets.local_setup_dialog import LocalSetupDialog
+from vaultseek.gui.widgets.numeric_fields import fit_numeric_spinboxes, should_refit_numeric
 from vaultseek.gui.widgets.scrollable import wrap_scrollable
 from vaultseek.gui.widgets.settings_navigation import add_settings_navigation
+from vaultseek.plugins.builtin.spotify import parse_playlist_id
 from vaultseek.services.acquisition_bootstrap import connect_acquisition_providers
 from vaultseek.services.acquisition_sources import ensure_search_sources, expand_legacy_prowlarr
 from vaultseek.services.local_setup import LocalConnection
 from vaultseek.services.recommendation_service import RecommendationService
+
+
+def _http_url_ok(value: str, *, allow_empty: bool = True) -> bool:
+    """True when ``value`` is empty (if allowed) or an http(s) URL with a host."""
+    text = value.strip()
+    if not text:
+        return allow_empty
+    parsed = urlparse(text)
+    return parsed.scheme in {"http", "https"} and bool(parsed.netloc)
 
 
 class PluginsPage(QWidget):
@@ -60,6 +73,11 @@ class PluginsPage(QWidget):
         super().__init__(parent)
         self._container = container
         self._library_id: UUID | None = None
+        self._test_token = 0
+        self._detect_token = 0
+        self._recommend_token = 0
+        self._reconnect_token = 0
+        self._reconnect_inflight = False
 
         body = QWidget()
         scroll = wrap_scrollable(self, body)
@@ -95,14 +113,21 @@ class PluginsPage(QWidget):
         layout.addWidget(self._build_other_sources_box())
 
         save_row = QHBoxLayout()
-        save_btn = QPushButton("Save plugin settings")
-        save_btn.setDefault(True)
-        save_btn.clicked.connect(self._save)
-        save_row.addWidget(save_btn)
+        self._save_btn = QPushButton("Save plugin settings")
+        self._save_btn.setDefault(True)
+        self._save_btn.clicked.connect(self._save)
+        save_row.addWidget(self._save_btn)
         save_row.addStretch(1)
         layout.addLayout(save_row)
         layout.addStretch(1)
         add_settings_navigation(self, scroll, "connection-setup")
+        ensure_control_labels(self)
+        fit_numeric_spinboxes(self)
+
+    def changeEvent(self, event: QEvent) -> None:  # noqa: N802 — Qt API
+        super().changeEvent(event)
+        if should_refit_numeric(event):
+            fit_numeric_spinboxes(self)
 
     # ------------------------------------------------------------------ UI --
     def _build_lastfm_box(self) -> QGroupBox:
@@ -150,6 +175,7 @@ class PluginsPage(QWidget):
             "One playlist link per line, e.g.\n"
             "https://open.spotify.com/playlist/37i9dQZF1DXcBWIGoYBM5M"
         )
+        self._spotify_playlists.setAccessibleName("Playlists")
         self._spotify_playlists.setFixedHeight(80)
         form.addRow(self._spotify_enabled)
         form.addRow("Client ID", self._spotify_client_id)
@@ -336,8 +362,10 @@ class PluginsPage(QWidget):
     # ------------------------------------------------------------- lifecycle --
     def set_library(self, library_id: UUID | None) -> None:
         self._library_id = library_id
+        self._recommend_token += 1
 
     def refresh(self) -> None:
+        self._drop_stale_async_results()
         rec = self._container.config.recommendations
         enabled = set(rec.enabled_recommenders)
         self._lastfm_enabled.setChecked("lastfm_similar" in enabled)
@@ -372,6 +400,77 @@ class PluginsPage(QWidget):
         self._nzb_username.setText(acq.nzbget.username)
         self._nzb_password.setText(acq.nzbget.password)
         self._nzb_category.setText(acq.nzbget.category)
+        fit_numeric_spinboxes(self)
+
+    def _drop_stale_async_results(self) -> None:
+        """Invalidate in-flight test/detect/reconnect callbacks after form reload."""
+        self._test_token += 1
+        self._detect_token += 1
+        self._reconnect_token += 1
+        self._reconnect_inflight = False
+        self._save_btn.setEnabled(True)
+        self._save_btn.setText("Save plugin settings")
+        self._detect_button.setEnabled(True)
+        self._run_btn.setEnabled(True)
+        for button in getattr(self, "_test_buttons", []):
+            button.setEnabled(True)
+
+    def _connection_fingerprint(self) -> tuple[str, ...]:
+        """Form values that invalidate an in-flight connection probe when edited."""
+        return (
+            self._prowlarr_url.text().strip(),
+            self._prowlarr_key.text().strip(),
+            self._qbit_url.text().strip(),
+            self._qbit_username.text().strip(),
+            self._qbit_password.text(),
+            self._sab_url.text().strip(),
+            self._sab_key.text().strip(),
+            self._nzb_url.text().strip(),
+            self._nzb_username.text().strip(),
+            self._nzb_password.text(),
+        )
+
+    def _validation_error(self) -> str | None:
+        """Return a user-visible reason the current form must not be saved."""
+        if self._lastfm_enabled.isChecked() and not self._lastfm_api_key.text().strip():
+            return "Last.fm is enabled but the API key is empty."
+        if self._spotify_enabled.isChecked():
+            if not self._spotify_client_id.text().strip():
+                return "Spotify is enabled but the client ID is empty."
+            if not self._spotify_client_secret.text().strip():
+                return "Spotify is enabled but the client secret is empty."
+            playlists = [
+                line.strip()
+                for line in self._spotify_playlists.toPlainText().splitlines()
+                if line.strip()
+            ]
+            if not playlists:
+                return "Spotify is enabled but no playlist links were entered."
+            for line in playlists:
+                if parse_playlist_id(line) is None:
+                    return (
+                        "Spotify playlist list has an unrecognized entry. "
+                        "Use an open.spotify.com/playlist/… link or spotify:playlist:… URI."
+                    )
+        url_checks = (
+            ("Prowlarr URL", self._prowlarr_url.text(), self._prowlarr_enabled.isChecked()),
+            ("qBittorrent URL", self._qbit_url.text(), self._qbit_enabled.isChecked()),
+            ("SABnzbd URL", self._sab_url.text(), self._sab_enabled.isChecked()),
+            ("NZBGet URL", self._nzb_url.text(), self._nzb_enabled.isChecked()),
+        )
+        for label, value, enabled in url_checks:
+            if not _http_url_ok(value, allow_empty=not enabled):
+                return f"{label} must be an http:// or https:// address with a host."
+            if enabled and not value.strip():
+                # Empty falls back to a localhost default on collect — treat as OK.
+                pass
+        if self._prowlarr_enabled.isChecked() and not self._prowlarr_key.text().strip():
+            return "Prowlarr is enabled but the API key is empty."
+        if self._sab_enabled.isChecked() and not self._sab_key.text().strip():
+            return "SABnzbd is enabled but the API key is empty."
+        if self._nzb_enabled.isChecked() and not self._nzb_username.text().strip():
+            return "NZBGet is enabled but the control username is empty."
+        return None
 
     # --------------------------------------------------------------- actions --
     def _collect_recommendations(self) -> RecommendationConfig:
@@ -469,6 +568,17 @@ class PluginsPage(QWidget):
         )
 
     def _save(self) -> None:
+        error = self._validation_error()
+        if error is not None:
+            QMessageBox.warning(self, "Plugins", error)
+            return
+        if self._reconnect_inflight:
+            QMessageBox.information(
+                self,
+                "Plugins",
+                "A previous save is still reconnecting download clients. Wait a moment.",
+            )
+            return
         recommendations = self._collect_recommendations()
         acquisition = self._collect_acquisition()
         updated = replace(
@@ -478,8 +588,8 @@ class PluginsPage(QWidget):
         )
         save_config(updated, self._container.paths.config_file)
         self._container.config = updated
-        # Reconnect providers and rebuild recommenders so changes apply live.
-        connect_acquisition_providers(acquisition, self._container.provider_manager)
+        # Recommenders rebuild locally (no network). Provider connect probes the
+        # network and must not block the GUI thread.
         self._container.acquisition_automation_service.set_acquisition_config(acquisition)
         self._container.recommendation_service = RecommendationService(
             acquisition_engine=self._container.acquisition_engine,
@@ -488,11 +598,45 @@ class PluginsPage(QWidget):
             recommenders=_build_recommenders(recommendations),
             max_new_per_run=recommendations.max_new_per_run,
         )
-        QMessageBox.information(
-            self,
-            "Plugins",
-            "Plugin settings saved. Prowlarr / download clients were reconnected.",
-        )
+        self._schedule_reconnect(acquisition)
+
+    def _schedule_reconnect(self, acquisition: AcquisitionConfig) -> None:
+        self._reconnect_token += 1
+        token = self._reconnect_token
+        self._reconnect_inflight = True
+        self._save_btn.setEnabled(False)
+        self._save_btn.setText("Saving…")
+
+        def work() -> bool:
+            connect_acquisition_providers(acquisition, self._container.provider_manager)
+            return True
+
+        def done(_ok: object) -> None:
+            if token != self._reconnect_token:
+                return
+            self._reconnect_inflight = False
+            self._save_btn.setEnabled(True)
+            self._save_btn.setText("Save plugin settings")
+            QMessageBox.information(
+                self,
+                "Plugins",
+                "Plugin settings saved. Prowlarr / download clients were reconnected.",
+            )
+
+        def failed(error: str) -> None:
+            if token != self._reconnect_token:
+                return
+            self._reconnect_inflight = False
+            self._save_btn.setEnabled(True)
+            self._save_btn.setText("Save plugin settings")
+            QMessageBox.warning(
+                self,
+                "Plugins",
+                "Plugin settings were saved, but reconnecting download clients failed:\n"
+                f"{error}",
+            )
+
+        run_in_background(work, on_finished=done, on_failed=failed)
 
     def _run_recommendations(self) -> None:
         if self._library_id is None:
@@ -508,16 +652,20 @@ class PluginsPage(QWidget):
             )
             return
         library_id = self._library_id
+        self._recommend_token += 1
+        token = self._recommend_token
         self._run_btn.setEnabled(False)
         self._run_status.setText("Finding recommendations…")
 
         run_in_background(
             lambda: service.run(library_id),
-            on_finished=self._on_recommendations_done,
-            on_failed=self._on_recommendations_failed,
+            on_finished=lambda result: self._on_recommendations_done(token, library_id, result),
+            on_failed=lambda error: self._on_recommendations_failed(token, error),
         )
 
-    def _on_recommendations_done(self, result: object) -> None:
+    def _on_recommendations_done(self, token: int, library_id: UUID, result: object) -> None:
+        if token != self._recommend_token or library_id != self._library_id:
+            return
         self._run_btn.setEnabled(True)
         added = getattr(result, "added", 0)
         owned = getattr(result, "skipped_owned", 0)
@@ -534,26 +682,34 @@ class PluginsPage(QWidget):
         self._run_status.setText(message)
         QMessageBox.information(self, "Recommendations", message)
 
-    def _on_recommendations_failed(self, error: str) -> None:
+    def _on_recommendations_failed(self, token: int, error: str) -> None:
+        if token != self._recommend_token:
+            return
         self._run_btn.setEnabled(True)
         self._run_status.setText("")
         QMessageBox.warning(self, "Recommendations", f"Could not run recommenders:\n{error}")
 
     def _detect_local(self) -> None:
+        self._detect_token += 1
+        token = self._detect_token
         self._detect_button.setEnabled(False)
         run_in_background(
             self._container.local_setup.discover,
-            on_finished=self._local_detected,
-            on_failed=self._local_failed,
+            on_finished=lambda connections: self._local_detected(token, connections),
+            on_failed=lambda error: self._local_failed(token, error),
         )
 
-    def _local_failed(self, _error: str) -> None:
+    def _local_failed(self, token: int, _error: str) -> None:
+        if token != self._detect_token:
+            return
         self._detect_button.setEnabled(True)
         QMessageBox.warning(
             self, "Local setup", "Detection failed. Use the manual setup instructions."
         )
 
-    def _local_detected(self, connections: list[LocalConnection]) -> None:
+    def _local_detected(self, token: int, connections: list[LocalConnection]) -> None:
+        if token != self._detect_token:
+            return
         self._detect_button.setEnabled(True)
         connections = [
             c for c in connections if c.name in {"Prowlarr", "qBittorrent", "SABnzbd", "NZBGet"}
@@ -595,12 +751,19 @@ class PluginsPage(QWidget):
         *,
         failure_detail: Callable[[], str] | None = None,
     ) -> None:
+        self._test_token += 1
+        token = self._test_token
+        fingerprint = self._connection_fingerprint()
         for button in self._test_buttons:
             button.setEnabled(False)
 
         def done(ok: bool) -> None:
+            if token != self._test_token:
+                return
             for button in self._test_buttons:
                 button.setEnabled(True)
+            if fingerprint != self._connection_fingerprint():
+                return
             if ok:
                 QMessageBox.information(
                     self,
@@ -611,7 +774,10 @@ class PluginsPage(QWidget):
                 detail = failure_detail() if failure_detail is not None else help_text
                 QMessageBox.warning(self, name, detail or help_text)
 
-        run_in_background(probe, on_finished=done, on_failed=lambda _: done(False))
+        def failed(_error: str) -> None:
+            done(False)
+
+        run_in_background(probe, on_finished=done, on_failed=failed)
 
     def _test_download(self, name: str, help_text: str) -> None:
         config = self._collect_acquisition()
@@ -637,12 +803,19 @@ class PluginsPage(QWidget):
 
     def _test_nzbget(self) -> None:
         config = self._collect_acquisition()
+        self._test_token += 1
+        token = self._test_token
+        fingerprint = self._connection_fingerprint()
         for button in self._test_buttons:
             button.setEnabled(False)
 
         def done(access: object) -> None:
+            if token != self._test_token:
+                return
             for button in self._test_buttons:
                 button.setEnabled(True)
+            if fingerprint != self._connection_fingerprint():
+                return
             level = getattr(access, "level", "unreachable")
             message = str(getattr(access, "message", "") or "")
             if level == "ready":

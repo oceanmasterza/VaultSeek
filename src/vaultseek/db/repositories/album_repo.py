@@ -8,10 +8,11 @@ from datetime import datetime
 from typing import Any
 from uuid import UUID
 
-from sqlalchemy import Engine, Row, delete, exists, func, or_, select, update
+from sqlalchemy import Engine, Row, and_, case, delete, exists, func, or_, select, update
 
 from vaultseek.core.exceptions import OperationError
 from vaultseek.db import tables
+from vaultseek.db.repositories.artwork_repo import ArtworkRepository
 from vaultseek.db.repositories.base import batch_upsert
 from vaultseek.db.tables import album_artwork, artists
 from vaultseek.db.tables import albums as albums_table
@@ -193,9 +194,28 @@ class AlbumRepository:
     ) -> list[AlbumBrowseRow]:
         """Albums linked to tracks in this library, with artist name and cover flag."""
         lib = uuid_to_blob(library_id)
-        present_count = func.count(tracks_table.c.id).label("present_count")
+        # Distinct disc+number+title slots, not every physical copy. Matches
+        # release_slot_key: nonpositive / missing numbers each keep their own slot.
+        release_slot = case(
+            (
+                and_(
+                    tracks_table.c.track_number.is_not(None),
+                    tracks_table.c.track_number > 0,
+                ),
+                func.printf(
+                    "%d:%d:%s",
+                    tracks_table.c.disc_number,
+                    tracks_table.c.track_number,
+                    func.lower(func.coalesce(tracks_table.c.title, "")),
+                ),
+            ),
+            else_=func.hex(tracks_table.c.id),
+        )
+        present_count = func.count(func.distinct(release_slot)).label("present_count")
         has_cover = exists(
-            select(album_artwork.c.artwork_id).where(album_artwork.c.album_id == albums_table.c.id)
+            select(album_artwork.c.artwork_id)
+            .where(album_artwork.c.album_id == albums_table.c.id)
+            .where(album_artwork.c.is_primary.is_(True))
         ).label("has_cover")
         statement = (
             select(
@@ -236,25 +256,32 @@ class AlbumRepository:
             )
         with self._engine.connect() as conn:
             rows = conn.execute(statement).all()
-        return [
-            AlbumBrowseRow(
-                album_id=blob_to_uuid(row.id),
-                title=row.title,
-                sort_title=row.sort_title,
-                artist_name=row.artist_name,
-                artist_id=blob_to_uuid(row.album_artist_id) if row.album_artist_id else None,
-                year=row.year,
-                track_count=int(row.present_count),
-                has_cover=bool(row.has_cover),
-                mbid=row.mbid,
-                expected_track_count=(
-                    int(row.expected_track_count)
-                    if row.expected_track_count not in (None, 0)
-                    else None
-                ),
+        artwork_repo = ArtworkRepository(self._engine)
+        results: list[AlbumBrowseRow] = []
+        for row in rows:
+            album_id = blob_to_uuid(row.id)
+            cover_ok = (
+                bool(row.has_cover) and artwork_repo.get_primary_for_album(album_id) is not None
             )
-            for row in rows
-        ]
+            results.append(
+                AlbumBrowseRow(
+                    album_id=album_id,
+                    title=row.title,
+                    sort_title=row.sort_title,
+                    artist_name=row.artist_name,
+                    artist_id=blob_to_uuid(row.album_artist_id) if row.album_artist_id else None,
+                    year=row.year,
+                    track_count=int(row.present_count),
+                    has_cover=cover_ok,
+                    mbid=row.mbid,
+                    expected_track_count=(
+                        int(row.expected_track_count)
+                        if row.expected_track_count not in (None, 0)
+                        else None
+                    ),
+                )
+            )
+        return results
 
 
 def _to_row(album: Album) -> dict[str, object]:

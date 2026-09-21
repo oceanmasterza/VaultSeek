@@ -127,7 +127,19 @@ def connect_acquisition_providers(
     config: AcquisitionConfig,
     manager: ProviderManager,
 ) -> None:
-    """Connect enabled acquisition providers using application config."""
+    """Connect enabled acquisition providers using application config.
+
+    Holds ``ProviderManager.lifecycle`` for the full reconnect so Settings and
+    Plugins background saves serialize with each other and with searches.
+    """
+    with manager.lifecycle():
+        _connect_acquisition_providers_locked(config, manager)
+
+
+def _connect_acquisition_providers_locked(
+    config: AcquisitionConfig,
+    manager: ProviderManager,
+) -> None:
     nicotine_settings = normalize_nicotine_settings(
         {
             **asdict(config.nicotine_plus),

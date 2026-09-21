@@ -718,6 +718,26 @@ Library integrity
 
 # Session Notes
 
+## 2026-09-21 — Combined Albums, pipeline, and advanced settings
+
+Albums owns covers. Artwork is not its own sidebar page; older Artwork links open Albums with Problems only. Cover identity is provenance-first: a trusted `artwork.source_id` matching the album MBID may claim the cover, foreign provenance blocks the wrong album, and popularity counts or timestamps do not pick a winner. Numbered slots include the normalized title so Live, Acoustic, and Remix editions stay distinct.
+
+The dashboard pipeline and toolbars use shared flow layout, so Discover, Hash, Sync, and the later stages stay fully visible and wrap when the window is narrow. Settings and Plugins still expose the advanced controls from `7125ee7` (folders, quality, wishlist and waterfall, Nicotine+, AcoustID, pipeline workers, media servers, and download clients). Reconnect runs off the UI thread on one provider lifecycle lock. Unsaved library and media edits confirm before discard. Numeric fields refit without a `rangeChanged` handler.
+
+Provider status for the dashboard reads immutable connected and order snapshots, so a search delay or reconnect cannot freeze the window.
+
+Validation before install: 862 unit tests passed; ruff clean; strict mypy on 248 files; import-linter kept 3 contracts; Black unchanged on 32 changed Python files. Independent review approved those checks and the hashes below. Installer `packaging/output/VaultSeek-Setup.exe` SHA256 `C6A073A0D1876C5F76962A7550901BA454360ED0D91678CC45C8F5F307E0CED0`. Frozen and installed `VaultSeek.exe` SHA256 `6483088858E4D762688B8FC8B59D2D876995C79083DF2FDA73A5A3F02D0469B4`. Dated handoff copy: `packaging/output/VaultSeek-Setup-20260921.exe`.
+
+Real upgrade on 2026-09-21: Inno exit 0 over the existing per-user Programs folder. Config SHA256 stayed `5628CA5E9475965DADD1032A5B46CE5E1D3AB3CEDFAB280D54D8F429A35FE76A`. Obsolete ICU DLLs are absent. The real-profile main window titled VaultSeek answered WM_NULL with Responding true and closed without using Archive, Delete, Find, or Scan. Incoming, library, and archive file fingerprints were unchanged. Startup automation logged an illegal `scoring -> download_failed` transition and moved one acquisition job; that database was restored from the pre-launch SQLite backup so job counts match the pre-test profile.
+
+## 2026-09-21 — Provider status snapshots (release-final)
+
+Dashboard/`ProviderManager` status no longer acquires the lifecycle RLock held
+during search waterfall sleeps or background reconnect. Connected ids and search
+readiness come from immutable snapshots published after mutations. Unit tests
+prove status returns while search and reconnect are blocked. Packaging/smoke
+evidence in the release-final agent report.
+
 ## 2026-09-20 — Responsive FlowLayout and independent dashboard probes
 
 Shared `FlowLayout` / `FlowHost` wrap toolbars and dashboard status tiles instead of clipping them. Dashboard client probes run asynchronously off the UI thread. Each configured client is checked independently, and a connection-settings change drops stale results. Usenet remains one search tier: SABnzbd is the schema 23 default; NZBGet is the optional Plugins selection.

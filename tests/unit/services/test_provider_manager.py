@@ -151,3 +151,175 @@ def test_search_waterfall_stops_after_first_hits() -> None:
     assert [h.provider_id for h in hits] == ["usenet"]
     assert calls == ["nicotine_plus", "usenet"]
 
+
+def test_lifecycle_serializes_reconnect_against_search() -> None:
+    """Settings/Plugins reconnect and search must not interleave provider mutation."""
+    from threading import Event, Thread
+
+    from vaultseek.models.interfaces.acquisition import ProviderCapabilities, SearchResult
+
+    search_entered = Event()
+    allow_search_finish = Event()
+    order: list[str] = []
+
+    class _Slow:
+        provider_id = "stub"
+        display_name = "S"
+        capabilities = ProviderCapabilities(search=True, download=False)
+
+        def connect(self, config):  # noqa: ANN001
+            order.append("connect")
+            return True
+
+        def disconnect(self) -> None:
+            order.append("disconnect")
+
+        def search(self, request):  # noqa: ANN001
+            order.append("search-start")
+            search_entered.set()
+            allow_search_finish.wait(2)
+            order.append("search-end")
+            return [
+                SearchResult(
+                    provider_id="stub",
+                    result_id="1",
+                    display_name="hit",
+                    album=request.album,
+                )
+            ]
+
+    manager = ProviderManager([_Slow()], provider_order=("stub",), search_waterfall=True)
+    manager.connect(AcquisitionProviderConfig(provider_id="stub", enabled=True))
+
+    def run_search() -> None:
+        manager.search(SearchRequest(artist="A", album="B"))
+
+    searcher = Thread(target=run_search)
+    searcher.start()
+    assert search_entered.wait(2)
+
+    def run_reconnect() -> None:
+        with manager.lifecycle():
+            order.append("reconnect-start")
+            manager.disconnect("stub")
+            manager.connect(AcquisitionProviderConfig(provider_id="stub", enabled=True))
+            order.append("reconnect-end")
+
+    reconnect = Thread(target=run_reconnect)
+    reconnect.start()
+    # Reconnect must not progress until search releases the lifecycle lock.
+    assert "reconnect-start" not in order
+    allow_search_finish.set()
+    searcher.join(timeout=2)
+    reconnect.join(timeout=2)
+    assert order.index("search-end") < order.index("reconnect-start")
+    assert "reconnect-end" in order
+
+
+def test_status_returns_promptly_during_blocked_search() -> None:
+    """Dashboard status must not wait on the lifecycle lock held by search."""
+    from threading import Event, Thread
+    from time import monotonic
+
+    from vaultseek.models.interfaces.acquisition import ProviderCapabilities, SearchResult
+
+    search_entered = Event()
+    allow_search_finish = Event()
+
+    class _Slow:
+        provider_id = "usenet"
+        display_name = "U"
+        capabilities = ProviderCapabilities(search=True, download=False)
+
+        def connect(self, config):  # noqa: ANN001
+            return True
+
+        def disconnect(self) -> None:
+            return None
+
+        def search(self, request):  # noqa: ANN001
+            search_entered.set()
+            allow_search_finish.wait(3)
+            return [
+                SearchResult(
+                    provider_id="usenet",
+                    result_id="1",
+                    display_name="hit",
+                    album=request.album,
+                )
+            ]
+
+    manager = ProviderManager([_Slow()], provider_order=("usenet",), search_waterfall=True)
+    manager.connect(AcquisitionProviderConfig(provider_id="usenet", enabled=True))
+
+    def run_search() -> None:
+        manager.search(SearchRequest(artist="A", album="B"))
+
+    searcher = Thread(target=run_search)
+    searcher.start()
+    assert search_entered.wait(2)
+
+    started = monotonic()
+    assert manager.connected_provider_ids() == ("usenet",)
+    assert manager.has_connected_search_providers() is True
+    elapsed = monotonic() - started
+    assert elapsed < 0.25, f"status blocked for {elapsed:.3f}s during search"
+
+    allow_search_finish.set()
+    searcher.join(timeout=2)
+    assert not searcher.is_alive()
+
+
+def test_status_returns_promptly_during_blocked_reconnect() -> None:
+    """Dashboard status must not wait on lifecycle held by a slow reconnect."""
+    from threading import Event, Thread
+    from time import monotonic
+
+    from vaultseek.models.interfaces.acquisition import ProviderCapabilities
+
+    connect_entered = Event()
+    allow_connect_finish = Event()
+
+    class _SlowConnect:
+        provider_id = "usenet"
+        display_name = "U"
+        capabilities = ProviderCapabilities(search=True, download=False)
+
+        def connect(self, config):  # noqa: ANN001
+            connect_entered.set()
+            allow_connect_finish.wait(3)
+            return True
+
+        def disconnect(self) -> None:
+            return None
+
+        def search(self, request):  # noqa: ANN001
+            return []
+
+    manager = ProviderManager([_SlowConnect()], provider_order=("usenet",))
+    # Seed connected so the GUI has a prior snapshot while reconnect blocks.
+    allow_connect_finish.set()
+    assert manager.connect(AcquisitionProviderConfig(provider_id="usenet", enabled=True))
+    allow_connect_finish.clear()
+    connect_entered.clear()
+
+    def run_reconnect() -> None:
+        with manager.lifecycle():
+            manager.disconnect("usenet")
+            manager.connect(AcquisitionProviderConfig(provider_id="usenet", enabled=True))
+
+    worker = Thread(target=run_reconnect)
+    worker.start()
+    assert connect_entered.wait(2)
+
+    started = monotonic()
+    # Snapshot may be empty after disconnect published; must still return fast.
+    _ = manager.connected_provider_ids()
+    _ = manager.has_connected_search_providers()
+    elapsed = monotonic() - started
+    assert elapsed < 0.25, f"status blocked for {elapsed:.3f}s during reconnect"
+
+    allow_connect_finish.set()
+    worker.join(timeout=2)
+    assert not worker.is_alive()
+    assert manager.connected_provider_ids() == ("usenet",)
