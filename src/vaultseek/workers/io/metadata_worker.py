@@ -12,6 +12,7 @@ branch that never gates organizing.
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import replace
 from datetime import UTC, datetime
 from uuid import UUID
@@ -34,6 +35,7 @@ from vaultseek.services.folder_trust import FolderTrustService
 from vaultseek.services.job_queue_service import JobQueueService
 from vaultseek.services.metadata_arbitrator import MetadataArbitrator
 from vaultseek.services.review_queue_service import ReviewQueueService
+from vaultseek.services.tag_writer import TagWriteRequest, TagWriteResult, write_embedded_tags
 
 
 class MetadataWorker:
@@ -51,6 +53,7 @@ class MetadataWorker:
         artwork_repo: ArtworkRepository | None = None,
         folder_trust: FolderTrustService | None = None,
         fingerprint_mode: str = "all",
+        tag_writer: Callable[..., TagWriteResult] | None = None,
     ) -> None:
         self._tracks = track_repo
         self._identities = file_identity_repo
@@ -63,6 +66,7 @@ class MetadataWorker:
         self._artwork = artwork_repo
         self._folder_trust = folder_trust
         self._fingerprint_mode = fingerprint_mode
+        self._tag_writer = tag_writer or write_embedded_tags
 
     def execute(self, job: Job) -> None:
         track_id = UUID(job.payload["track_id"])
@@ -112,6 +116,35 @@ class MetadataWorker:
                 result=result,
                 now=now,
             )
+            outcome_needs_review = True
+        else:
+            # Confirmed identity: write tags, clear obsolete identity/artwork blockers.
+            tag_ok = self._write_identity_tags(updated)
+            if not tag_ok:
+                # Fail closed — park for Review instead of promoting untagged files.
+                updated = replace(updated, needs_review=True, updated_at=now)
+                self._tracks.upsert(updated)
+                self._reviews.create_from_arbitration(
+                    library_id=job.library_id,
+                    track_id=track_id,
+                    result=replace(result, needs_review=True),
+                    now=now,
+                )
+                outcome_needs_review = True
+            else:
+                updated = self._refresh_file_stat(updated, now)
+                self._tracks.upsert(updated)
+                self._reviews.resolve_obsolete_identity_items(
+                    track_id, resolved_by="metadata_worker", now=now
+                )
+                self._job_queue.enqueue(
+                    JobType.HASH_FILE,
+                    job.library_id,
+                    {"track_id": str(track_id)},
+                    parent_job_id=job.id,
+                    now=now,
+                )
+                outcome_needs_review = False
 
         if self._fingerprint_mode == "sample" and self._folder_trust is not None:
             self._folder_trust.try_trust_after_identify(updated, result, identity, now=now)
@@ -132,16 +165,16 @@ class MetadataWorker:
                 now=now,
             )
         summary = _identify_summary(
-            updated, result.fields, result.overall_confidence, result.needs_review
+            updated, result.fields, result.overall_confidence, outcome_needs_review
         )
         self._job_queue.mark_completed(
             job.id,
             summary=summary,
             result={
-                "outcome": "needs_review" if result.needs_review else "matched",
+                "outcome": "needs_review" if outcome_needs_review else "matched",
                 "summary": summary,
                 "confidence": result.overall_confidence,
-                "needs_review": result.needs_review,
+                "needs_review": outcome_needs_review,
                 "artist_id": str(updated.artist_id) if updated.artist_id else None,
                 "album_id": str(updated.album_id) if updated.album_id else None,
             },
@@ -152,6 +185,50 @@ class MetadataWorker:
         if self._artwork is None or track.album_id is None:
             return False
         return self._artwork.get_primary_for_album(track.album_id) is not None
+
+    def _write_identity_tags(self, track: Track) -> bool:
+        """Embed confirmed identity tags. Returns False when the write fails."""
+        path = track.file_path
+        if not path:
+            return False
+        artist_name = None
+        album_title = None
+        if track.artist_id is not None and self._artists is not None:
+            artist = self._artists.get(track.artist_id)
+            artist_name = artist.name if artist is not None else None
+        if track.album_id is not None and self._albums is not None:
+            album = self._albums.get(track.album_id)
+            album_title = album.title if album is not None else None
+        result = self._tag_writer(
+            str(path),
+            TagWriteRequest(
+                title=track.title,
+                artist=artist_name,
+                album=album_title,
+                track_number=track.track_number,
+                disc_number=track.disc_number,
+                year=track.year,
+            ),
+        )
+        return bool(result.wrote)
+
+    @staticmethod
+    def _refresh_file_stat(track: Track, now: datetime) -> Track:
+        from pathlib import Path
+
+        path = track.file_path
+        if not path:
+            return track
+        try:
+            stat = Path(path).stat()
+        except OSError:
+            return track
+        return replace(
+            track,
+            file_size=int(stat.st_size),
+            file_modified=datetime.fromtimestamp(stat.st_mtime, tz=UTC),
+            updated_at=now,
+        )
 
 
 def _identify_summary(
@@ -217,14 +294,28 @@ def _apply_fields(
 
     artist_id = track.artist_id
     if artist_repo is not None:
-        artist_name = _winner_str(fields, "artist")
-        if artist_name:
-            artist_id = _ensure_artist(artist_repo, artist_name, now=now)
-            updates["artist_id"] = artist_id
+        library_artist = _winner_str(fields, "library_artist_id")
+        if library_artist:
+            try:
+                artist_id = UUID(library_artist)
+                updates["artist_id"] = artist_id
+            except ValueError:
+                library_artist = None
+        if "artist_id" not in updates:
+            artist_name = _winner_str(fields, "artist")
+            if artist_name:
+                artist_id = _ensure_artist(artist_repo, artist_name, now=now)
+                updates["artist_id"] = artist_id
 
     if album_repo is not None:
+        library_album = _winner_str(fields, "library_album_id")
+        if library_album:
+            try:
+                updates["album_id"] = UUID(library_album)
+            except ValueError:
+                library_album = None
         album_title = _winner_str(fields, "album")
-        if album_title:
+        if album_title and "album_id" not in updates:
             year = updates.get("year")
             album_year = year if isinstance(year, int) else track.year
             updates["album_id"] = _ensure_album(

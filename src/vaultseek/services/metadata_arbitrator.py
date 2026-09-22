@@ -7,6 +7,7 @@ See docs/architecture/04-service-layer.md and docs/architecture/10-revision-v2.m
 2. MusicBrainz by existing recording ID / by tags (seeded from tags)
 3. Discogs by tags — when MusicBrainz did not attach a recording MBID
 4. Filename parser (only if core identity is still weak)
+4b. Existing library album tracklists (unique corroborated slots only)
 5. AcoustID fingerprint → MusicBrainz by ID — when no recording MBID yet
    (strong tags alone are not enough; missing-media needs MusicBrainz links)
 6. Shazamio audio recognition — when AcoustID has no key / returns nothing
@@ -18,8 +19,9 @@ confidence uses **core** fields only (artist, album, title).
 
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
 from dataclasses import replace
+from pathlib import Path
 
 from vaultseek.models.entities.track import Track
 from vaultseek.models.interfaces.metadata import (
@@ -30,11 +32,17 @@ from vaultseek.models.interfaces.metadata import (
     ProviderResult,
 )
 from vaultseek.models.value_objects.field_confidence import FieldConfidence
+from vaultseek.services.library_tracklist_matcher import (
+    AcquisitionProvenance,
+    LibraryTracklistMatcher,
+)
+from vaultseek.services.review_display import filename_song, looks_like_opaque_id
 
 _LOOKUP_METHOD_RANK = {
     "fingerprint": 0,
     "audio": 0,  # Shazamio — same rank as Chromaprint/AcoustID hits
     "id": 1,
+    "library": 1,  # Existing library tracklist corroboration
     "tags": 2,
     "filename": 3,
     "search": 4,
@@ -50,10 +58,14 @@ class MetadataArbitrator:
         providers: Sequence[MetadataProvider],
         *,
         confidence_threshold: float = 0.90,
+        library_matcher: LibraryTracklistMatcher | None = None,
+        provenance_lookup: Callable[[Track], AcquisitionProvenance | None] | None = None,
     ) -> None:
         self._providers = sorted(providers, key=lambda p: p.priority)
         self._threshold = confidence_threshold
         self._by_id = {p.provider_id: p for p in self._providers}
+        self._library_matcher = library_matcher
+        self._provenance_lookup = provenance_lookup
 
     def resolve(
         self,
@@ -110,6 +122,26 @@ class MetadataArbitrator:
                 results.append(_with_priority(tags_hit, local.priority))
                 query = _enrich_query(query, tags_hit)
 
+        # Real MusicBrainz/Discogs tag search needs a title. When embedded
+        # tags left it empty/opaque, seed from the filename song token only —
+        # never from an acquisition job title — and never override a real
+        # embedded title already on the query.
+        query = _seed_title_from_filename(query, track)
+
+        # Acquisition folder provenance seeds *absent* artist/album only —
+        # before provider tag searches — so a known download without a local
+        # library slot still reaches MusicBrainz/Discogs. Never inherit the
+        # job title; never override embedded identity already on the query.
+        # If embedded artist already contradicts provenance artist, skip the
+        # provenance album too (avoid Embedded Band + Salvation Frankenstein).
+        provenance = self._provenance_lookup(track) if self._provenance_lookup is not None else None
+        if provenance is not None:
+            artist_conflict = _artists_conflict(query.artist, provenance.artist)
+            if provenance.artist and not query.artist:
+                query = replace(query, artist=provenance.artist)
+            if provenance.album and not query.album and not artist_conflict:
+                query = replace(query, album=provenance.album)
+
         musicbrainz = self._by_id.get("musicbrainz")
         if musicbrainz is not None:
             # 2a. Already-known recording MBID.
@@ -148,6 +180,17 @@ class MetadataArbitrator:
                 if tags_hit is not None:
                     results.append(_with_priority(tags_hit, filename.priority))
                     query = _enrich_query(query, tags_hit)
+
+        # 4b. Existing library album tracklists — unique corroborated slots only.
+        # Ambiguous editions stay for Review recommendations (not auto-approve).
+        # Reuse the same provenance snapshot obtained before provider searches.
+        if self._library_matcher is not None and not _identity_is_strong(results, self._threshold):
+            library_hit = self._library_matcher.match(track, query, provenance=provenance)
+            if library_hit.provider_result is not None:
+                results.append(
+                    _with_priority(library_hit.provider_result, self._library_matcher.priority)
+                )
+                query = _enrich_query(query, library_hit.provider_result)
 
         # 5. AcoustID — whenever we still lack a recording MBID, or sampling
         #    forces fingerprint confirmation. Strong tags alone are not enough
@@ -265,14 +308,41 @@ def _core_overall(fields: dict[str, FieldConfidence]) -> float:
 
 
 def _query_from_track(track: Track) -> MetadataQuery:
+    title = track.title
+    # Opaque stored titles (UUID fragments) must not poison MusicBrainz search.
+    # Leave missing titles empty so local tags can seed first.
+    if title and looks_like_opaque_id(title):
+        title = filename_song(track.file_name) or filename_song(Path(track.file_path).name)
+        if looks_like_opaque_id(title or ""):
+            title = None
     return MetadataQuery(
         file_path=track.file_path,
         file_name=track.file_name,
-        title=track.title,
+        title=title,
         year=track.year,
         track_number=track.track_number,
         duration_ms=track.duration_ms,
     )
+
+
+def _seed_title_from_filename(query: MetadataQuery, track: Track) -> MetadataQuery:
+    """Fill absent/opaque title from the filename song token before providers."""
+    current = (query.title or "").strip()
+    if current and not looks_like_opaque_id(current):
+        return query
+    seeded = filename_song(track.file_name) or filename_song(Path(track.file_path).name)
+    if not seeded or looks_like_opaque_id(seeded):
+        return query
+    return replace(query, title=seeded)
+
+
+def _artists_conflict(embedded: str | None, provenance_artist: str | None) -> bool:
+    """True when both sides name an artist and they are not the same."""
+    left = (embedded or "").strip()
+    right = (provenance_artist or "").strip()
+    if not left or not right:
+        return False
+    return left.casefold() != right.casefold()
 
 
 def _enrich_query(query: MetadataQuery, result: ProviderResult) -> MetadataQuery:

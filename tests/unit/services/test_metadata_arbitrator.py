@@ -569,3 +569,182 @@ def test_resolve_enrichment_looks_up_existing_mbid() -> None:
 
     assert result.fields["title"].value == "By Id"
     assert result.needs_review is False
+
+
+def test_provenance_seeds_provider_query_when_no_local_slot() -> None:
+    """Known download album + filename title must reach MusicBrainz before 4b."""
+    from vaultseek.services.library_tracklist_matcher import AcquisitionProvenance
+
+    mb_queries: list[MetadataQuery] = []
+
+    class _MB:
+        provider_id = "musicbrainz"
+        priority = 10
+
+        def lookup_by_fingerprint(self, fingerprint: bytes, duration: float) -> None:
+            return None
+
+        def lookup_by_tags(self, query: MetadataQuery) -> ProviderResult | None:
+            mb_queries.append(query)
+            if query.artist != "Alphaville" or query.title != "Soul Messiah":
+                return None
+            return ProviderResult(
+                provider_id="musicbrainz",
+                fields=[
+                    ProviderFieldResult("artist", "Alphaville", 0.94),
+                    ProviderFieldResult("album", "Salvation", 0.94),
+                    ProviderFieldResult("title", "Soul Messiah", 0.94),
+                    ProviderFieldResult("mb_recording_id", "mb-rec-1", 0.94),
+                ],
+                overall_confidence=0.94,
+                lookup_method="tags",
+                priority=10,
+            )
+
+        def lookup_by_id(self, external_id: str, id_type: str) -> None:
+            return None
+
+        def search(
+            self,
+            query: str,
+            entity_type: Literal["artist", "album", "recording"],
+            limit: int = 10,
+        ) -> list[ProviderResult]:
+            return []
+
+    provenance = AcquisitionProvenance(
+        artist="Alphaville",
+        album="Salvation",
+        mb_release_id="2167db99-6fe0-4af8-8ae1-4fbe699008bf",
+    )
+    arbitrator = MetadataArbitrator(
+        [_MB()],
+        confidence_threshold=0.90,
+        provenance_lookup=lambda _track: provenance,
+    )
+    result = arbitrator.resolve(
+        _track(
+            file_path="C:/incoming/uuid-folder/10 - Soul Messiah.mp3",
+            file_name="10 - Soul Messiah.mp3",
+            title=None,
+        )
+    )
+
+    assert mb_queries
+    assert mb_queries[0].artist == "Alphaville"
+    assert mb_queries[0].album == "Salvation"
+    assert mb_queries[0].title == "Soul Messiah"
+    assert result.fields["album"].value == "Salvation"
+    assert result.fields["artist"].value == "Alphaville"
+    assert result.fields["title"].value == "Soul Messiah"
+
+
+def test_provenance_does_not_override_conflicting_embedded_artist() -> None:
+    from vaultseek.services.library_tracklist_matcher import AcquisitionProvenance
+
+    mb_queries: list[MetadataQuery] = []
+    local = ProviderResult(
+        provider_id="local_tags",
+        fields=[
+            ProviderFieldResult("artist", "Embedded Band", 0.91),
+            ProviderFieldResult("title", "Soul Messiah", 0.90),
+        ],
+        overall_confidence=0.90,
+        lookup_method="tags",
+        priority=50,
+    )
+
+    class _MB:
+        provider_id = "musicbrainz"
+        priority = 10
+
+        def lookup_by_fingerprint(self, fingerprint: bytes, duration: float) -> None:
+            return None
+
+        def lookup_by_tags(self, query: MetadataQuery) -> ProviderResult | None:
+            mb_queries.append(query)
+            return None
+
+        def lookup_by_id(self, external_id: str, id_type: str) -> None:
+            return None
+
+        def search(
+            self,
+            query: str,
+            entity_type: Literal["artist", "album", "recording"],
+            limit: int = 10,
+        ) -> list[ProviderResult]:
+            return []
+
+    provenance = AcquisitionProvenance(
+        artist="Alphaville",
+        album="Salvation",
+        mb_release_id="rel-1",
+    )
+    arbitrator = MetadataArbitrator(
+        [_FakeProvider("local_tags", 50, by_tags=local), _MB()],
+        confidence_threshold=0.90,
+        provenance_lookup=lambda _track: provenance,
+    )
+    arbitrator.resolve(_track(title=None, file_name="10 - Soul Messiah.mp3"))
+
+    assert mb_queries
+    assert mb_queries[0].artist == "Embedded Band"
+    assert mb_queries[0].album is None
+    assert mb_queries[0].title == "Soul Messiah"
+
+
+def test_provenance_preserves_embedded_title_over_filename() -> None:
+    from vaultseek.services.library_tracklist_matcher import AcquisitionProvenance
+
+    mb_queries: list[MetadataQuery] = []
+    local = ProviderResult(
+        provider_id="local_tags",
+        fields=[
+            ProviderFieldResult("artist", "Alphaville", 0.91),
+            ProviderFieldResult("title", "Embedded Title", 0.90),
+        ],
+        overall_confidence=0.90,
+        lookup_method="tags",
+        priority=50,
+    )
+
+    class _MB:
+        provider_id = "musicbrainz"
+        priority = 10
+
+        def lookup_by_fingerprint(self, fingerprint: bytes, duration: float) -> None:
+            return None
+
+        def lookup_by_tags(self, query: MetadataQuery) -> ProviderResult | None:
+            mb_queries.append(query)
+            return None
+
+        def lookup_by_id(self, external_id: str, id_type: str) -> None:
+            return None
+
+        def search(
+            self,
+            query: str,
+            entity_type: Literal["artist", "album", "recording"],
+            limit: int = 10,
+        ) -> list[ProviderResult]:
+            return []
+
+    provenance = AcquisitionProvenance(
+        artist="Alphaville", album="Salvation", mb_release_id="rel-1"
+    )
+    arbitrator = MetadataArbitrator(
+        [_FakeProvider("local_tags", 50, by_tags=local), _MB()],
+        confidence_threshold=0.90,
+        provenance_lookup=lambda _track: provenance,
+    )
+    arbitrator.resolve(
+        _track(
+            title=None, file_name="10 - Soul Messiah.mp3", file_path="C:/x/10 - Soul Messiah.mp3"
+        )
+    )
+
+    assert mb_queries
+    assert mb_queries[0].title == "Embedded Title"
+    assert mb_queries[0].album == "Salvation"

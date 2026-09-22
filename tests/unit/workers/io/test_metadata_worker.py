@@ -26,9 +26,15 @@ from vaultseek.models.value_objects.file_identity import FileIdentity
 from vaultseek.services.job_queue_service import JobQueueService
 from vaultseek.services.metadata_arbitrator import MetadataArbitrator
 from vaultseek.services.review_queue_service import ReviewQueueService
+from vaultseek.services.tag_writer import TagWriteRequest, TagWriteResult
 from vaultseek.workers.io.metadata_worker import MetadataWorker
 
 _NOW = datetime(2026, 7, 15, tzinfo=UTC)
+
+
+def _stub_tag_writer(path: str, request: TagWriteRequest, **_kwargs: object) -> TagWriteResult:
+    del request
+    return TagWriteResult(path=path, wrote=True)
 
 
 class _StubProvider:
@@ -114,6 +120,7 @@ def test_execute_persists_arbitrated_fields_and_completes_job(
         MetadataArbitrator([_StubProvider()], confidence_threshold=0.90),
         job_queue,
         review_queue,
+        tag_writer=_stub_tag_writer,
     )
     worker.execute(
         Job(
@@ -175,6 +182,7 @@ def test_execute_marks_failed_when_track_missing(
         MetadataArbitrator([_StubProvider()]),
         job_queue,
         review_queue,
+        tag_writer=_stub_tag_writer,
     )
     worker.execute(
         Job(
@@ -261,6 +269,7 @@ def test_execute_persists_acoustid_fields_on_file_identity(
         MetadataArbitrator([_AcoustIdStub()], confidence_threshold=0.90),
         job_queue,
         review_queue,
+        tag_writer=_stub_tag_writer,
     )
     worker.execute(
         Job(
@@ -336,6 +345,7 @@ def test_execute_creates_review_item_when_needs_review(
         MetadataArbitrator([_LowConfidenceStub()], confidence_threshold=0.90),
         job_queue,
         review_queue,
+        tag_writer=_stub_tag_writer,
     )
     worker.execute(
         Job(
@@ -388,6 +398,7 @@ def test_execute_persists_artist_and_album_from_tags(
         review_queue,
         artist_repo=artists,
         album_repo=albums,
+        tag_writer=_stub_tag_writer,
     )
     worker.execute(
         Job(
@@ -406,3 +417,54 @@ def test_execute_persists_artist_and_album_from_tags(
     assert updated.album_id is not None
     assert artists.get(updated.artist_id).name == "Stub Artist"  # type: ignore[union-attr]
     assert albums.get(updated.album_id).title == "Stub Album"  # type: ignore[union-attr]
+
+
+def test_missing_file_tag_failure_records_needs_review_outcome(
+    track_repo: TrackRepository,
+    file_identity_repo: FileIdentityRepository,
+    job_queue: JobQueueService,
+    job_repo: JobRepository,
+    review_queue: ReviewQueueService,
+    engine: Engine,
+    library_id: UUID,
+    track_id: UUID,
+) -> None:
+    """Production writer fails closed when the audio file is missing."""
+    track_repo.upsert(_make_track(library_id, track_id, file_path="C:/missing/nope.flac"))
+    job_id = job_queue.enqueue(
+        JobType.IDENTIFY_METADATA, library_id, {"track_id": str(track_id)}, now=_NOW
+    )
+    job_repo.update_status(job_id, JobStatus.RUNNING)
+
+    def _failing_writer(path: str, request: TagWriteRequest, **_kwargs: object) -> TagWriteResult:
+        del request
+        return TagWriteResult(path=path, wrote=False, error="file missing")
+
+    worker = MetadataWorker(
+        track_repo,
+        file_identity_repo,
+        MetadataConfidenceRepository(engine),
+        MetadataArbitrator([_StubProvider()], confidence_threshold=0.90),
+        job_queue,
+        review_queue,
+        tag_writer=_failing_writer,
+    )
+    worker.execute(
+        Job(
+            id=job_id,
+            library_id=library_id,
+            job_type=JobType.IDENTIFY_METADATA,
+            status=JobStatus.RUNNING,
+            payload={"track_id": str(track_id)},
+            created_at=_NOW,
+        )
+    )
+
+    updated = track_repo.get_by_id(track_id)
+    assert updated is not None
+    assert updated.needs_review is True
+    completed = job_repo.get(job_id)
+    assert completed is not None
+    assert completed.payload.get("outcome") == "needs_review"
+    assert completed.payload.get("needs_review") is True
+    assert review_queue.get_pending(library_id)

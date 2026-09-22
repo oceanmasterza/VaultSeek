@@ -718,6 +718,62 @@ Library integrity
 
 # Session Notes
 
+## 2026-09-22 — Delivery resume (scoped Salvation seven)
+
+- Codex restored gate after independent scoped clone: AUTO 7, organized 7, FLAC QUALITY_UPGRADE 7.
+- Live apply: exact seven → canonical Salvation `019f907c-a63b-7000-9a20-d1bb17bd3381`; tags Alphaville/Salvation; collision-safe `(1)` names when library slot occupied; config SHA unchanged.
+- Seven QUALITY_UPGRADE jobs created (prefer_lossless) and **queued only** (no delivery downloads claimed).
+- Packaging: dated `VaultSeek-Setup-20260922.exe`; smoke onedir/disposable/installed with Review seed profile.
+
+## 2026-09-22 — Provenance-final (early identify seed)
+
+Acquisition folder provenance now fills absent artist/album on the identify
+query after embedded tags and before MusicBrainz/Discogs tag search. Never
+inherits the acquisition job title; never overrides contradictory embedded
+artist. Library matcher still reuses the same provenance snapshot at step 4b.
+Named radio/single-edit variants remain incompatible with bare studio.
+`tag_writer` untouched. No build/commit.
+
+## 2026-09-22 — Workflow gates final (Codex review)
+
+Seven review gates closed: physical better-slot evidence; live Container
+config for scoped QUALITY_UPGRADE; retryable upgrade-job dedupe; public
+`recording_identity` blocks contradictory upgrade hits (no track_count
+bypass; band Live safe); fail-closed injected tag writer; LIBRARY same-zone
+reorganize on Assign; organize reports `quality_upgrade_error`. Full unit
+suite 921 passed. Isolated clone E2E (SQLite API backup, temp media only):
+AUTO 7 → Salvation, tags + organize + seven QUALITY_UPGRADE jobs. No live
+mutation, commit, push, or build.
+
+## 2026-09-22 — Identify workflow final (identity ≠ quality)
+
+Library tracklist matching now separates identity from quality: a better
+active LIBRARY copy does not block unique auto-identify; after tags, worse
+Incoming archives via organize/duplicate. Exact provenance release MBID
+outranks other editions. Slot identity keys keep full version text so
+studio/demo copies never Frankenstein-merge evidence. Provenance resolves
+completed same-library `nicotine_download_folder` / `local_paths` only.
+ReviewQueueService exports `AlbumChoice` / `AlbumSlotChoice` plus
+`assignment_albums` / `assignment_slots`. `apply_safe_matches` reports
+per-row applied/failed and continues the batch. Scoped QUALITY_UPGRADE with
+`source_track_id` runs from OrganizerWorker after LIBRARY placement.
+Read-only live preview of the seven Salvation Incoming songs: AUTO 7 / STAY 0,
+all predicted album **Salvation** (not Deluxe). No live mutation, config,
+commit, or build in this session.
+
+## 2026-09-22 — Identify / Review album allocation
+
+Filename parser skips Nicotine UUID parents and parses `NN - Title`. Library
+tracklist matcher recommends album slots using filename/title, acquisition
+folder provenance (artist/album/MBID only — never job title), duration, and
+track number. Unique auto-approve requires ≥2 corroborations with ≥1 song-side
+evidence; title-only, version/edition conflicts, release MBID mismatch, and
+better existing files stay in Review. Review UI Assign album / Apply writes
+tags (backup + atomic replace), clears artwork_missing blockers, enqueues
+artwork + hash refresh. Quality-upgrade scans dedupe open jobs. No live DB
+mutations or config changes in this session; safe retry remains dry-run until
+Codex authorizes backups + apply.
+
 ## 2026-09-21 — Refused download start stays on the legal path
 
 Startup polling of a Nicotine+ download whose client is disconnected tries the next scored peer. That start used to advance `scoring -> download_failed` and abort the library tick, leaving the job in `scoring`. `DownloadManager` now records the refusal as `scoring -> downloading -> download_failed`. The direct transition stays illegal. A later connected waterfall tier can still start, and a verification failure can still try the next result.

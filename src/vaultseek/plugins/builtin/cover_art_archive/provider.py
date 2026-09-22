@@ -2,25 +2,27 @@
 
 Fetches front-cover images from https://coverartarchive.org (priority 10
 per docs/architecture/05-plugin-api.md, "Artwork Providers"). Lookup
-order, from strongest to weakest handle:
+order is album-scoped only, strongest to weakest:
 
 1. Release MBID → ``/release/{mbid}/front`` (confidence 0.95)
 2. Release-group MBID → ``/release-group/{mbid}/front`` (0.85)
-3. Recording MBID → resolve a release id via the MusicBrainz recording
-   API first, then fetch as in 1 (0.80)
-4. Artist + album title → MusicBrainz release search, then CAA front
+3. Artist + album title → MusicBrainz release search, then CAA front
    (0.75). This path covers tag-first libraries that never received an
    MBID but still have clear artist/album tags — the common case when
    online artwork exists but local MBIDs do not.
+
+Recording / song-title handles are intentionally ignored so a single
+cannot pull the wrong release cover. The worker defers until an album
+row exists.
 
 The Archive answers ``/front`` with a redirect to the actual image;
 `requests` follows it. A 404 means "no front cover" — that is a normal
 miss, not an error.
 
 MusicBrainz etiquette (≤ 1 request/second) is enforced for MB API
-calls; CAA image fetches are not throttled beyond that. Recording and
-artist+album → release lookups are cached in-process so album mates do
-not repeat the same MusicBrainz search.
+calls; CAA image fetches are not throttled beyond that. Artist+album →
+release lookups are cached in-process so album mates do not repeat the
+same MusicBrainz search.
 """
 
 from __future__ import annotations
@@ -36,7 +38,6 @@ from vaultseek.models.interfaces.artwork import ArtworkQuery, ArtworkResult
 from vaultseek.plugins.imaging import image_dimensions
 
 _CAA_ROOT = "https://coverartarchive.org"
-_MB_RECORDING_URL = "https://musicbrainz.org/ws/2/recording/"
 _MB_RELEASE_URL = "https://musicbrainz.org/ws/2/release/"
 _USER_AGENT = "VaultSeek/0.1.0 (https://github.com/oceanmasterza/VaultSeek)"
 _MIN_INTERVAL_SECONDS = 1.05
@@ -62,7 +63,7 @@ class CoverArtArchiveProvider:
         self._rate_lock = threading.Lock()
         self._last_request_at = 0.0
         self._cache_lock = threading.Lock()
-        # Shared across threads: recording/search → release id (incl. misses).
+        # Shared across threads: artist+album search → release id (incl. misses).
         self._release_cache: dict[str, str | None] = {}
 
     def fetch(self, query: ArtworkQuery) -> ArtworkResult | None:
@@ -82,16 +83,7 @@ class CoverArtArchiveProvider:
             )
             if result is not None:
                 return result
-        if query.mb_recording_id:
-            release_id = self._resolve_release_id(query.mb_recording_id)
-            if release_id is not None:
-                result = self._fetch_front(
-                    f"{_CAA_ROOT}/release/{quote(release_id)}/front",
-                    confidence=0.80,
-                    source_id=release_id,
-                )
-                if result is not None:
-                    return result
+        # Recording / song identity is never a cover search key.
         if query.artist and query.album:
             release_id = self._search_release_id(query.artist, query.album)
             if release_id is not None:
@@ -123,24 +115,6 @@ class CoverArtArchiveProvider:
             confidence=confidence,
             source_id=source_id,
         )
-
-    def _resolve_release_id(self, recording_mbid: str) -> str | None:
-        cache_key = f"rec:{recording_mbid}"
-        with self._cache_lock:
-            if cache_key in self._release_cache:
-                return self._release_cache[cache_key]
-        payload = self._get_json(
-            f"{_MB_RECORDING_URL}{quote(recording_mbid)}",
-            {"fmt": "json", "inc": "releases"},
-        )
-        release_id: str | None = None
-        if payload is not None:
-            releases = payload.get("releases") or []
-            if releases:
-                value = releases[0].get("id")
-                release_id = str(value) if value else None
-        self._cache_put(cache_key, release_id)
-        return release_id
 
     def _search_release_id(self, artist: str, album: str) -> str | None:
         """Find a MusicBrainz release id from artist + album tags."""

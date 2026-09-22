@@ -284,6 +284,41 @@ class TrackRepository:
             rows = conn.execute(statement).all()
         return [_from_row(row) for row in rows]
 
+    def find_title_candidates(
+        self,
+        library_id: UUID,
+        title_hint: str,
+        *,
+        limit: int = 80,
+    ) -> Sequence[Track]:
+        """Tracks whose title or file name contains a usable title token.
+
+        Used by library tracklist matching for Review recommendations. Callers
+        still apply fuzzy scoring; this is only a coarse SQL prefilter.
+        """
+        hint = " ".join(title_hint.strip().split())
+        if not hint:
+            return []
+        # Prefer a longer token so short words like "of" do not flood results.
+        tokens = [token for token in hint.replace("-", " ").split() if len(token) >= 3]
+        needle = max(tokens, key=len) if tokens else hint[:32]
+        pattern = f"%{needle}%"
+        statement = (
+            select(tracks_table)
+            .where(tracks_table.c.library_id == uuid_to_blob(library_id))
+            .where(
+                or_(
+                    tracks_table.c.title.like(pattern),
+                    tracks_table.c.file_name.like(pattern),
+                )
+            )
+            .order_by(tracks_table.c.file_name)
+            .limit(limit)
+        )
+        with self._engine.connect() as conn:
+            rows = conn.execute(statement).all()
+        return [_from_row(row) for row in rows]
+
     def list_by_path_prefix(
         self,
         library_id: UUID,

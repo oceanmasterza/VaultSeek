@@ -3,11 +3,13 @@
 Priority 50 per docs/architecture/05-plugin-api.md ("Artwork Providers":
 Cover Art Archive 10 > Discogs 20 > Embedded 50) — a network fetch of
 canonical release art is preferred over whatever a ripper embedded, but
-embedded art needs no network and is the fallback for unidentified
-tracks. Handles the three container families Mutagen exposes pictures
-through: FLAC ``pictures``, ID3 ``APIC`` frames, and MP4 ``covr`` atoms.
-Front covers (picture type 3) are preferred when the file carries
-several images.
+embedded art needs no network. The artwork worker only invokes this
+provider after an album identity is known, then applies provenance
+guards so a foreign cover cannot become another release's primary.
+Handles the three container families Mutagen exposes pictures through:
+FLAC ``pictures``, ID3 ``APIC`` frames, and MP4 ``covr`` atoms. Front
+covers (picture type 3) are preferred when the file carries several
+images.
 """
 
 from __future__ import annotations

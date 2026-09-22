@@ -14,6 +14,7 @@ layers are implemented (see docs/architecture/07-roadmap.md).
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from uuid import UUID
 
 from sqlalchemy import Engine
 
@@ -82,26 +83,31 @@ from vaultseek.plugins.manager import PluginManager
 from vaultseek.services.acquisition_automation_service import AcquisitionAutomationService
 from vaultseek.services.acquisition_bootstrap import connect_acquisition_providers
 from vaultseek.services.acquisition_engine import AcquisitionEngine
+from vaultseek.services.acquisition_provenance import provenance_for_track_path
 from vaultseek.services.acquisition_runner import AcquisitionRunner
 from vaultseek.services.acquisition_workflow import AcquisitionWorkflow
 from vaultseek.services.album_deletion import AlbumDeletionService
 from vaultseek.services.connection_checks import ConnectionChecks
 from vaultseek.services.download_manager import DownloadManager
 from vaultseek.services.folder_trust import FolderTrustService
+from vaultseek.services.identify_retry_preview import IdentifyRetryPreviewService
 from vaultseek.services.import_pipeline import ImportPipeline
 from vaultseek.services.job_dispatcher import JobDispatcher
 from vaultseek.services.job_queue_service import JobQueueService
+from vaultseek.services.library_tracklist_matcher import LibraryTracklistMatcher
 from vaultseek.services.local_setup import LocalSetupService
 from vaultseek.services.metadata_arbitrator import MetadataArbitrator
 from vaultseek.services.missing_media_analyzer import MissingMediaAnalyzer
 from vaultseek.services.operation_orchestrator import OperationOrchestrator
 from vaultseek.services.provider_manager import ProviderManager
+from vaultseek.services.quality_upgrade_analyzer import QualityUpgradeAnalyzer
 from vaultseek.services.recommendation_service import RecommendationService
 from vaultseek.services.report_service import ReportService
 from vaultseek.services.review_queue_service import ReviewQueueService
 from vaultseek.services.rules_engine import RulesEngine
 from vaultseek.services.scoring_engine import ScoringEngine
 from vaultseek.services.search_dispatcher import SearchDispatcher
+from vaultseek.services.tag_writer import write_embedded_tags
 from vaultseek.services.verification_engine import VerificationEngine
 from vaultseek.services.watch_folder_service import WatchFolderService
 from vaultseek.workers.cpu.fingerprint_worker import FingerprintWorker
@@ -160,7 +166,9 @@ class Container:
     acquisition_automation_service: AcquisitionAutomationService
     recommendation_service: RecommendationService
     missing_media_analyzer: MissingMediaAnalyzer | None
+    library_tracklist_matcher: LibraryTracklistMatcher
     metadata_arbitrator: MetadataArbitrator
+    identify_retry_preview: IdentifyRetryPreviewService
     scanner_worker: ScannerWorker
     hash_worker: HashWorker
     fingerprint_worker: FingerprintWorker
@@ -225,6 +233,32 @@ class Container:
             flush_interval_ms=config.pipeline.db_writer_flush_interval_ms,
         )
         job_queue = JobQueueService(job_repo, config.pipeline)
+        library_tracklist_matcher = LibraryTracklistMatcher(
+            track_repo=track_repo,
+            album_repo=album_repo,
+            artist_repo=artist_repo,
+            confidence_threshold=config.metadata.confidence_threshold,
+        )
+        quality_upgrade_analyzer = QualityUpgradeAnalyzer(
+            track_repo,
+            album_repo=album_repo,
+            artist_repo=artist_repo,
+        )
+
+        # Late-bound so Settings/Plugins `container.config = replace(...)`
+        # is visible to organize/review quality-upgrade callbacks.
+        container_box: list[Container | None] = [None]
+
+        def _scoped_quality_upgrade(track_id: UUID) -> None:
+            holder = container_box[0]
+            prefs = holder.config.acquisition if holder is not None else config.acquisition
+            quality_upgrade_analyzer.create_job_for_track(
+                acquisition_engine,
+                track_id,
+                prefs,
+                auto_queue=bool(prefs.auto_queue_jobs),
+            )
+
         review_queue = ReviewQueueService(
             review_repo,
             track_repo,
@@ -232,6 +266,14 @@ class Container:
             confidence_threshold=config.metadata.confidence_threshold,
             job_queue=job_queue,
             duplicate_repository=duplicate_repo,
+            library_matcher=library_tracklist_matcher,
+            album_repository=album_repo,
+            artist_repository=artist_repo,
+            provenance_lookup=lambda track: provenance_for_track_path(
+                acquisition_job_repo, track.library_id, track.file_path
+            ),
+            quality_upgrader=_scoped_quality_upgrade,
+            tag_writer=write_embedded_tags,
         )
         rules_engine = RulesEngine(
             rule_repo, track_repo, artist_repo, review_queue, event_bus, job_queue
@@ -337,6 +379,20 @@ class Container:
         metadata_arbitrator = MetadataArbitrator(
             plugin_manager.get_metadata_providers(),
             confidence_threshold=config.metadata.confidence_threshold,
+            library_matcher=library_tracklist_matcher,
+            provenance_lookup=lambda track: provenance_for_track_path(
+                acquisition_job_repo, track.library_id, track.file_path
+            ),
+        )
+        identify_retry_preview = IdentifyRetryPreviewService(
+            review_repo=review_repo,
+            track_repo=track_repo,
+            file_identity_repo=file_identity_repo,
+            library_matcher=library_tracklist_matcher,
+            confidence_threshold=config.metadata.confidence_threshold,
+            job_queue=job_queue,
+            acquisition_job_repo=acquisition_job_repo,
+            review_queue=review_queue,
         )
         musicbrainz = next(
             (
@@ -388,6 +444,7 @@ class Container:
             artwork_repo=artwork_repo,
             folder_trust=folder_trust,
             fingerprint_mode=config.metadata.fingerprint_mode,
+            tag_writer=write_embedded_tags,
         )
         rule_worker = RuleWorker(
             track_repo,
@@ -416,6 +473,7 @@ class Container:
             organize_engine,
             job_queue,
             metadata_confidence_repo=metadata_confidence_repo,
+            quality_upgrader=_scoped_quality_upgrade,
         )
         artwork_worker = ArtworkWorker(
             track_repo,
@@ -461,7 +519,7 @@ class Container:
         watch_folder.start()
         acquisition_automation_service.start()
 
-        return cls(
+        instance = cls(
             paths=paths,
             config=config,
             engine=engine,
@@ -502,7 +560,9 @@ class Container:
             acquisition_automation_service=acquisition_automation_service,
             recommendation_service=recommendation_service,
             missing_media_analyzer=missing_media_analyzer,
+            library_tracklist_matcher=library_tracklist_matcher,
             metadata_arbitrator=metadata_arbitrator,
+            identify_retry_preview=identify_retry_preview,
             scanner_worker=scanner_worker,
             hash_worker=hash_worker,
             fingerprint_worker=fingerprint_worker,
@@ -516,6 +576,8 @@ class Container:
             dispatcher=dispatcher,
             event_bus=event_bus,
         )
+        container_box[0] = instance
+        return instance
 
     def close(self) -> None:
         """Release resources held by this container.

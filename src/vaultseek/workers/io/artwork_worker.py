@@ -2,27 +2,39 @@
 
 I/O-bound (Tier 2 — HTTP + Mutagen + filesystem). Per
 docs/architecture/04-service-layer.md the route is *terminal or review*:
-nothing is enqueued downstream. Missing / low-resolution covers park
-``artwork_missing`` / ``artwork_low_res`` review items only when the
-track still needs identity review (or confidence is below threshold);
-confident tracks try network + embedded lookup silently.
+nothing is enqueued downstream.
+
+Album-only policy: covers are looked up for a known album release, never
+by song title / recording / single identity. When ``track.album_id`` is
+absent the job completes as ``deferred`` so identification can enqueue
+again after the album is known.
+
+Missing / low-resolution covers do **not** create per-track Review items
+(those would block promotion of otherwise identified songs). Absence is
+visible on Albums Problems via ``has_cover`` / browse status. Legacy
+track-scoped ``artwork_missing`` / ``artwork_low_res`` rows must be
+cleared by the identification/assignment workflow (see agent report).
+
+Same-album concurrent jobs share a per-album lock so only one network
+fetch runs; mates that win the race reuse the stored primary. Locks are
+keyed by album id — independent albums never block each other.
 
 Selection policy: embedded art is tried first (local). If it meets the
 configured minimum resolution, network providers are skipped. Otherwise
-Cover Art Archive (and any other network providers) run next. Album mates
-reuse an already-fetched album cover without another download.
+Cover Art Archive (and any other network providers) run next.
 
 Storage: image bytes are written once to the application cache
 directory (``cache/artwork/<hash[:2]>/<hash>.<ext>``, deduplicated by
 SHA-256 through :class:`ArtworkRepository.upsert_image`) and linked to
-the track and, when known, its album. ``tracks.has_embedded_art`` is set
-whenever the file's own tags contained a usable picture, regardless of
-which provider won.
+the track and its album. ``tracks.has_embedded_art`` is set whenever the
+file's own tags contained a usable picture, regardless of which
+provider won.
 """
 
 from __future__ import annotations
 
 import hashlib
+import threading
 from dataclasses import replace
 from datetime import UTC, datetime
 from pathlib import Path
@@ -36,10 +48,8 @@ from vaultseek.db.repositories.track_repo import TrackRepository
 from vaultseek.db.uuid_utils import generate_uuid7
 from vaultseek.models.entities.artwork import Artwork
 from vaultseek.models.entities.job import Job
-from vaultseek.models.entities.review_item import ReviewType
 from vaultseek.models.entities.track import Track
 from vaultseek.models.interfaces.artwork import ArtworkProvider, ArtworkQuery, ArtworkResult
-from vaultseek.services.dto.review_dto import ReviewItemCreate
 from vaultseek.services.job_queue_service import JobQueueService
 from vaultseek.services.review_queue_service import ReviewQueueService
 
@@ -49,8 +59,6 @@ _EXTENSION_BY_MIME = {
     "image/gif": ".gif",
     "image/webp": ".webp",
 }
-# Confident tracks: try hard to fetch art, but don't flood Review on miss.
-_ARTWORK_REVIEW_THRESHOLD = 0.90
 
 
 class ArtworkWorker:
@@ -75,11 +83,14 @@ class ArtworkWorker:
         self._confidence = metadata_confidence_repo
         self._artwork = artwork_repo
         self._providers = sorted(providers, key=lambda p: p.priority)
+        # Kept for Container / call-site compatibility; covers no longer park Review.
         self._reviews = review_queue
         self._job_queue = job_queue
         self._artwork_dir = artwork_dir
         self._min_width = min_width
         self._min_height = min_height
+        self._album_locks_guard = threading.Lock()
+        self._album_locks: dict[UUID, threading.Lock] = {}
 
     def execute(self, job: Job) -> None:
         track_id = UUID(job.payload["track_id"])
@@ -101,6 +112,35 @@ class ArtworkWorker:
             )
             return
 
+        # Album identity is required before any cover search. Song title /
+        # recording / single lookups are never used as a substitute.
+        if track.album_id is None:
+            summary = f"Deferred artwork until album known for '{track.file_name}'"
+            self._job_queue.mark_completed(
+                job.id,
+                summary=summary,
+                result={
+                    "outcome": "deferred",
+                    "summary": summary,
+                    "reason": "album_unknown",
+                },
+            )
+            return
+
+        with self._lock_for_album(track.album_id):
+            self._execute_album_fetch(job, track, now)
+
+    def _execute_album_fetch(self, job: Job, track: Track, now: datetime) -> None:
+        """Fetch under the per-album lock. Re-check reuse after acquiring it."""
+        if self._reuse_existing_cover(track) is not None:
+            summary = f"Reused album cover for '{track.file_name}'"
+            self._job_queue.mark_completed(
+                job.id,
+                summary=summary,
+                result={"outcome": "saved", "summary": summary, "reused": True},
+            )
+            return
+
         query = self._build_query(track)
         chosen, saw_embedded = self._pick_result(query, track.album_id)
 
@@ -109,15 +149,7 @@ class ArtworkWorker:
             self._tracks.upsert(track)
 
         if chosen is None:
-            if _should_park_artwork_review(track):
-                self._park_review(
-                    job.library_id,
-                    track,
-                    ReviewType.ARTWORK_MISSING,
-                    title=f"No artwork found for '{track.file_name}'",
-                    description="No provider returned a cover image for this track.",
-                    now=now,
-                )
+            # No per-track Review — Albums Problems shows has_cover=False.
             summary = f"No artwork for '{track.file_name}'"
             self._job_queue.mark_completed(
                 job.id,
@@ -129,19 +161,6 @@ class ArtworkWorker:
         self._store_and_link(track, chosen, now)
 
         low_res = not self._meets_minimum(chosen)
-        if low_res and _should_park_artwork_review(track):
-            self._park_review(
-                job.library_id,
-                track,
-                ReviewType.ARTWORK_LOW_RES,
-                title=f"Low-resolution artwork for '{track.file_name}'",
-                description=(
-                    f"Best available cover is {chosen.width}x{chosen.height} px "
-                    f"(minimum {self._min_width}x{self._min_height}). "
-                    f"Source: {chosen.source}."
-                ),
-                now=now,
-            )
         outcome = "low_res" if low_res else "saved"
         summary = (
             f"{'Low-res cover' if low_res else 'Cover saved'} "
@@ -158,6 +177,14 @@ class ArtworkWorker:
                 "height": chosen.height,
             },
         )
+
+    def _lock_for_album(self, album_id: UUID) -> threading.Lock:
+        with self._album_locks_guard:
+            lock = self._album_locks.get(album_id)
+            if lock is None:
+                lock = threading.Lock()
+                self._album_locks[album_id] = lock
+            return lock
 
     def _reuse_existing_cover(self, track: Track) -> UUID | None:
         """Link an already-fetched cover that belongs to this release.
@@ -185,6 +212,7 @@ class ArtworkWorker:
         return None
 
     def _build_query(self, track: Track) -> ArtworkQuery:
+        """Build an album-scoped lookup. Never includes song title or recording id."""
         mb_release_id: str | None = None
         mb_release_group_id: str | None = None
         discogs_id: str | None = None
@@ -215,7 +243,6 @@ class ArtworkWorker:
             file_path=track.file_path,
             mb_release_id=mb_release_id,
             mb_release_group_id=mb_release_group_id,
-            mb_recording_id=track.mb_recording_id,
             discogs_id=discogs_id,
             artist=artist_name,
             album=album_title,
@@ -318,38 +345,3 @@ class ArtworkWorker:
         if not path.exists():
             path.write_bytes(result.data)
         return path
-
-    def _park_review(
-        self,
-        library_id: UUID,
-        track: Track,
-        review_type: ReviewType,
-        *,
-        title: str,
-        description: str,
-        now: datetime,
-    ) -> None:
-        self._reviews.create_item(
-            ReviewItemCreate(
-                library_id=library_id,
-                review_type=review_type,
-                title=title,
-                track_id=track.id,
-                album_id=track.album_id,
-                description=description,
-            ),
-            now=now,
-        )
-
-
-def _should_park_artwork_review(track: Track) -> bool:
-    """Park artwork issues only when identity itself still needs attention.
-
-    High-confidence tracks keep flowing through the pipeline; a missing
-    cover is logged by completing the job without a Review row.
-    """
-    if track.needs_review:
-        return True
-    if track.overall_confidence is None:
-        return True
-    return track.overall_confidence < _ARTWORK_REVIEW_THRESHOLD

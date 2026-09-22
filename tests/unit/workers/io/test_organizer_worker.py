@@ -419,3 +419,46 @@ def test_execute_fails_when_track_missing(
     assert status.status is JobStatus.RETRY
     assert status.error_message is not None
     assert "not found" in status.error_message
+
+
+def test_quality_upgrade_failure_is_reported_on_completed_organize(
+    track_repo: TrackRepository,
+    library_repo: LibraryRepository,
+    review_repo: ReviewRepository,
+    duplicate_repo: DuplicateRepository,
+    operation_repo: OperationRepository,
+    job_queue: JobQueueService,
+    job_repo: JobRepository,
+    zone_library: Library,
+    engine: Engine,
+) -> None:
+    def _boom(_track_id: UUID) -> None:
+        raise RuntimeError("upgrade enqueue failed")
+
+    worker = OrganizerWorker(
+        track_repo,
+        library_repo,
+        ArtistRepository(engine),
+        AlbumRepository(engine),
+        review_repo,
+        duplicate_repo,
+        operation_repo,
+        OrganizeEngine(),
+        job_queue,
+        quality_upgrader=_boom,
+    )
+    source = _write_source(zone_library, "upgrade-me.flac")
+    track = _make_track(
+        zone_library,
+        source,
+        title="Control",
+        overall_confidence=0.99,
+        needs_review=False,
+    )
+    track_repo.upsert(track)
+    job_id = _run(worker, job_queue, job_repo, zone_library, track.id, "library")
+    completed = job_repo.get(job_id)
+    assert completed is not None
+    assert completed.status is JobStatus.COMPLETED
+    assert completed.payload.get("quality_upgrade_status") == "failed"
+    assert "upgrade enqueue failed" in str(completed.payload.get("quality_upgrade_error"))

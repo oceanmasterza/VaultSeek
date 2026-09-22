@@ -15,12 +15,12 @@ from typing import Protocol
 
 @dataclass(frozen=True, slots=True)
 class ArtworkQuery:
-    """Lookup input built from a Track and its Album (when known).
+    """Album-scoped cover lookup input.
 
-    ``mb_recording_id`` is included because the pipeline persists
-    recording MBIDs long before album rows (and their release MBIDs)
-    exist — providers that need a release id may resolve it from the
-    recording.
+    Providers must search by release / release-group / Discogs id or
+    artist+album title only. ``mb_recording_id`` is retained for API
+    compatibility but is ignored — song/recording identity is never used
+    to fetch artwork (the worker defers until an album is known).
     """
 
     file_path: str | None = None

@@ -56,25 +56,11 @@ def test_fetch_by_release_group_id_when_no_release_id() -> None:
     assert result.source_id == _GROUP_MBID
 
 
-@responses.activate
-def test_fetch_by_recording_id_resolves_a_release_first() -> None:
-    responses.add(
-        responses.GET,
-        f"https://musicbrainz.org/ws/2/recording/{_RECORDING_MBID}",
-        json={"releases": [{"id": _RELEASE_MBID, "title": "OK Computer"}]},
-    )
-    responses.add(
-        responses.GET,
-        f"https://coverartarchive.org/release/{_RELEASE_MBID}/front",
-        body=_png(),
-        content_type="image/jpeg",
-    )
-
+def test_recording_id_alone_is_ignored() -> None:
+    """Song/recording identity must not trigger a cover search."""
     result = CoverArtArchiveProvider().fetch(ArtworkQuery(mb_recording_id=_RECORDING_MBID))
 
-    assert result is not None
-    assert result.confidence == 0.80
-    assert result.source_id == _RELEASE_MBID
+    assert result is None
 
 
 @responses.activate
@@ -100,19 +86,14 @@ def test_fetch_returns_none_for_undecodable_bytes() -> None:
     assert CoverArtArchiveProvider().fetch(ArtworkQuery(mb_release_id=_RELEASE_MBID)) is None
 
 
-@responses.activate
-def test_fetch_returns_none_when_recording_has_no_releases() -> None:
-    responses.add(
-        responses.GET,
-        f"https://musicbrainz.org/ws/2/recording/{_RECORDING_MBID}",
-        json={"releases": []},
-    )
-
-    assert CoverArtArchiveProvider().fetch(ArtworkQuery(mb_recording_id=_RECORDING_MBID)) is None
-
-
-def test_fetch_returns_none_without_any_musicbrainz_handle() -> None:
+def test_fetch_returns_none_without_any_album_handle() -> None:
     assert CoverArtArchiveProvider().fetch(ArtworkQuery(file_path="C:/x.flac")) is None
+    assert (
+        CoverArtArchiveProvider().fetch(
+            ArtworkQuery(mb_recording_id=_RECORDING_MBID, file_path="C:/x.flac")
+        )
+        is None
+    )
 
 
 @responses.activate

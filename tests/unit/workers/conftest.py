@@ -25,6 +25,12 @@ from vaultseek.db.uuid_utils import generate_uuid7, uuid_to_blob
 from vaultseek.db.writer import DatabaseWriter
 from vaultseek.services.job_queue_service import JobQueueService
 from vaultseek.services.review_queue_service import ReviewQueueService
+from vaultseek.services.tag_writer import TagWriteRequest, TagWriteResult
+
+
+def _stub_tag_writer(path: str, request: TagWriteRequest, **_kwargs: object) -> TagWriteResult:
+    del request
+    return TagWriteResult(path=path, wrote=True)
 
 
 @pytest.fixture
@@ -129,7 +135,13 @@ def duplicate_repo(engine: Engine) -> DuplicateRepository:
 
 @pytest.fixture
 def review_queue(review_repo: ReviewRepository, track_repo: TrackRepository) -> ReviewQueueService:
-    return ReviewQueueService(review_repo, track_repo, EventBus(), confidence_threshold=0.90)
+    return ReviewQueueService(
+        review_repo,
+        track_repo,
+        EventBus(),
+        confidence_threshold=0.90,
+        tag_writer=_stub_tag_writer,
+    )
 
 
 @pytest.fixture

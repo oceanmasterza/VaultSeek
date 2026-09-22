@@ -32,7 +32,8 @@ ALLOWED_TRANSITIONS: dict[LibraryZone, frozenset[LibraryZone]] = {
     LibraryZone.STAGING: frozenset(
         {LibraryZone.LIBRARY, LibraryZone.INCOMING, LibraryZone.ARCHIVE}
     ),
-    LibraryZone.LIBRARY: frozenset({LibraryZone.ARCHIVE}),
+    # LIBRARY → LIBRARY is same-zone reorganize (Assign changed album/path).
+    LibraryZone.LIBRARY: frozenset({LibraryZone.ARCHIVE, LibraryZone.LIBRARY}),
     LibraryZone.ARCHIVE: frozenset({LibraryZone.LIBRARY}),
 }
 

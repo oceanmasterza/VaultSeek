@@ -660,6 +660,19 @@
     <p>
       Human gate for uncertain identifications and similar problems.
       <kbd>Ctrl+Enter</kbd> approve, <kbd>Ctrl+Shift+R</kbd> reject.
+      Use <strong>Assign album…</strong> to pick any same-library album
+      (not only algorithm suggestions) and an optional track slot; Apply writes
+      embedded tags (with a backup), clears obsolete identity/artwork blockers
+      for that song, then organizes — or archives a worse Incoming when a better
+      LIBRARY copy already exists for that slot.
+      <strong>Preview retry</strong> dry-runs filename + library matching for
+      analogous pending songs without changing data.
+      High-confidence <em>unique</em> library matches (title plus independent
+      song-side corroboration such as duration or track number, preferring the
+      exact acquisition release MBID) can auto-identify using Settings →
+      Identify auto-approve. Live/remix/demo/edition conflicts stay here.
+      A better existing LIBRARY file does <em>not</em> block identification —
+      tags are written, then the duplicate/archive path keeps the better copy.
       Approved items continue to organize; rejected items may go to Archive.
     </p>
     <p>
@@ -898,6 +911,17 @@
       This is not a download-provider setting. See <a href="#quality">Quality presets</a>.
     </p>
     <p>
+      <strong>Minimum acceptable</strong> (traffic lights): a track can show green when it
+      meets the bitrate / codec floor — for example a 320&nbsp;kbps MP3 under Collector.
+      That means “good enough to keep,” not “already preferred.”
+    </p>
+    <p>
+      <strong>Preferred upgrade</strong> (after Identify / Organize into Library): when
+      <em>Prefer lossless</em> is on, VaultSeek still queues a quality-upgrade search for
+      lossy copies so a FLAC (or your preferred codec) can replace them — even if the
+      MP3 already meets the minimum bitrate. Already-lossless files do not get an upgrade job.
+    </p>
+    <p>
       <em>When upgrading, prefer matching whole-album folders from the same peer</em>
       — on Soulseek upgrades, prefer a folder that has the rest of the album from the same user.
     </p>
@@ -963,11 +987,16 @@
     <table>
       <tr><th>Preset</th><th>What it means</th></tr>
       <tr><td>Completist</td><td>Prefer lossless (FLAC/ALAC). No minimum bitrate for lossy files.</td></tr>
-      <tr><td>Collector</td><td>Prefer lossless. Lossy must be at least 320 kbps. Suggested on first-run wizard.</td></tr>
-      <tr><td>Lossy OK</td><td>Accept good MP3 (prefer MP3, min 192 kbps).</td></tr>
+      <tr><td>Collector</td><td>Prefer lossless. Lossy must be at least 320 kbps for traffic-light “OK”; upgrades still seek FLAC when Prefer lossless is on.</td></tr>
+      <tr><td>Lossy OK</td><td>Accept good MP3 (prefer MP3, min 192 kbps). No lossless upgrade push.</td></tr>
       <tr><td>Custom</td><td>You edited lossless / codec / bitrate by hand.</td></tr>
     </table>
     <p>Editing the three fields under the preset automatically switches the combo to Custom (or back to a named preset if the values match).</p>
+    <p>
+      Tip: <strong>minimum bitrate</strong> is the keep/health floor;
+      <strong>Prefer lossless</strong> is the post-identify upgrade target.
+      A 320&nbsp;kbps MP3 can be healthy green and still get one QUALITY_UPGRADE job toward FLAC.
+    </p>
 
     <h2 id="shortcuts">Keyboard shortcuts</h2>
     <table>

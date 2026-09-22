@@ -23,6 +23,7 @@ removed once no audio remains in that folder tree.
 from __future__ import annotations
 
 import shutil
+from collections.abc import Callable
 from dataclasses import replace
 from datetime import UTC, datetime
 from pathlib import Path
@@ -74,6 +75,7 @@ class OrganizerWorker:
         job_queue: JobQueueService,
         *,
         metadata_confidence_repo: MetadataConfidenceRepository | None = None,
+        quality_upgrader: Callable[[UUID], None] | None = None,
     ) -> None:
         self._tracks = track_repo
         self._libraries = library_repo
@@ -85,6 +87,7 @@ class OrganizerWorker:
         self._engine = organize_engine
         self._job_queue = job_queue
         self._confidence = metadata_confidence_repo
+        self._quality_upgrader = quality_upgrader
 
     def execute(self, job: Job) -> None:
         track_id = UUID(job.payload["track_id"])
@@ -93,7 +96,7 @@ class OrganizerWorker:
         if track is None:
             self._job_queue.mark_failed(job.id, f"Track {track_id} not found")
             return
-        if track.zone is target:
+        if track.zone is target and not bool(job.payload.get("reorganize")):
             # Idempotent redelivery (e.g. retried job) — nothing to do.
             summary = f"Already in {target.value}: {track.file_name}"
             self._job_queue.mark_completed(
@@ -102,7 +105,15 @@ class OrganizerWorker:
                 result={"outcome": "noop", "summary": summary, "target_zone": target.value},
             )
             return
-        if not self._engine.can_transition(track.zone, target):
+        if track.zone is target and bool(job.payload.get("reorganize")):
+            # Same-zone reorganize: still require an allowed same-zone edge.
+            if not self._engine.can_transition(track.zone, target):
+                self._job_queue.mark_failed(
+                    job.id,
+                    f"Illegal same-zone reorganize {track.zone.value} for track {track_id}",
+                )
+                return
+        elif not self._engine.can_transition(track.zone, target):
             self._job_queue.mark_failed(
                 job.id,
                 f"Illegal zone transition {track.zone.value} -> {target.value} "
@@ -120,6 +131,23 @@ class OrganizerWorker:
 
         now = datetime.now(UTC)
         destination = self._compute_destination(library, target, track)
+        if (
+            bool(job.payload.get("reorganize"))
+            and track.zone is target
+            and destination.resolve() == source.resolve()
+        ):
+            summary = f"Already organized at {source.name}"
+            self._job_queue.mark_completed(
+                job.id,
+                summary=summary,
+                result={
+                    "outcome": "noop",
+                    "summary": summary,
+                    "target_zone": target.value,
+                    "reorganize": True,
+                },
+            )
+            return
         final = _safe_move(source, destination)
         final = self._relocate_to_db_free_path(final, destination, track_id=track.id)
 
@@ -169,21 +197,42 @@ class OrganizerWorker:
                 parent_job_id=job.id,
                 now=now,
             )
+        quality_upgrade_error: str | None = None
         if target is LibraryZone.LIBRARY:
             self._enqueue_media_sync_if_idle(job.library_id, parent_job_id=job.id, now=now)
+            # Scoped quality-upgrade only after the file is actually in LIBRARY.
+            if self._quality_upgrader is not None:
+                try:
+                    self._quality_upgrader(track_id)
+                except Exception as exc:  # noqa: BLE001 — organize succeeded; surface upgrade miss
+                    quality_upgrade_error = str(exc)
+                    logger.error(
+                        "Quality upgrade after organize failed for {} ({}): {}",
+                        track_id,
+                        final.name,
+                        exc,
+                    )
         summary = f"Moved to {target.value}: {final.name}"
         if cleaned:
             summary += f" · cleaned {len(cleaned)} leftover Incoming item(s)"
+        if quality_upgrade_error:
+            summary += f" · quality upgrade failed: {quality_upgrade_error}"
+        result_payload: dict[str, object] = {
+            "outcome": "moved",
+            "summary": summary,
+            "target_zone": target.value,
+            "file_path": str(final),
+            "incoming_cleaned": len(cleaned),
+        }
+        if quality_upgrade_error:
+            result_payload["quality_upgrade_error"] = quality_upgrade_error
+            result_payload["quality_upgrade_status"] = "failed"
+        elif target is LibraryZone.LIBRARY and self._quality_upgrader is not None:
+            result_payload["quality_upgrade_status"] = "attempted"
         self._job_queue.mark_completed(
             job.id,
             summary=summary,
-            result={
-                "outcome": "moved",
-                "summary": summary,
-                "target_zone": target.value,
-                "file_path": str(final),
-                "incoming_cleaned": len(cleaned),
-            },
+            result=result_payload,
         )
 
     def _enqueue_media_sync_if_idle(

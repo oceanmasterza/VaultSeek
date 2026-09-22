@@ -5,9 +5,7 @@ from __future__ import annotations
 from PySide6.QtWidgets import QLabel
 
 # Keep the wording identical everywhere so users learn one legend.
-HEALTH_LEGEND_TEXT = (
-    "Colors: green = meets quality · orange = missing file or below quality prefs"
-)
+HEALTH_LEGEND_TEXT = "Colors: green = meets quality · orange = missing file or below quality prefs"
 
 
 def health_legend_label() -> QLabel:

@@ -87,7 +87,8 @@ def test_review_badge_updates_via_bridge(qtbot, container: Container, gui_librar
         )
     )
     qtbot.waitUntil(lambda: len(window._review_page._rows) >= 1, timeout=2000)  # noqa: SLF001
-    assert window._review_page._rows[0].label == "Point Of Know Return"  # noqa: SLF001
+    labels = [row.label for row in window._review_page._rows.values()]  # noqa: SLF001
+    assert "Point Of Know Return" in labels
 
 
 def test_apply_theme_dark(qapp) -> None:

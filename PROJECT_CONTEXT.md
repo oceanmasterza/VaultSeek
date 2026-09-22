@@ -34,6 +34,7 @@
 - Version 1.1.0; active Phase 6 automation and polish.
 - Recent work: schema 23 selectable Usenet client (SABnzbd default, optional NZBGet), shared responsive FlowLayout, and independent asynchronous dashboard client probes (one failure does not cancel the others; stale results drop when settings change).
 - Current priorities: safely archive/remove selected tracks or albums, replace dashboard status prose with compact tested-readiness indicators, live provider validation, and a measured packaging-size audit.
+- Identify/Review: Incoming songs can auto-match library tracklists (provenance-aware); Prefer lossless still enqueues FLAC QUALITY_UPGRADE after LIBRARY land even when MP3 meets min bitrate. Review Assign album + Play are first-class UI.
 - Settings and Plugins reconnect acquisition providers off the UI thread; `ProviderManager` serializes connect/disconnect/search so those reconnects cannot race an in-flight search. GUI status uses immutable connected/order snapshots and never waits on that lifecycle lock. Library/media dirty edits confirm before discard on library or media-plugin switch. Artwork is folded into Albums (Problems only).
 
 ## Collaboration
@@ -45,3 +46,5 @@
 - Upgrade regression: older installed ICU DLLs survive file overlay; installer cleanup targets these two files only. Archive selections now retain identity after sorting.
 
 - Albums offers separate Archive and Delete actions. Delete recycles tracked files and removes library records after confirmation; the album remains in other libraries when shared. Music-note icon is packaged under gui/assets.
+
+- Review identify: filename parser skips Nicotine UUID parents and parses `NN - Title`. Library tracklist matching uses provenance MBID + per-song duration/track evidence; identity auto-approves independently of quality (better LIBRARY copies archive via duplicate/organize after tagging). Assign album / `assignment_albums` / `assignment_slots` GUI contract on ReviewQueueService. Tag writes fail-closed via injected writer; missing files never approve as tagged. Acquisition provenance seeds absent artist/album before provider tag search (never job title). Quality-upgrade after LIBRARY organize with `source_track_id` dedupe; scoped upgrades honor Prefer lossless even when min bitrate is already met (library-health traffic lights keep minimum-acceptable semantics). Manual Assign on LIBRARY tracks enqueues same-zone reorganize.

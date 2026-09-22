@@ -377,9 +377,7 @@ class _NicotinePage(QWizardPage):
                 self.enabled.setChecked(True)
                 self.status.setText(item.note)
                 return
-            self.status.setText(
-                "No local Nicotine+ settings found. See Help → Setup instructions."
-            )
+            self.status.setText("No local Nicotine+ settings found. See Help → Setup instructions.")
 
         run_in_background(
             self._container.local_setup.discover,

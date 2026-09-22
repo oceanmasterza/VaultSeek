@@ -5,8 +5,9 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass
 
-from vaultseek.models.entities.acquisition_job import AcquisitionJob
+from vaultseek.models.entities.acquisition_job import AcquisitionJob, AcquisitionJobType
 from vaultseek.models.interfaces.acquisition import SearchResult
+from vaultseek.services.recording_identity import quality_upgrade_result_compatible
 
 _TOKEN_SPLIT = re.compile(r"[\s_\-./\\|()\[\]]+")
 _LOSSLESS = frozenset({"flac", "wav", "aiff", "aif", "alac", "wv", "dsf", "dff"})
@@ -58,12 +59,25 @@ class ScoringEngine:
             if key and folder_hits.get(key, 0) >= 2:
                 score = min(1.0, score + 0.10)
             boosted.append((result, score))
-        return sorted(boosted, key=lambda item: item[1], reverse=True)
+        ranked = sorted(boosted, key=lambda item: item[1], reverse=True)
+        # QUALITY_UPGRADE: never surface an explicit mismatch, even at floor 0.
+        if job.job_type is AcquisitionJobType.QUALITY_UPGRADE and job.title:
+            ranked = [(result, score) for result, score in ranked if score > 0.0]
+        return ranked
 
     def score_one(self, job: AcquisitionJob, result: SearchResult) -> float:
         fmt = _result_format(result)
         # Lyrics/cue/image junk often shares album/title tokens in the path.
         if fmt is not None and fmt not in _AUDIO_FORMATS:
+            return 0.0
+
+        # Quality upgrades must not auto-pick an explicitly contradictory
+        # recording/version. True album packs (no per-track title) stay eligible.
+        if (
+            job.job_type is AcquisitionJobType.QUALITY_UPGRADE
+            and job.title
+            and not quality_upgrade_result_compatible(job.title, result)
+        ):
             return 0.0
 
         score = 0.0

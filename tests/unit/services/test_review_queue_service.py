@@ -33,8 +33,14 @@ from vaultseek.services.dto.review_dto import ReviewItemCreate
 from vaultseek.services.events import ReviewItemAddedEvent
 from vaultseek.services.job_queue_service import JobQueueService
 from vaultseek.services.review_queue_service import ReviewQueueService, classify_review_type
+from vaultseek.services.tag_writer import TagWriteRequest, TagWriteResult
 
 _NOW = datetime(2026, 7, 16, tzinfo=UTC)
+
+
+def _stub_tag_writer(path: str, request: TagWriteRequest, **_kwargs: object) -> TagWriteResult:
+    del request
+    return TagWriteResult(path=path, wrote=True)
 
 
 def _make_track(library_id: UUID, track_id: UUID, **overrides: object) -> Track:
@@ -421,6 +427,7 @@ def wired_review_queue(
         confidence_threshold=0.90,
         job_queue=job_queue,
         duplicate_repository=duplicate_repo,
+        tag_writer=_stub_tag_writer,
     )
 
 

@@ -508,8 +508,8 @@ def test_run_cycle_dispatches_a_fetch_artwork_job(
     library_id: UUID,
     track_id: UUID,
 ) -> None:
-    """The artwork route is wired: with no providers registered, the
-    worker completes the job and parks an artwork_missing review item."""
+    """The artwork route is wired: without an album the job completes deferred
+    and does not park a song-level artwork_missing review item."""
     job_id = job_queue.enqueue(
         JobType.FETCH_ARTWORK,
         library_id,
@@ -521,9 +521,13 @@ def test_run_cycle_dispatches_a_fetch_artwork_job(
     assert len(futures) == 1
     futures[0].result(timeout=_POLL_TIMEOUT_SECONDS)
 
-    assert job_repo.get(job_id).status is JobStatus.COMPLETED  # type: ignore[union-attr]
+    completed = job_repo.get(job_id)
+    assert completed is not None
+    assert completed.status is JobStatus.COMPLETED
+    assert completed.payload.get("outcome") == "deferred"
+    assert completed.payload.get("reason") == "album_unknown"
     pending = review_queue.get_pending(library_id)
-    assert [item.review_type.value for item in pending] == ["artwork_missing"]
+    assert all(item.review_type.value != "artwork_missing" for item in pending)
 
 
 def test_run_cycle_dispatches_a_generate_report_job(

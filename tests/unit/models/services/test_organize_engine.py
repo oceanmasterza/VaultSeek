@@ -61,6 +61,7 @@ class TestTransitions:
         assert engine.can_transition(LibraryZone.STAGING, LibraryZone.LIBRARY)
         assert engine.can_transition(LibraryZone.STAGING, LibraryZone.INCOMING)
         assert engine.can_transition(LibraryZone.LIBRARY, LibraryZone.ARCHIVE)
+        assert engine.can_transition(LibraryZone.LIBRARY, LibraryZone.LIBRARY)
         assert engine.can_transition(LibraryZone.ARCHIVE, LibraryZone.LIBRARY)
 
     def test_archive_extension_transitions_are_allowed(self, engine: OrganizeEngine) -> None:
